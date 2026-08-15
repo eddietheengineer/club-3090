@@ -380,6 +380,7 @@ choose_variant() {
 model_label() {
   case "$1" in
     qwen3.6-27b) echo "Qwen 3.6 27B" ;;
+    qwen3.8-27b) echo "Qwen 3.8 27B" ;;
     gemma-4-31b) echo "Gemma 4 31B" ;;
     *) echo "$1" ;;
   esac
@@ -388,6 +389,7 @@ model_label() {
 normalize_model_name() {
   case "$1" in
     qwen3.6-27b|qwen3.6-27b-gguf) echo "qwen3.6-27b" ;;
+    qwen3.8-27b|qwen3.8-27b-fp8) echo "qwen3.8-27b" ;;
     gemma-4-31b|gemma-4-31b-awq|gemma-4-31b-gguf) echo "gemma-4-31b" ;;
     *) echo "$1" ;;
   esac
@@ -411,6 +413,7 @@ detect_installed_models() {
   MODEL_ENGINES=()
   [[ -d "${MODEL_DIR}/qwen3.6-27b-autoround-int4" ]] && add_installed_model_engine "qwen3.6-27b" "vllm"
   [[ -d "${MODEL_DIR}/qwen3.6-27b-gguf" ]] && add_installed_model_engine "qwen3.6-27b" "llamacpp"
+  [[ -d "${MODEL_DIR}/qwen3.8-27b-fp8" ]] && add_installed_model_engine "qwen3.8-27b" "vllm"
   [[ -d "${MODEL_DIR}/gemma-4-31b-autoround-int4" ]] && add_installed_model_engine "gemma-4-31b" "vllm"
   [[ -d "${MODEL_DIR}/gemma-4-31b-it-AWQ-4bit" ]] && add_installed_model_engine "gemma-4-31b" "vllm"
   [[ -d "${MODEL_DIR}/gemma-4-31b-gguf" ]] && add_installed_model_engine "gemma-4-31b" "llamacpp"
@@ -721,6 +724,7 @@ launch_nvlink_active() {
 valid_tp_values() {
   case "$1" in
     qwen3.6-27b) echo "1 2 4" ;;
+    qwen3.8-27b) echo "1 2 4" ;;
     gemma-4-31b) echo "1 2 4 8 16" ;;
     *) echo "1" ;;
   esac
@@ -892,6 +896,13 @@ suggest_default_variant() {
       # image purge + single-card Cliff 2b.)
       echo "vllm/minimal"
     fi
+  elif [[ "$MODEL_NAME" == "qwen3.8-27b" ]]; then
+    # Only one compose ships (dual vLLM FP8 max tier). Dual-only: the FP8
+    # checkpoint is ~29 GB > 24 GB single-card. The wizard's candidate
+    # filter (TP/GPU-spec) drops it on a 1-card rig → no_fit_guidance, so
+    # the unconditional echo can't hand a single-card user an unbootable
+    # suggestion (deckard pattern).
+    echo "vllm/qwen38-27b-dual-max"
   elif [[ "$MODEL_NAME" == "qwen3.6-40b-deckard" ]]; then
     # Deckard: only one compose (dual llama.cpp MTP). Dual-only (31 GB > 24 GB).
     echo "llamacpp/deckard40B-dual-mtp"

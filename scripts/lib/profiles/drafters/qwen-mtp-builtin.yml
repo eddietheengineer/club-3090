@@ -6,6 +6,7 @@ model_compat:
   - qwen3.6-27b
   - qwen3.6-35b-a3b
   - qwen3.6-40b-deckard
+  - qwen3.8-27b
 n_default: 3
 n_max: 3
 download: false
