@@ -319,6 +319,21 @@ COMPOSE_REGISTRY = {
         status_note="Qwen3.6-27B 'max accuracy' tier, 4-card (TP=4): official FP8 weights + fp8/e4m3 KV (flipped from int8-PTH alongside dual-max #594/#595) + MTP n=3 @262K. Byte-identical to vllm/qwen-27b-dual-max apart from TP=4 + gpu-count (dual-max @TP=2 is the on-rig proxy; this dev rig has 2 cards). Promoted 2026-07-07 on the clean v0.24.0 4-card validation the caveats required — #584 (@ryanmpelletier, 4× 3090 x16): verify-full 9/9, verify-stress clean to 240K, soak PASS, bench n=5, 8-pack 111/150 (ties the dual-max proxy 109 → quality TP-invariant). Corroborated by a 2nd 4-card rig — #625 (@MoppelMat, 4× 3090 mixed x4/x8, 300 W: decode 79/102, prefill-90K clean, soak PASS). fp8/e4m3 routes KV attention to FlashInfer (int8-PTH is Triton-only) → flat decode at depth. TP=4 buys the 6.77x KV pool; single-stream decode ~flat vs 2-card.",
     ),
 
+    # Qwen3.8-27B FP8 — dual-max tier (same architecture as Qwen3.6-27B,
+    # qwen35-dense family). Generation config defaults per model card:
+    # temperature=1.0, top_p=0.95, top_k=20. Chat template patches commented
+    # out pending froggeric validation on Qwen3.8.
+    "vllm/qwen38-27b-dual-max": _entry(
+        model="qwen3.8-27b", weights_variant="fp8", workload="long-ctx-single", chat_template="native",
+        engine="vllm-stable", drafter="qwen-mtp-builtin", kv_format="fp8_e4m3",
+        tp=2, max_ctx=262144, max_num_seqs=2, mem_util=0.92,
+        compose_path="models/qwen3.8-27b/vllm/compose/dual/fp8/mtp.yml",
+        default_port=8018,
+        kvcalc_key="SKIP",
+        status="experimental",
+        status_note="Qwen3.8-27B 'max accuracy' tier, 2-card: official FP8 weights (embedded MTP head) + fp8/e4m3 KV + MTP n=3, TP=2 @262K. Same hybrid architecture as Qwen3.6-27B (48 GDN + 16 attn). Generation config per model card: temperature=1.0, top_p=0.95, top_k=20. Chat template patches (froggeric) commented out pending Qwen3.8 validation — stock template used. Based on vllm/qwen-27b-dual-max — inherits its vllm#50021 MTP×hybrid-GDN exposure on this pin (see compose header + docs/UPSTREAM.md). Unvalidated — pending rebench-full.",
+    ),
+
     # Qwen3.6-27B NVFP4 (nvidia modelopt) — the community-validation Hopper/
     # Blackwell tier. AUTHORED BLIND on this sm_86 dev rig (NVFP4 cannot boot
     # here): required_sm=9.0 gates launch to NVIDIA's supported set (Hopper

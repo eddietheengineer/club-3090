@@ -1,0 +1,151 @@
+# ===========================================================================
+# Profile (at-a-glance):
+#   Model:     Qwen3.8-27B FP8 (fine-grained block-128 E4M3 + BF16; embedded MTP head)
+#   Topology:  Dual 3090 (TP=2, NVLink auto-detected via NVLINK_MODE)
+#   Drafter:   MTP n=3 (built-in — the FP8 checkpoint embeds the mtp.* head)
+#   KV:        fp8 → e4m3 (1 byte/token; runs at scale=1.0 — checkpoint is weight-only)
+#              → FlashInfer backend → flat decode at depth.
+#   Vision:    yes
+#   Max ctx:   262K native (extensible to 1M via YaRN — not wired here)
+#   Genesis:   N/A — Genesis is Qwen3-Next-specific
+#   Status:    🧪 Experimental
+#   Quality:   (unvalidated — pending rebench-full)
+#   Best for:  max-accuracy Qwen3.8 on 2 cards — FP8 + fp8 KV at full 262K
+# ---------------------------------------------------------------------------
+# Dual RTX 3090 — Qwen3.8-27B FP8 "max accuracy" tier (vllm/qwen38-27b-dual-max).
+# Based on the Qwen3.6-27B dual-max compose (vllm/qwen-27b-dual-max).
+# FP8 weights + MTP n=3 + fp8 KV + vision.
+#
+# Key differences from the Qwen3.6-27B dual-max:
+#   - Qwen3.8-27B uses the qwen35-dense family (same hybrid geometry)
+#   - Generation config defaults: temperature=1.0, top_p=0.95, top_k=20
+#     (per the model card's generation_config.json)
+#   - Chat template patches commented out (using stock template pending
+#     froggeric validation on Qwen3.8)
+#
+# ⚠️ Upstream exposure (INHERITED from the sibling this copies — assume it
+#    applies until validation proves otherwise): vllm#50021 — the MTP ×
+#    hybrid-GDN spec-decode crash class — is OPEN and LIVE in v0.25.1 (the
+#    pin used here). Qwen3.8-27B is the same hybrid geometry (48 GDN +
+#    16 attn) and this compose runs MTP n=3, so it falls under the same
+#    "every MTP-on hybrid-GDN vLLM slug on a stock pin" exposure as
+#    vllm/qwen-27b-dual-max. Mitigation: delete the --speculative-config
+#    line below (drafter off). Detail + re-test trigger: docs/UPSTREAM.md
+#    → vllm#50021 row. When the sibling's ⚠️ caveat drops on the fix-
+#    carrying pin bump, drop this note in the same commit.
+#
+# What this gives you:
+#   - TP=2 across both 3090s
+#   - max_num_seqs=2 → 2 concurrent agents at full 262K context
+#   - max_model_len=262144 → model's natural max, no rope_scaling needed
+#   - vision + tools + MTP n=3
+#
+# Dependencies:
+#   - 2× RTX 3090 (Ampere SM 8.6), PCIe-only (no NVLink — works fine)
+#   - vLLM STABLE image (v0.25.1, from the `vllm-stable` engine profile —
+#     the version lives in install.spec, #254; the launcher injects it over
+#     the compose default)
+# ===========================================================================
+# Hardware metadata (parsed by scripts/preflight.sh):
+# Requires-min-vram-gb: 24
+# Engine-profile: vllm-stable
+# Requires-min-gpu-count: 2
+# Tensor-parallel: 2
+services:
+  vllm-qwen38-27b-dual:
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.25.1}
+    container_name: "${ESTATE_CONTAINER:-vllm-qwen38-27b-dual-max}"
+    restart: ${CLUB3090_RESTART:-unless-stopped}
+    ports:
+      - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8018}}:8000"
+    volumes:
+      - ${MODEL_DIR:-../../../../../../models-cache}:/root/.cache/huggingface
+      - ../../../cache/torch_compile:/root/.cache/vllm/torch_compile_cache
+      - ../../../cache/triton:/root/.triton/cache
+      # froggeric chat-template override — COMMENTED OUT pending validation
+      # on Qwen3.8. The stock Qwen3.8 template is used instead.
+      # Re-enable once froggeric is validated for qwen35-dense Qwen3.8.
+      # - ../../../patches/froggeric-chat-template/chat_template.jinja:/etc/qwen-froggeric-chat-template.jinja:ro
+      - ../../../../../../scripts/detect_nvlink.sh:/etc/club3090/detect_nvlink.sh:ro
+      - ../../../patches/vllm-pr48375-mamba-drop-eagle-block:/etc/club3090/pr48375:ro
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=${ESTATE_GPUS:-${NVIDIA_VISIBLE_DEVICES:-all}}
+      - CUDA_VISIBLE_DEVICES
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+      - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-${OFFLINE:-0}}
+      - TRANSFORMERS_OFFLINE=${TRANSFORMERS_OFFLINE:-${OFFLINE:-0}}
+      - VLLM_WORKER_MULTIPROC_METHOD=spawn
+      - NVLINK_MODE=${NVLINK_MODE:-auto}
+      - VLLM_SKIP_P2P_CHECK
+      - NCCL_CUMEM_ENABLE=0
+      - NCCL_P2P_DISABLE=1
+      - VLLM_NO_USAGE_STATS=1
+      - VLLM_USE_FLASHINFER_SAMPLER=0
+      - OMP_NUM_THREADS=1
+      - VLLM_USE_DEEP_GEMM
+      - PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True,max_split_size_mb:512}
+    shm_size: "16gb"
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    entrypoint:
+      - bash
+      - -c
+      - |
+        source /etc/club3090/detect_nvlink.sh
+        bash /etc/club3090/pr48375/install.sh || exit 1
+        if [ "$${_NVLINK_ENABLED:-0}" = "1" ]; then
+          exec vllm serve $${VLLM_ENFORCE_EAGER:+--enforce-eager} "$$@"
+        else
+          exec vllm serve $${VLLM_ENFORCE_EAGER:+--enforce-eager} --disable-custom-all-reduce "$$@"
+        fi
+      - --
+    command:
+      - --model
+      - /root/.cache/huggingface/qwen3.8-27b-fp8
+      - --served-model-name
+      - qwen3.8-27b
+      - --quantization
+      - fp8
+      - --dtype
+      - bfloat16
+      - --tensor-parallel-size
+      - "${TP:-2}"
+      - --pipeline-parallel-size
+      - "${PP:-1}"
+      - --max-model-len
+      - "${MAX_MODEL_LEN:-262144}"
+      - --gpu-memory-utilization
+      - "${GPU_MEMORY_UTILIZATION:-0.92}"
+      - --max-num-seqs
+      - "2"
+      - --max-num-batched-tokens
+      - "${MAX_NUM_BATCHED_TOKENS:-8192}"
+      - --kv-cache-dtype
+      - "${KV_CACHE_DTYPE:-fp8}"
+      - --trust-remote-code
+      # froggeric chat-template — COMMENTED OUT (see volumes block above)
+      # - --chat-template
+      # - /etc/qwen-froggeric-chat-template.jinja
+      - --reasoning-parser
+      - qwen3
+      - --default-chat-template-kwargs
+      - '{"enable_thinking": false}'
+      - --enable-auto-tool-choice
+      - --tool-call-parser
+      - qwen3_coder
+      - "${PREFIX_CACHE_ARG:---enable-prefix-caching}"
+      - --enable-chunked-prefill
+      - --speculative-config
+      - '{"method":"mtp","num_speculative_tokens":3}'
+      - --override-generation-config
+      - '{"temperature":${TEMP:-${TEMPERATURE:-1.0}},"top_p":${TOP_P:-0.95},"top_k":${TOP_K:-20},"min_p":${MIN_P:-0.0},"repetition_penalty":${REPEAT_PENALTY:-1.0}}'
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"

@@ -1,0 +1,39 @@
+schema_version: 1
+id: qwen3.8-27b
+display_name: Qwen 3.8 27B
+family: qwen35-dense
+hidden_size: 5120
+num_hidden_layers: 64
+num_gdn_layers: 48
+num_attn_layers: 16
+num_attn_heads: 24
+num_kv_heads: 4
+head_dim_attn: 256
+linear_num_v_heads: 48
+linear_num_k_heads: 16
+linear_v_head_dim: 128
+linear_k_head_dim: 128
+linear_conv_kernel_dim: 4
+max_ctx_supported: 262144
+attention_k_eq_v: false
+kv_calc_supported: false
+weights:
+  fp8:
+    path: qwen3.8-27b-fp8
+    local_subdir: qwen3.8-27b-fp8
+    size_gb: 29
+    format: fp8
+    status: experimental
+    hf_repo: Qwen/Qwen3.8-27B-FP8
+    engine: vllm
+    kind: main
+    verify_glob: "*.safetensors"
+    manual_note: "Official Qwen3.8-27B FP8 release (fine-grained, block size 128, F8_E4M3 tensors + BF16). Same hybrid architecture as Qwen3.6-27B (48 GDN + 16 attn layers). Embedded MTP head + multimodal vision tower. Drives the dual-max compose (vllm/qwen38-27b-dual-max). Pull recipe: WEIGHTS=fp8 bash scripts/setup.sh qwen3.8-27b."
+default_weight_variant: fp8
+compatible_drafters:
+  - qwen-mtp-builtin
+valid_tp:
+  - 1
+  - 2
+  - 4
+requires_genesis: false

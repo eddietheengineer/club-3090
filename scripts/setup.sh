@@ -66,6 +66,7 @@ usage() {
   echo "Supported model names:"
   echo "  qwen3.6-27b"
   echo "  qwen3.6-35b-a3b"
+  echo "  qwen3.8-27b"
   echo "  gemma-4-31b"
   echo "  gemma-4-26b-a4b"
   echo "  deepseek-v4-flash-0731"
@@ -77,6 +78,7 @@ model_label() {
   case "$1" in
     qwen3.6-27b) echo "Qwen 3.6 27B" ;;
     qwen3.6-35b-a3b) echo "Qwen 3.6 35B-A3B" ;;
+    qwen3.8-27b) echo "Qwen 3.8 27B" ;;
     deepseek-v4-flash-0731) echo "DeepSeek-V4-Flash-0731 (284B MoE, CPU offload)" ;;
     gemma-4-31b) echo "Gemma 4 31B" ;;
     gemma-4-26b-a4b) echo "Gemma 4 26B-A4B" ;;
@@ -238,6 +240,9 @@ case "${MODEL_NAME}" in
     # here — the fp8 key set below is what's fetched.
     PRIMARY_WEIGHT_KEY="diffusiongemma-26b-a4b:fp8"
     ;;
+  qwen3.8-27b)
+    PRIMARY_WEIGHT_KEY="qwen3.8-27b:fp8"
+    ;;
   *)
     # An unknown friendly model name is fatal ONLY when WEIGHT_KEY is NOT set.
     # WEIGHT_KEY is the authoritative "exact catalog entry" fetch-now flow (used
@@ -248,7 +253,7 @@ case "${MODEL_NAME}" in
     # the WEIGHT_KEY override below sets it.
     if [[ -z "${WEIGHT_KEY:-}" ]]; then
       echo "ERROR: unsupported model '${MODEL_NAME}'."
-      echo "Supported: qwen3.6-27b, qwen3.6-35b-a3b, gemma-4-31b, gemma-4-26b-a4b, diffusiongemma-26b-a4b, deepseek-v4-flash-0731"
+      echo "Supported: qwen3.6-27b, qwen3.6-35b-a3b, qwen3.8-27b, gemma-4-31b, gemma-4-26b-a4b, diffusiongemma-26b-a4b, deepseek-v4-flash-0731"
       echo "(To add a new model, extend the model dispatch in scripts/setup.sh and profiles/models/*.yml,"
       echo " or pass WEIGHT_KEY=<model>:<variant> to fetch an exact catalog entry directly.)"
       exit 1
