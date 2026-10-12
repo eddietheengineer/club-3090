@@ -262,6 +262,7 @@ exist; it was closed NO-GO. This is an engine property, not a per-model defect.
 | `test-profiles-compat` | every entry fits a canonical scenario (strict loader active here too) |
 | `test-compose-status-drift` | header Status emoji ↔ registry status |
 | `test-docs-slugs-resolve` | every slug named in docs exists (non-functional carry `--force`) |
+| `test-docs-slug-tables` | the card pages' generated slug tables match the registry (regenerate with `python3 tools/docs/slug_tables.py`) |
 | `test-setup-registry-derived` | setup.sh output ≡ catalog for EVERY model+alias |
 | `test-compose-sampler-profiles` | shipped sampler defaults == instruct row; THINKING render == thinking row |
 | `test-litellm-generate` · `test-litellm-ports-resolve` | gateway block ≡ registry derivation; ports resolve |

@@ -1419,7 +1419,8 @@ def apply_bundle(root: Path, target: Path, files: dict[str, Any], states: list[d
                 _info(f"         {ln}")
     _info("still to do there: test-profiles-compat and test-launch-compat (the engine's "
           "supported_model_families and the hardware profiles' supported_kv_formats must "
-          "name the new combinations), diagnose-profile.sh <slug>, a boot through "
+          "name the new combinations), python3 tools/docs/slug_tables.py (the card pages' "
+          "slug tables; test-docs-slug-tables), diagnose-profile.sh <slug>, a boot through "
           "switch.sh + verify-full, then the full suite — this is a catalog-shape change.")
     todo = _still_to_do(files.get("PR_BODY.md") or "")
     if todo:

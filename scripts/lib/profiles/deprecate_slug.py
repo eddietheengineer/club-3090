@@ -475,8 +475,11 @@ def _deprecate(args, root, emoji_map, functional, header_status, dump_yaml, get_
               f"still hold")
     if (root / "models" / entry["model"] / "CHANGELOG.md").is_file():
         _info(f"  a dated entry in models/{entry['model']}/CHANGELOG.md (append-only)")
+    _info("  regenerate the card pages' slug tables: python3 tools/docs/slug_tables.py "
+          "(a deprecated slug drops out of them)")
     _info("  run: test-compose-status-drift, test-default-resolver, test-model-default-resolver, "
-          "test-litellm-generate, then the full suite (a status change is catalog-shaped)")
+          "test-litellm-generate, test-docs-slug-tables, then the full suite (a status change "
+          "is catalog-shaped)")
     print(f"DEPRECATE_OK {' '.join(targets)}")
     return 0
 
