@@ -9,6 +9,7 @@ engine, so this image is an exception to the image-provenance contract
 |---|---|
 | [`build.sh`](build.sh) | Resolves a release, builds it, checks the image, pushes with `--push`. CI and a maintainer run the same script. |
 | [`portable.py`](portable.py) | The one change to upstream's Dockerfile (below). |
+| [`build_opts.py`](build_opts.py) | Opt-in build speedups for a rig: `--jobs`, `--ccache` (below). Never used by CI. |
 | [`../../../../.github/workflows/strata-image.yml`](../../../../.github/workflows/strata-image.yml) | Runs `build.sh --push` daily and on demand, then attests the image's provenance. |
 
 ## What we change, and why
@@ -79,6 +80,39 @@ bash models/qwen3.8-flash-next/strata/image/build.sh --tag v0.1.43.1 --verify <i
 `--push` publishes `:<tag>` and `:sha-<commit7>` and prints the digest. `--force` rebuilds a tag that
 is already published, giving it a new digest. `CUDA_ARCHITECTURES`, `BUILD_VISION` and
 `STRATA_IMAGE` override the defaults (a narrower build is for local use, not for publishing).
+
+### Faster builds on a rig
+
+Two opt-in flags, applied by [`build_opts.py`](build_opts.py) after `portable.py`. CI passes neither,
+so the published recipe is unchanged. Neither changes what is compiled.
+
+- **`--jobs N`** compiles with N jobs. `setup.py` passes `-j` (half the CPU threads) on the command
+  line, where `CMAKE_BUILD_PARALLEL_LEVEL` can't override it, so the build step rewrites that
+  argument. It prints each build command it changed, and fails if none took the new value.
+- **`--ccache`** sends every C, C++ and CUDA compile through ccache. The cache lives in a BuildKit
+  cache mount (`id=strata-club3090-ccache`) that outlives the build. The build trees are at the same
+  paths every time, so a later build reuses each object whose source didn't change. That covers most
+  of llama.cpp, which every release pins to the same commit.
+  - The build prints its hit and miss counts, and fails if nothing went through ccache.
+  - The image carries the ccache package, so `build.sh` won't `--push` one.
+  - `docker builder prune --filter type=exec.cachemount` clears it, along with any other build's cache
+    mounts. On the reference rig, the cache was 309 MB after two releases.
+
+Measured on the reference rig (a 32-vCPU EPYC 7543 VM) on 2026-10-13, default archs, vision on.
+The compile step includes downloading llama.cpp before compiling, which took 18–111 s across runs:
+
+| Build | Compile step | Engine | Image encoder | ccache |
+|---|---|---|---|---|
+| no flags (`setup.py`'s `-j 16`) | 831 s | 280 s | 528 s | — |
+| `--jobs 32` | 663 s | 272 s | 334 s | — |
+| `--jobs 32 --ccache`, empty cache (v0.1.43) | 723 s | 273 s | 336 s | 7 hits, 397 misses |
+| `--jobs 32 --ccache`, cache from v0.1.43 (v0.1.43.1) | **69 s** | 31 s | 2 s | 393 hits, 11 misses |
+
+- `--jobs` speeds up only the image encoder. A few long CUDA compiles set the engine's time.
+- An empty cache costs nothing measurable.
+- From the second release on, almost every object comes from the cache. The whole v0.1.43.1 run took
+  183 s, checks included, with the apt and pip layers already cached; a plain build took 15m45s. Those
+  two releases are consecutive, so a build after a bigger change to Strata's own sources will miss more.
 
 CI: the workflow builds the newest release once a day, and on demand from the Actions tab
 (`Run workflow`, with an optional tag). When two releases land on the same day, only the newer one is
