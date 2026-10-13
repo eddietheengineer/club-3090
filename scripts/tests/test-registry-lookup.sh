@@ -13,9 +13,11 @@
 #      scripts' own text, so reordering can't silently unfix it), with the old
 #      literal kept only as last-resort fallback.
 #   3. gpu-mode.sh status probed :8012 (27b-dflash) and :8011 (27b-turbo) — no
-#      registry variant serves those ports. Guard: every LLM probe port in
+#      registry variant served those ports then. Guard: every LLM probe port in
 #      gpu-mode.sh must exist in the registry (explicit infra allowlist aside),
-#      and the two dead ports must stay gone.
+#      and the two dead probes must stay gone. bucko's two slugs hold 8011/8012
+#      since 2026-10-13, so the registry check alone would no longer catch a
+#      returning 27b probe; the explicit ban below still does.
 set -euo pipefail
 export CLUB3090_CONFIG_DIR=/nonexistent/club-3090-test-config   # tests never read your real settings (#1466)
 
@@ -141,7 +143,7 @@ PY
 
 for dead in 8011 8012; do
   grep -q ":${dead}" scripts/gpu-mode.sh \
-    && note "gpu-mode.sh still references dead probe port :${dead} (no registry variant serves it)"
+    && note "gpu-mode.sh still references the dead 27b turbo/dflash probe port :${dead}"
 done
 
 rm -f "$REGJSON"

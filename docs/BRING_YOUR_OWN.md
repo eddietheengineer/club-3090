@@ -528,6 +528,12 @@ bounce the PR for:
   - The export re-points those mounts at the same targets.
   - It carries a patch or template that only your local layer has into the bundle.
   - It lists every such change in its plan and in `PR_BODY.md`.
+- **Ports.** Your slug runs on a 202xx port, but curated slugs live on 8010–8199.
+  - The export gives the slug the lowest curated port no curated slug holds.
+  - It moves both the registry entry and the compose's `${PORT:-NNNN}`.
+  - Your local layer keeps its 202xx port, so the slug you run doesn't move.
+  - A slug already on a free curated port keeps it.
+  - A compose with no `${PORT:-NNNN}`, or with several different ones, is refused.
 - **The PR body.** `PR_BODY.md` is the repo's own
   [slug](../.github/PULL_REQUEST_TEMPLATE/slug.md) or
   [engine](../.github/PULL_REQUEST_TEMPLATE/engine.md) template:

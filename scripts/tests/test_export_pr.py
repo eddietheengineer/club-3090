@@ -176,6 +176,29 @@ def _spec_file(root: Path) -> Path:
     return f
 
 
+_PORT_DEFAULT = re.compile(r"\$\{PORT:-(\d+)\}")
+CURATED_BAND = range(8010, 8200)
+
+
+def _curated_ports() -> set:
+    """Every port a curated slug holds (this branch's registry.yaml, which the
+    throwaway repos copy)."""
+    from scripts.lib.profiles import compose_registry as cr
+
+    return {e["default_port"] for e in cr.COMPOSE_REGISTRY.values() if e.get("default_port")}
+
+
+def _free_ports(n=1) -> list:
+    """The ports an export hands slugs that have to move: the lowest ones in the
+    curated band no curated slug holds. Derived, so a curated slug moving can't
+    stale these tests."""
+    return sorted(set(CURATED_BAND) - _curated_ports())[:n]
+
+
+def _at_port(text: str, port: int) -> str:
+    return _PORT_DEFAULT.sub(f"${{PORT:-{port}}}", text)
+
+
 def _run_cli(root, out, *extra, env_extra=None):
     env = dict(os.environ)
     env.pop("C3_ALLOW_CORE_PROMOTE", None)
@@ -234,7 +257,8 @@ class TestHappyPath:
         # (profiles-local/composes/<rest> → models/<rest>).
         comp = out / CORE_COMPOSE_REL
         assert comp.exists(), sorted(p.relative_to(out) for p in out.rglob("*"))
-        assert comp.read_text(encoding="utf-8") == COMPOSE_TEXT
+        # Its ${PORT:-N} is the curated port the entry gets, not the local 20242.
+        assert comp.read_text(encoding="utf-8") == _at_port(COMPOSE_TEXT, _free_ports()[0])
 
         # Artifact 3 — the registry ENTRY FILE: the core slug (identical to the
         # local one since #1205 — publish is not a rename), the TRANSLATED
@@ -255,7 +279,7 @@ class TestHappyPath:
 
         parsed = parse_registry_text(text, source="registry-entry.yaml")
         kw = parsed["entries"][CORE_SLUG]
-        assert kw["model"] == MID and kw["default_port"] == 20242
+        assert kw["model"] == MID and kw["default_port"] == _free_ports()[0]
         assert kw["mem_util"] == 0.92 and kw["drafter"] is None
 
     def test_entry_file_merges_and_get_registry_loads_it(self, root, tmp_path):
@@ -658,8 +682,10 @@ class TestCuratedModelSlugs:
         res = _run_model(core_root, out)
         assert res.returncode == 0, res.stderr + res.stdout
         text = (out / "models" / CM / "vllm/compose/dual" / EXT / "fp8-mtp.yml").read_text(encoding="utf-8")
-        # Exactly the curated sibling again: every mount points where it did in core.
-        assert text == _sibling(), "rebased compose differs from the curated sibling"
+        # Exactly the curated sibling again: every mount points where it did in
+        # core. Only its port differs, since the sibling's is a curated slug's.
+        assert text == _at_port(_sibling(), _free_ports()[0]), \
+            "rebased compose differs from the curated sibling"
         assert "mount rebased" in res.stdout
         assert "Mounts re-pointed for the core location" in (out / "PR_BODY.md").read_text(encoding="utf-8")
 
@@ -670,7 +696,7 @@ class TestCuratedModelSlugs:
         res = _run_model(core_root, out)
         assert res.returncode == 0, res.stderr + res.stdout
         text = (out / "models" / CM / "vllm/compose/dual" / EXT / "fp8-mtp.yml").read_text(encoding="utf-8")
-        assert text == _sibling()
+        assert text == _at_port(_sibling(), _free_ports()[0])
         assert "mount rebased" not in res.stdout
 
     def test_a_mount_that_resolves_nowhere_is_refused(self, core_root, tmp_path):
@@ -788,6 +814,108 @@ class TestCuratedModelSlugs:
         assert f"{b}:" in entry and f"  {a}:\n" not in entry
         res = _run_model(core_root, tmp_path / "b2", slugs=["vllm/nope"])
         assert res.returncode == 3 and "not local slugs" in res.stderr
+
+
+class TestCorePorts:
+    """A local slug runs on the local layer's 202xx band (promote.py's); a curated
+    one on 8010-8199. The export gives every slug that isn't on a free curated
+    port the lowest free one, in its entry and in its compose's ${PORT:-N} alike,
+    and leaves the local layer the user keeps running untouched."""
+
+    @staticmethod
+    def _entry(out):
+        from scripts.lib.profiles.compose_registry import parse_registry_text
+
+        text = (out / "registry-entry.yaml").read_text(encoding="utf-8")
+        return parse_registry_text(text, source="registry-entry.yaml")["entries"]
+
+    def test_a_local_band_port_moves_into_the_curated_band(self, root, tmp_path):
+        _seed_local(root)
+        out = tmp_path / "bundle"
+        res = _run_cli(root, out)
+        assert res.returncode == 0, res.stderr + res.stdout
+        port = _free_ports()[0]
+        assert port in CURATED_BAND and port not in _curated_ports()
+        assert self._entry(out)[CORE_SLUG]["default_port"] == port
+        compose = (out / CORE_COMPOSE_REL).read_text(encoding="utf-8")
+        assert _PORT_DEFAULT.findall(compose) == [str(port)]
+        why = f"port 20242 is the local layer's 202xx band; the curated slug gets {port}"
+        assert why in res.stdout
+        body = (out / "PR_BODY.md").read_text(encoding="utf-8")
+        assert "Ports moved into the curated band" in body and why in body
+        # The local layer still says 20242: the user's running slug doesn't move.
+        assert "${PORT:-20242}" in (root / LOCAL_COMPOSE_REL).read_text(encoding="utf-8")
+        reg = json.loads((root / "scripts/lib/profiles-local/registry.local.json")
+                         .read_text(encoding="utf-8"))
+        assert reg[LOCAL_SLUG]["default_port"] == 20242
+
+    def test_a_free_curated_port_is_kept(self, root, tmp_path):
+        port = _free_ports(3)[-1]   # free, and not the one a move would pick
+        _seed_local(root, entry_kwargs={**_entry_kwargs(), "default_port": port})
+        (root / LOCAL_COMPOSE_REL).write_text(_at_port(COMPOSE_TEXT, port), encoding="utf-8")
+        out = tmp_path / "bundle"
+        res = _run_cli(root, out)
+        assert res.returncode == 0, res.stderr + res.stdout
+        assert self._entry(out)[CORE_SLUG]["default_port"] == port
+        assert (out / CORE_COMPOSE_REL).read_text(encoding="utf-8") == _at_port(COMPOSE_TEXT, port)
+        assert "Ports moved" not in (out / "PR_BODY.md").read_text(encoding="utf-8")
+
+    def test_a_port_a_curated_slug_holds_moves(self, root, tmp_path):
+        held = min(_curated_ports() & set(CURATED_BAND))
+        _seed_local(root, entry_kwargs={**_entry_kwargs(), "default_port": held})
+        (root / LOCAL_COMPOSE_REL).write_text(_at_port(COMPOSE_TEXT, held), encoding="utf-8")
+        out = tmp_path / "bundle"
+        res = _run_cli(root, out)
+        assert res.returncode == 0, res.stderr + res.stdout
+        port = _free_ports()[0]
+        assert self._entry(out)[CORE_SLUG]["default_port"] == port
+        assert f"port {held} is already a curated slug's; the curated slug gets {port}" in res.stdout
+
+    def test_two_slugs_get_two_ports_and_a_stale_compose_port_follows(self, core_root, tmp_path):
+        # Both composes are copies of a curated sibling, so they still say the
+        # sibling's port while their entries say 202xx. Each ends on its own port.
+        a, b = "vllm/qwen36-test-ext-dual", "vllm/qwen36-test-ext-dual-b"
+        _attach(core_root, {a: ({}, _sibling(), _local_rel()),
+                            b: ({"default_port": 20252}, _sibling(),
+                                _local_rel(name="fp8-mtp-b.yml"))})
+        out = tmp_path / "bundle"
+        res = _run_model(core_root, out)
+        assert res.returncode == 0, res.stderr + res.stdout
+        got = {s: e["default_port"] for s, e in self._entry(out).items()}
+        assert sorted(got.values()) == _free_ports(2)
+        core = out / "models" / CM / "vllm/compose/dual" / EXT
+        for slug, name in ((a, "fp8-mtp.yml"), (b, "fp8-mtp-b.yml")):
+            assert _PORT_DEFAULT.findall((core / name).read_text(encoding="utf-8")) == [str(got[slug])]
+        assert "disagreed with the registry's 20251" in res.stdout
+
+    def test_two_slugs_on_one_free_port_keep_it_once(self, core_root, tmp_path):
+        a, b = "vllm/qwen36-test-ext-dual", "vllm/qwen36-test-ext-dual-b"
+        port = _free_ports(3)[-1]
+        _attach(core_root, {a: ({"default_port": port}, _at_port(_sibling(), port), _local_rel()),
+                            b: ({"default_port": port}, _at_port(_sibling(), port),
+                                _local_rel(name="fp8-mtp-b.yml"))})
+        out = tmp_path / "bundle"
+        res = _run_model(core_root, out)
+        assert res.returncode == 0, res.stderr + res.stdout
+        got = {s: e["default_port"] for s, e in self._entry(out).items()}
+        assert got == {a: port, b: _free_ports()[0]}
+        assert f"{b}: port {port} is another exported slug's too" in res.stdout
+
+    def test_a_compose_without_a_port_default_is_refused(self, root, tmp_path):
+        _seed_local(root)
+        (root / LOCAL_COMPOSE_REL).write_text(
+            COMPOSE_TEXT.replace("${PORT:-20242}", "20242"), encoding="utf-8")
+        res = _run_cli(root, tmp_path / "bundle")
+        assert res.returncode == 3, res.stderr + res.stdout
+        assert "no single ${PORT:-N} default to move" in res.stderr
+
+    def test_a_compose_with_two_different_port_defaults_is_refused(self, root, tmp_path):
+        _seed_local(root)
+        (root / LOCAL_COMPOSE_REL).write_text(
+            COMPOSE_TEXT + '      - "${PORT:-20243}:9000"\n', encoding="utf-8")
+        res = _run_cli(root, tmp_path / "bundle")
+        assert res.returncode == 3, res.stderr + res.stdout
+        assert "no single ${PORT:-N} default to move" in res.stderr
 
 
 # ── An engine only the local layer has (docs/ADDING_ENGINES.md) ─────────────
@@ -1018,6 +1146,12 @@ class TestApply:
             f"print(e['origin'], e['compose_path'], '{MID}' in load_profiles().models)")) \
             == f"core {CORE_COMPOSE_REL} True"
         assert (tmp_path / "bundle" / "PR_BODY.md").exists()
+        # The merged entry and the landed compose agree on a curated port.
+        port = int(_in_target(t, (
+            "from scripts.lib.profiles.compose_registry import get_registry\n"
+            f"print(get_registry()['{CORE_SLUG}']['default_port'])")))
+        assert port in CURATED_BAND
+        assert _PORT_DEFAULT.findall((t / CORE_COMPOSE_REL).read_text(encoding="utf-8")) == [str(port)]
 
     def test_case3_failed_check_removes_the_new_tree(self, root, tmp_path):
         _seed_local(root, profile_text=_core_valid_profile())

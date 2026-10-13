@@ -102,10 +102,10 @@ services:
       # The container side is 8000 by CONVENTION, matching every core vLLM compose
       # (fix the internal port, vary the host side). It is no longer a constraint:
       # detect.PORT_MAP_ANY_RE accepts any internal port for a container the
-      # registry claims (#1219), so this could be 20272:20272. Left at 8000 because
+      # registry claims (#1219), so this could be 8011:8011. Left at 8000 because
       # changing the port the app binds inside the image is an entrypoint question,
       # not a detection one, and would need a real boot to verify.
-      - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-20272}}:8000"
+      - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8011}}:8000"
     environment:
       # Internal listen port, 8000 by convention (see the ports: note above).
       PORT: "8000"
