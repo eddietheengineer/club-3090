@@ -260,8 +260,19 @@ except gc.Refuse as r:
     check("genesis_equipped:true" in str(r),
           f"synthetic/genesis: refuse message {str(r)!r} missing genesis_equipped:true")
 
-# llama.cpp profile is outside the generator scope; current fixture lacks its engine profile.
-expect_refuse("llamacpp/default", gc.EXIT_REFUSE, "engine profile not found")
+# llama.cpp profile is outside the generator scope (non-Genesis vLLM only). Until
+# 2026-10-12 its engine file was llama-cpp-mainline.yml for id llama-cpp-local, so this
+# case refused one step earlier, on "engine profile not found", and asserted that
+# instead (3aa938f7 renamed the file to match its id). It now reaches the scope gate.
+expect_refuse("llamacpp/default", gc.EXIT_REFUSE, "!= vllm; the #141 generator is non-Genesis vLLM only")
+
+# The missing-engine-profile refusal keeps its own case, no longer covered by the slug above.
+try:
+    gc.load_engine(root, "no-such-engine")
+    errors.append("load_engine(no-such-engine): expected an engine-profile-not-found refuse")
+except gc.Refuse as r:
+    check("engine profile not found: no-such-engine" in str(r),
+          f"load_engine(no-such-engine): refuse message {str(r)!r} missing engine profile not found")
 
 # foundational failed-guard -> hard-refuse even with --accept-degraded.
 expect_refuse("vllm/gemma-int8-mtp", gc.EXIT_REFUSE,
