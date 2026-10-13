@@ -35,8 +35,19 @@ build actually used. Each edit matches text that must occur exactly once. If ups
 build step, the edit refuses and the build stops; it never ships a native build without saying so.
 
 Everything else is upstream's: the Dockerfile at the release's commit (CUDA 13.0 devel base, so the
-host needs an NVIDIA driver ≥ 580), every arch it builds by default (`75;80;86;89;120`) and the image
-encoder (`BUILD_VISION=1`).
+host needs an NVIDIA driver ≥ 580) and the image encoder (`BUILD_VISION=1`).
+
+**GPU archs: upstream's default plus `90`.** Upstream builds `75;80;86;89;120` (RTX 20 / 30 / 40 / 50
+and the A-series). We add `90` because H100 is a club hardware class. A card whose arch isn't in the
+image still starts, but `setup.py` compiles the engine for it at the first start of every fresh
+container (the engine lives in the image, not on `/data`). That follows from `setup.py`'s reuse test; it
+hasn't been tested. Other cards:
+
+| Card | Arch | |
+|---|---|---|
+| B200 / GB200 | `100` | not built (no club hardware class): compiles at each fresh container's first start |
+| DGX Spark (GB10) | `121` | **can't run**: ARM CPU, while the image is x86-64 and Strata's CPU kernels are x86 SIMD |
+| P100 / V100 | `60` / `70` | not built: CUDA 13 dropped them; upstream's experimental CUDA 12 build isn't in this image |
 
 ## What a build checks
 

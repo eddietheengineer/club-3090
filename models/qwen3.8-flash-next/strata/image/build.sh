@@ -36,9 +36,11 @@ export PYTHONUTF8="${PYTHONUTF8:-1}"
 
 REPO_URL="https://github.com/Niko1221/Strata"
 IMAGE="${STRATA_IMAGE:-ghcr.io/noonghunna/strata-club3090}"
-# Every NVIDIA arch upstream builds by default (RTX 20/30/40/50 + A-series): a fat binary with
-# one cubin per arch, so one image serves every supported card.
-CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES:-75;80;86;89;120}"
+# Every arch upstream builds by default (RTX 20/30/40/50 + A-series: 75;80;86;89;120) plus 90 (H100,
+# a club hardware class): a fat binary with one cubin per arch, so one image serves every one of
+# them. A card outside the list makes setup.py compile the engine again at every fresh container's
+# first start (BUILD.json's archs must cover the card), so a supported class belongs in the list.
+CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES:-75;80;86;89;90;120}"
 BUILD_VISION="${BUILD_VISION:-1}"
 # The setup.py flags our compose recipe passes (strata-entrypoint.sh). A release that drops or
 # renames one would break every launch, so the build fails instead.
