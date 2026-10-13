@@ -407,11 +407,17 @@ def _deprecate(args, root, emoji_map, functional, header_status, dump_yaml, get_
     tables = root / SLUG_TABLES_REL
     pages: list[Path] = []
     if tables.is_file():
-        listed = _run(root, [sys.executable, SLUG_TABLES_REL, "--pages"])
-        if listed.returncode != 0:
-            raise Refusal(f"`python3 {SLUG_TABLES_REL} --pages` failed:\n"
-                          + (listed.stderr or listed.stdout).strip()[-800:])
-        pages = [root / ln.strip() for ln in listed.stdout.splitlines() if ln.strip()]
+        # `--pages --check`, never `--pages` alone: a copy older than --pages (a --root
+        # checkout) takes an unknown flag as "rewrite the pages"; with --check it only checks.
+        listed = _run(root, [sys.executable, SLUG_TABLES_REL, "--pages", "--check"])
+        found = [ln.strip() for ln in listed.stdout.splitlines() if ln.strip()]
+        if listed.returncode == 0 and found and all(
+                ln.endswith(".md") and (root / ln).is_file() for ln in found):
+            pages = [root / ln for ln in found]
+        else:
+            _info(f"note: {SLUG_TABLES_REL} in {root} predates --pages; the card-page slug "
+                  f"tables are not regenerated (run it there by hand)")
+    if pages:
         if _run(root, [sys.executable, SLUG_TABLES_REL, "--check"]).returncode != 0:
             raise Refusal(f"the card pages' slug tables are already out of date (`python3 "
                           f"{SLUG_TABLES_REL} --check` is red before this change), and "

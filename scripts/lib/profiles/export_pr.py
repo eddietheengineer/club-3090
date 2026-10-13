@@ -1334,11 +1334,17 @@ def apply_bundle(root: Path, target: Path, files: dict[str, Any], states: list[d
     # last of the refusals: the more specific ones above say what's actually wrong
     pages: list[Path] = []
     if (target / _SLUG_TABLES_REL).is_file():
-        listed = _run_in(target, [sys.executable, _SLUG_TABLES_REL, "--pages"])
-        if listed.returncode != 0:
-            raise Refusal(f"`python3 {_SLUG_TABLES_REL} --pages` failed in {target}:\n"
-                          + (listed.stderr or listed.stdout).strip()[-800:])
-        pages = [target / ln.strip() for ln in listed.stdout.splitlines() if ln.strip()]
+        # `--pages --check`, never `--pages` alone: a copy older than --pages takes an
+        # unknown flag as "rewrite the pages", but with --check it only checks.
+        listed = _run_in(target, [sys.executable, _SLUG_TABLES_REL, "--pages", "--check"])
+        found = [ln.strip() for ln in listed.stdout.splitlines() if ln.strip()]
+        if listed.returncode == 0 and found and all(
+                ln.endswith(".md") and (target / ln).is_file() for ln in found):
+            pages = [target / ln for ln in found]
+        else:
+            _info(f"  note: {target}'s {_SLUG_TABLES_REL} predates --pages; its card-page "
+                  f"slug tables are not regenerated here (run it there by hand)")
+    if pages:
         if _run_in(target, [sys.executable, _SLUG_TABLES_REL, "--check"]).returncode != 0:
             raise Refusal(f"the card pages' slug tables in {target} are already out of date "
                           f"(`python3 {_SLUG_TABLES_REL} --check` is red), and regenerating them "

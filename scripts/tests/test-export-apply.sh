@@ -201,6 +201,25 @@ out="$(apply_ "$T5")"; code=$?
 [[ $code -eq 3 && "$out" == *"slug tables in"*"already out of date"* ]] && untouched "$T5" \
   && ok "slug tables stale before the apply are refused, nothing written" || fail "stale tables (rc=$code): $out"
 
+# 5c. a target whose slug_tables.py predates --pages: never called with it (an old
+# copy would take the flag as "rewrite the pages"), the pages are left alone, and
+# the apply says so.
+T6="$(target t-old-tables)"
+python3 - "$T6/tools/docs/slug_tables.py" <<'PY'
+import sys
+p = sys.argv[1]; s = open(p, encoding="utf-8").read()
+a = s.index('    if "--pages" in argv:'); b = s.index('    check = "--check" in argv')
+open(p, "w", encoding="utf-8").write(s[:a] + s[b:])
+PY
+# ...with a stale dual table, the case where `--pages` alone would rewrite the page
+sed -i '0,/<!-- END GENERATED: slug-table dual -->/s//| stale | row |\n<!-- END GENERATED: slug-table dual -->/' "$T6/docs/DUAL_CARD.md"
+commit_in "$T6" "an older slug_tables.py, without --pages, and a stale dual table"
+before_pages="$(cat "$T6"/docs/*_CARD.md | sha256sum)"
+out="$(apply_ "$T6")"; code=$?
+[[ $code -eq 0 && "$out" == *"predates --pages"* && "$(cat "$T6"/docs/*_CARD.md | sha256sum)" == "$before_pages" ]] \
+  && ok "an older slug_tables.py is not called with --pages; the pages are untouched and the apply says so" \
+  || fail "old tables tool (rc=$code): $out"
+
 # 6. a check failing after the write puts the target back
 T4="$(target t-restore)"
 printf 'import sys\nsys.exit("broken on purpose")\n' > "$T4/scripts/lib/profiles/migrate_registry_to_yaml.py"
