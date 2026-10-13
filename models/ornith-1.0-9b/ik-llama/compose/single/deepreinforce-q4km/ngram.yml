@@ -42,7 +42,7 @@ services:
   ik-llama-ornith-9b:
     image: ${IK_LLAMA_IMAGE:-ghcr.io/ikawrakow/ik-llama-cpp@sha256:b35e062cf032f1435b90387cfd9e9679006dd628d0999d86b6e7db2d4a43964d}
     container_name: "${ESTATE_CONTAINER:-ik-llama-ornith-9b}"
-    restart: unless-stopped
+    restart: ${CLUB3090_RESTART:-unless-stopped}
     ports:
       - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8070}}:8080"
     volumes:

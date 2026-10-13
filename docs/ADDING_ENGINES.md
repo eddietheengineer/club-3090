@@ -246,7 +246,7 @@ The compose layout, header and registry contract are the same as in [ADDING_MODE
 
 **Repo conventions the guards miss under a new engine directory.** Follow them anyway:
 
-- **Restart policy:** `restart: ${CLUB3090_RESTART:-unless-stopped}`. `test-compose-restart-policy` scans only `models/*/vllm/compose`.
+- **Restart policy:** `restart: ${CLUB3090_RESTART:-unless-stopped}`. `test-compose-restart-policy` scans every engine's composes.
 - **Cache ownership:**
   - Mount caches as `${CLUB3090_ENGINE_CACHE_DIR:-../../../cache}/<subdir>:<container path>`, with `user: "0:${DOCKER_GID:-1000}"` and `umask 0002` at the top of the entrypoint. Otherwise the files the container writes into `~/.cache/club-3090/` come out `root:root` and need sudo to clear.
   - `test-compose-cache-ownership` only matches mounts whose container path starts with `/root/`, and nothing checks for the umask.

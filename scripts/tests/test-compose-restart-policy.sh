@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Test: vLLM composes use the reboot-surviving restart knob.
+# Test: every compose uses the reboot-surviving restart knob.
 #
 # Contract:
-#   1. Every serving service in a shipped vLLM compose declares
+#   1. Every serving service in a shipped compose, whatever the engine, declares
 #        restart: ${CLUB3090_RESTART:-unless-stopped}
 #      — none ships restart: "no" (which would NOT come back after a host
 #      reboot, defeating launch.sh-as-a-service usage).
@@ -14,8 +14,10 @@
 # Why unless-stopped: it is the only Docker policy that reliably restarts on
 # daemon boot (host VM/bare-metal reboot) yet honors a manual stop
 # (switch.sh --down / docker stop). The ${CLUB3090_RESTART:-...} form lets a
-# user opt out with CLUB3090_RESTART=no. The ik-llama/llama-cpp/beellama
-# composes already use a literal unless-stopped and are out of scope here.
+# user opt out with CLUB3090_RESTART=no. Until 2026-10-13 this scanned only
+# models/*/vllm/compose, and 69 llama.cpp / moe-cache / ExLlamaV3 / ik-llama /
+# beellama services carried a literal unless-stopped that ignored the opt-out
+# (catalog_rules.py's restart-knob advisory flagged the 37 live ones).
 set -uo pipefail
 export CLUB3090_CONFIG_DIR=/nonexistent/club-3090-test-config   # tests never read your real settings (#1466)
 
@@ -34,11 +36,11 @@ cd "$ROOT_DIR"
 KNOB='${CLUB3090_RESTART:-unless-stopped}'
 fail=0
 
-# 1. Shipped vLLM composes all carry the knob.
+# 1. Shipped composes, every engine, all carry the knob.
 bad="$(python3 - "$KNOB" <<'PY'
 import glob, sys, yaml
 knob = sys.argv[1]
-for f in sorted(glob.glob("models/*/vllm/compose/**/*.yml", recursive=True)):
+for f in sorted(glob.glob("models/*/*/compose/**/*.yml", recursive=True)):
     try:
         d = yaml.safe_load(open(f)) or {}
     except Exception as e:
@@ -63,7 +65,7 @@ for f in sorted(glob.glob("models/*/vllm/compose/**/*.yml", recursive=True)):
 PY
 )"
 if [[ -n "$bad" ]]; then
-  echo "FAIL: vLLM composes not on the reboot-surviving restart knob:" >&2
+  echo "FAIL: composes not on the reboot-surviving restart knob:" >&2
   echo "$bad" | sed 's/^/  /' >&2
   fail=1
 fi
@@ -82,4 +84,4 @@ if [[ "$fail" -ne 0 ]]; then
   echo "[compose-restart-policy] FAIL" >&2
   exit 1
 fi
-echo "[compose-restart-policy] PASS: all vLLM composes + derived emitter use \${CLUB3090_RESTART:-unless-stopped}"
+echo "[compose-restart-policy] PASS: every compose (all engines) + derived emitter use \${CLUB3090_RESTART:-unless-stopped}"

@@ -141,7 +141,7 @@ services:
     # docker/Dockerfile.cu13, from a `git archive` clean context.
     image: ${EXLLAMAV3_IMAGE:-ghcr.io/noonghunna/tabbyapi-club3090@sha256:87490d21a61ad0bc74093411ea431bcaacaeae748fa7d109df0a07217651ca0c}
     container_name: ${ESTATE_CONTAINER:-tabbyapi-qwen38-flash-next-exl3-405}
-    restart: unless-stopped
+    restart: ${CLUB3090_RESTART:-unless-stopped}
     # Reap orphaned children — without it a wedged server becomes a <defunct>
     # PID 1 child docker cannot kill, holding GPU memory and host RAM until
     # every later boot is refused. Cost 8 of 9 A/B arms on the sibling engine.

@@ -64,7 +64,7 @@ services:
   beellama-gemma4-12b:
     image: ${BEELLAMA_IMAGE:-ghcr.io/anbeeld/beellama.cpp:server-cuda-v0.3.0}
     container_name: "${ESTATE_CONTAINER:-beellama-gemma4-12b}"
-    restart: unless-stopped
+    restart: ${CLUB3090_RESTART:-unless-stopped}
     ports:
       - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8067}}:8080"
     volumes:
