@@ -210,7 +210,7 @@ weights:
   albucino-autoround-int4-fp8ple:
     path: qwen3.8-flash-next-w4a16-fp8ple
     local_subdir: qwen3.8-flash-next-w4a16-fp8ple
-    size_gb: 129
+    size_gb: 125     # 129 GB repo less the 4.2 GB compact MTP draft, now its own variant (albucino-mtp-int4-g32)
     format: autoround
     status: community-experimental
     hf_repo: albucino/Qwen3.8-Flash-Next-W4A16-FP8PLE
@@ -255,18 +255,6 @@ weights:
       - runtime/README.md
       - runtime/install_overlay.py
       - runtime/mtp-int4-g32/.gitattributes
-      - runtime/mtp-int4-g32/chat_template.jinja
-      - runtime/mtp-int4-g32/compact_sources.json
-      - runtime/mtp-int4-g32/config.json
-      - runtime/mtp-int4-g32/generation_config.json
-      - runtime/mtp-int4-g32/model.safetensors.index.json
-      - runtime/mtp-int4-g32/mtp-dense.safetensors
-      - runtime/mtp-int4-g32/mtp-routed-experts-int4.safetensors
-      - runtime/mtp-int4-g32/preprocessor_config.json
-      - runtime/mtp-int4-g32/tokenizer.json
-      - runtime/mtp-int4-g32/tokenizer_config.json
-      - runtime/mtp-int4-g32/video_preprocessor_config.json
-      - runtime/mtp-int4-g32/vocab.json
       - runtime/repro.lock.json
       - runtime/serve-container.sh
       - runtime/static_hot_cache_rankings.json
@@ -302,7 +290,7 @@ weights:
       - tokenizer.json
       - tokenizer_config.json
       - video_preprocessor_config.json
-    verify_glob: '*.safetensors'
+    verify_glob: 'model-*.safetensors'   # not the draft's runtime/mtp-int4-g32 files (albucino-mtp-int4-g32)
     manual_note: 'A HYBRID assembled and published by albucino, NOT a single-provider quant -- `hybrid_sources.json` in the artifact records the components: target = Intel/Qwen3.8-Flash-Next-W4A16-AutoRound @ 861536dda5bcb208376fc4cd879b2bf76bece9fe (native AutoRound GPTQ W4A16 symmetric INT4 group-128, unchanged), PLE = RadixArk/Qwen3.8-Flash-Next-NVFP4 @ 7b719225242aacd3dbd3f9407468c2ee9a9d2594 (float8_e4m3fn with one published global weight_scale). Assembly is `hardlink`; tensor payload 124,750,778,874 bytes. ⛔ The MTP head is NOT in this artifact (`mtp.included: false` -- ''supply a separate draft model''); the bucko recipe points speculative_config at its own runtime/mtp-int4-g32. Confirmed DOWNLOADED from albucino (HF .cache download metadata present, single hardlink), not assembled on this rig. Licensed qwen-community-1.0.'
   albucino-mtp-int4-g32:
     path: qwen3.8-flash-next-w4a16-fp8ple
