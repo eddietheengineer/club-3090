@@ -110,6 +110,7 @@ Pin engine images when **either** trigger holds: (1) we vendor patches into the 
 | moe-cache llama.cpp (`llamacpp-club3090-*`) | none (our fork *is* the delta; one profile per release) | **digest** of our own `ghcr.io/noonghunna/llamacpp-club3090` |
 | PrismML llama.cpp (`llama-cpp-prism`) | none | **digest** of `ghcr.io/noonghunna/llamacpp-prism`, a wrapper we build around PrismML's release (an image-provenance exception, `docs/ADDING_ENGINES.md`) |
 | ExLlamaV3 / TabbyAPI (`exllamav3`) | none | **digest** of `ghcr.io/noonghunna/tabbyapi-club3090`, which we build (same exception) |
+| bucko-vllm (`bucko-vllm`, a third-party vLLM derivative) | `bucko-default-thinking-budget` (`patches.yml`) | **digest** of DominikBucko's official `ghcr.io/dominikbucko/qwen38-flash-next-2x3090` release image |
 | vLLM + LMCache (`vllm-lmcache`, a third-party derivative) | none | **digest** of `lmcache/vllm-openai` (its tag was re-pushed) |
 | beellama.cpp (`beellama-local`) | none (the fork *is* the delta) | **digest** of Anbeeld's official image. Engine retired 2026-07-27; every slug is deprecated |
 
