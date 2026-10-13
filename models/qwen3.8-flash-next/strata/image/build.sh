@@ -12,6 +12,11 @@
 #   bash models/qwen3.8-flash-next/strata/image/build.sh --tag v0.1.43.1 --push
 #   bash models/qwen3.8-flash-next/strata/image/build.sh --tag v0.1.43.1 --verify <image>   # checks only
 #
+# Faster builds on a rig, opt-in (build_opts.py; CI uses neither, so the published recipe is unchanged):
+#   --jobs N   compile with N jobs instead of setup.py's half the CPU threads (any build, --push too)
+#   --ccache   reuse compiled objects from earlier builds through a BuildKit cache mount; the image
+#              then carries the ccache package, so it can't be pushed
+#
 # Steps; any failure stops the run:
 #   1. resolve the release tag to its commit (git ls-remote, annotated tags peeled) and build
 #      from that commit, so a tag moved later can't change what we built;
@@ -46,14 +51,16 @@ BUILD_VISION="${BUILD_VISION:-1}"
 # A release that drops or renames one would break every launch, so the build fails instead.
 REQUIRED_SETUP_FLAGS="${REQUIRED_SETUP_FLAGS:---setup --yes --family --model --gguf-dir --context --vision --data-dir --host --api-key --port --gpus --gpu --no-start --kv}"
 
-TAG="" PUSH=0 FORCE=0 VERIFY=""
-usage() { sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//'; }
+TAG="" PUSH=0 FORCE=0 VERIFY="" JOBS="" CCACHE=0
+usage() { awk 'NR > 1 && !/^#/ {exit} NR > 1 {sub(/^# ?/, ""); print}' "$0"; }
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --tag) TAG="${2:?--tag needs a value}"; shift 2 ;;
     --push) PUSH=1; shift ;;
     --force) FORCE=1; shift ;;
     --verify) VERIFY="${2:?--verify needs an image}"; shift 2 ;;
+    --jobs) JOBS="${2:?--jobs needs a number}"; shift 2 ;;
+    --ccache) CCACHE=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "[strata-image] unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -61,6 +68,9 @@ done
 
 say() { echo "[strata-image] $*"; }
 die() { echo "[strata-image] ERROR: $*" >&2; exit 1; }
+[[ -z "$JOBS" || "$JOBS" =~ ^[1-9][0-9]*$ ]] || die "--jobs needs a positive number, not '$JOBS'"
+[[ "$CCACHE" != 1 || "$PUSH" != 1 ]] \
+  || die "--ccache is for builds on a rig: its image carries the ccache package, so it isn't the published recipe. Push a build without --ccache."
 out() { [[ -n "${GITHUB_OUTPUT:-}" ]] && echo "$1" >> "$GITHUB_OUTPUT"; return 0; }
 
 here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -200,9 +210,16 @@ git -C "$work" checkout -q FETCH_HEAD
 llama="$(command grep -m1 -E '^LLAMA_CPP_COMMIT *= *"[0-9a-f]{40}"' "$work/setup.py" | command grep -o -E '[0-9a-f]{40}' || true)"
 [[ -n "$llama" ]] || die "setup.py has no LLAMA_CPP_COMMIT: upstream changed how it pins llama.cpp"
 python3 "$here/portable.py" "$work/Dockerfile" || die "portable.py could not apply to $TAG's Dockerfile"
+opts=() opts_label=""
+[[ -n "$JOBS" ]] && { opts+=(--jobs "$JOBS"); opts_label="jobs=$JOBS"; }
+[[ "$CCACHE" == 1 ]] && { opts+=(--ccache); opts_label="${opts_label:+$opts_label }ccache"; }
+if [[ ${#opts[@]} -gt 0 ]]; then
+  python3 "$here/build_opts.py" "$work/Dockerfile" "${opts[@]}" || die "build_opts.py could not apply to $TAG's Dockerfile"
+fi
 
-say "building $IMAGE:$TAG (archs $CUDA_ARCHITECTURES, vision $BUILD_VISION, AVX2 baseline, llama.cpp ${llama:0:7})"
+say "building $IMAGE:$TAG (archs $CUDA_ARCHITECTURES, vision $BUILD_VISION, AVX2 baseline, llama.cpp ${llama:0:7}${opts_label:+, $opts_label})"
 docker build --pull \
+  ${opts_label:+--label "club3090.build_opts=$opts_label"} \
   --build-arg "CUDA_ARCHITECTURES=$CUDA_ARCHITECTURES" \
   --build-arg "BUILD_VISION=$BUILD_VISION" \
   --label "org.opencontainers.image.title=strata-club3090" \
