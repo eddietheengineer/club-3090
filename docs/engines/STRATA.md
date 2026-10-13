@@ -35,8 +35,8 @@ A release that renames a `setup.py` flag the entrypoint passes fails the image b
 
 | Slug | Cards | Port | Notes |
 |---|---|---|---|
-| `strata/qwen3.8-flash-next-iq3s-dual` | 2, layer split | 8188 | the fastest offloaded Flash-Next measured on the reference rig |
-| `strata/qwen3.8-flash-next-iq3s-single` | 1 | 8189 | the same install, started with `--gpu 0` |
+| `strata/qwen3.8-flash-next-iq3s-dual` | 2, layer split | 8018 | the fastest offloaded Flash-Next measured on the reference rig |
+| `strata/qwen3.8-flash-next-iq3s-single` | 1 | 8019 | the same install, started with `--gpu 0` |
 
 **Weights:** both run ISTA-DASLab's GSQ-RCO IQ3_S (`ista-iq3s`, 83.6 GB in two shards).
 

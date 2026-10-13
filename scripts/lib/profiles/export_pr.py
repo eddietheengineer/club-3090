@@ -382,13 +382,49 @@ def translated_entry(state: dict, entry: dict, reg_mod=None, root: Optional[Path
 CURATED_PORTS = range(8010, 8200)
 LOCAL_PORTS = range(20200, 20300)
 
+# The ports the repo's own services/ listen on are never handed out either: Open
+# WebUI 8080, SearXNG 8088, the studio director 8090, ComfyUI 8188 and the studio
+# sidecars 8189-8195 all sit inside the curated band. A slug there can't run beside
+# them, and `gpu-mode.sh status` reads its port as theirs; #1674 put strata on
+# ComfyUI's and the gallery's. They are read from the services themselves, in the
+# three ways those declare a port, so a new service needs no list kept here.
+_SERVICE_PORTS_COMPOSE = (
+    # a published port: "8188:8188", "${OWUI_PORT:-8080}:8080", "127.0.0.1:4000:4000"
+    re.compile(r'^\s*-\s*"?(?:[\d.]+:)?(?:\$\{[A-Za-z0-9_]+:-)?(\d{2,5})\}?:\d{2,5}', re.M),
+    # a host-network service's own listen port: PORT=${STUDIO_ORCH_PORT:-8190}, --port ${X_PORT:-8090}
+    re.compile(r'\$\{[A-Za-z0-9_]*PORT:-(\d{2,5})\}'),
+)
+# a server run on the host, with no compose: PORT = int(os.environ.get("STUDIO_PRODUCTION_PORT", "8195"))
+_SERVICE_PORTS_PY = re.compile(r"""environ\.get\(\s*["'][A-Za-z0-9_]*PORT["']\s*,\s*["']?(\d{2,5})""")
 
-def assign_core_ports(reg_mod, model_states: list[dict]) -> tuple[list[str], list[str]]:
+
+def service_ports(root: Path) -> set[int]:
+    """Every port the repo's services/ listen on (their composes and host-run servers)."""
+    ports: set[int] = set()
+    services = Path(root) / "services"
+    for f in sorted(services.rglob("*")) if services.is_dir() else []:
+        if not f.is_file() or "tests" in f.relative_to(services).parts:
+            continue
+        if f.name.startswith("docker-compose") and f.suffix in (".yml", ".yaml"):
+            pats = _SERVICE_PORTS_COMPOSE
+        elif f.suffix == ".py":
+            pats = (_SERVICE_PORTS_PY,)
+        else:
+            continue
+        text = f.read_text(encoding="utf-8", errors="replace")
+        for pat in pats:
+            ports.update(int(n) for n in pat.findall(text))
+    return ports
+
+
+def assign_core_ports(reg_mod, model_states: list[dict], root: Optional[Path] = None
+                      ) -> tuple[list[str], list[str]]:
     """Set state[\"core_ports\"] = {slug: new port} on every state, for the slugs
     that need one. Returns (notes, gaps); a full curated band is a gap."""
     curated = {int(e["default_port"]) for e in reg_mod.COMPOSE_REGISTRY.values()
                if str(e.get("default_port") or "").isdigit()}
-    taken = set(curated)
+    services = service_ports(root) if root is not None else set()
+    taken = curated | services
     notes: list[str] = []
     gaps: list[str] = []
     for st in model_states:
@@ -408,6 +444,7 @@ def assign_core_ports(reg_mod, model_states: list[dict]) -> tuple[list[str], lis
             st["core_ports"][str(e["slug"])] = new
             why = ("the local layer's 202xx band" if isinstance(port, int) and port in LOCAL_PORTS
                    else "outside the curated band" if port not in CURATED_PORTS
+                   else "one the repo's own services listen on" if port in services
                    else "already a curated slug's" if port in curated
                    else "another exported slug's too")
             notes.append(f"{e['slug']}: port {port} is {why}; the curated slug gets {new}")
@@ -1055,7 +1092,7 @@ def build(root: Path, *, model_states: list[dict], engine: Optional[dict], netwo
                          "this one): " + ", ".join(engine["left_out"]))
         todo += etodo
 
-    port_notes, port_gaps = assign_core_ports(reg_mod, model_states)
+    port_notes, port_gaps = assign_core_ports(reg_mod, model_states, root)
     gaps += port_gaps
     for st in model_states:
         gaps += completeness_gaps(root, st)

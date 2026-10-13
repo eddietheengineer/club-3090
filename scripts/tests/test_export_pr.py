@@ -918,6 +918,68 @@ class TestCorePorts:
         assert "no single ${PORT:-N} default to move" in res.stderr
 
 
+def _services(root, files: dict):
+    """A services/ tree in the throwaway repo: {relative path: text}."""
+    for rel, text in files.items():
+        f = root / "services" / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(text, encoding="utf-8")
+
+
+class TestServicePorts:
+    """The repo's own services/ listen on ports inside the curated band (Open WebUI
+    8080, ComfyUI 8188, the studio sidecars ...). The export reads them from the
+    services themselves and never hands one out."""
+
+    def test_reads_the_three_ways_a_service_declares_a_port(self, root):
+        from scripts.lib.profiles.export_pr import service_ports
+
+        _services(root, {
+            "ui/docker-compose.yml": (
+                "services:\n  ui:\n    ports:\n"
+                '      - "${UI_PORT:-8111}:8080"\n'
+                '      - "8112:8112"\n'
+                '      - "127.0.0.1:8113:9000"\n'),
+            "sidecar/docker-compose.yml": (
+                "services:\n  s:\n    network_mode: host\n    environment:\n"
+                "      - PORT=${SIDE_PORT:-8114}\n"
+                "    command: --port ${OTHER_PORT:-8115}\n"),
+            "prod/server.py": 'PORT = int(os.environ.get("PROD_PORT", "8116"))\n',
+            # not a listen port of a service: ignored
+            "prod/tests/test_server.py": 'PORT = int(os.environ.get("PROD_PORT", "8117"))\n',
+            "gateway/config.yaml": '  - "8118:8118"\n',
+        })
+        assert service_ports(root) == {8111, 8112, 8113, 8114, 8115, 8116}
+
+    def test_no_services_dir_is_no_ports(self, root):
+        from scripts.lib.profiles.export_pr import service_ports
+
+        assert service_ports(root) == set()
+
+    def test_the_port_a_move_would_take_is_skipped_when_a_service_holds_it(self, root, tmp_path):
+        first, second = _free_ports(2)
+        _services(root, {"ui/docker-compose.yml": f'    ports:\n      - "{first}:{first}"\n'})
+        _seed_local(root)
+        out = tmp_path / "bundle"
+        res = _run_cli(root, out)
+        assert res.returncode == 0, res.stderr + res.stdout
+        assert TestCorePorts._entry(out)[CORE_SLUG]["default_port"] == second
+        assert _PORT_DEFAULT.findall((out / CORE_COMPOSE_REL).read_text(encoding="utf-8")) == [str(second)]
+
+    def test_a_slug_on_a_service_port_moves(self, root, tmp_path):
+        held = _free_ports(3)[-1]   # free of curated slugs, and not the port a move picks
+        _services(root, {"ui/docker-compose.yml": f'    ports:\n      - "{held}:8080"\n'})
+        _seed_local(root, entry_kwargs={**_entry_kwargs(), "default_port": held})
+        (root / LOCAL_COMPOSE_REL).write_text(_at_port(COMPOSE_TEXT, held), encoding="utf-8")
+        out = tmp_path / "bundle"
+        res = _run_cli(root, out)
+        assert res.returncode == 0, res.stderr + res.stdout
+        port = _free_ports()[0]
+        assert TestCorePorts._entry(out)[CORE_SLUG]["default_port"] == port
+        assert (f"port {held} is one the repo's own services listen on; the curated slug gets {port}"
+                in res.stdout)
+
+
 # ── An engine only the local layer has (docs/ADDING_ENGINES.md) ─────────────
 
 ENG = "vllm-testfork"
