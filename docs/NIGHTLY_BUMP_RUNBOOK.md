@@ -194,6 +194,18 @@ This is the "free 30 GB of disk" moment.
   Variant naming changes more often than version numbers. Document the variant
   reason in the compose header.
 
+### bucko-vllm
+
+- Pinned by digest to DominikBucko's official `ghcr.io/dominikbucko/qwen38-flash-next-2x3090` release image
+  (`engines/bucko-vllm.yml`). Bump by moving the digest to a newer release; check the image's OCI labels
+  (`revision`, `base.name`) and update `lineage:` with them.
+- The volatile part for us is `vllm/sampling_params.py`: `bucko-default-thinking-budget` anchors on its
+  `validate_thinking_token_budget` call and refuses the boot when that moves. The core
+  `vllm-default-thinking-budget` does NOT load on bucko's base (no `trace_decode_token_ids`), so don't switch to it
+  without checking the new base.
+- The composes set bucko's own launcher environment (`MTP_DEPTH`, `CPU_OFFLOAD_GB`, `QWEN38_*`,
+  `VLLM_WNA16_STATIC_HOT_CACHE_*`): re-read the release notes for renamed or retired variables.
+
 ### Luce DFlash / xtransformers / future engines
 
 - When adding a new engine, add an "Engine-specific notes" subsection here

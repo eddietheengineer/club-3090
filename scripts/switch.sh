@@ -1233,7 +1233,7 @@ export_variant_engine_pin() {
       # is the shell's. Empty counts as unset, so the pin applies.
       # Lines go to STDOUT: check_variant dry-runs this function with stdout
       # discarded, so a stderr line would print twice.
-      VLLM_NIGHTLY_SHA|VLLM_IMAGE|BEELLAMA_IMAGE|EXLLAMAV3_IMAGE|SGLANG_IMAGE|LLAMACPP_IMAGE|LLAMACPP_CLUB3090_IMAGE|LLAMACPP_PRISM_IMAGE)
+      VLLM_NIGHTLY_SHA|VLLM_IMAGE|BEELLAMA_IMAGE|EXLLAMAV3_IMAGE|SGLANG_IMAGE|LLAMACPP_IMAGE|LLAMACPP_CLUB3090_IMAGE|LLAMACPP_PRISM_IMAGE|BUCKO_IMAGE)
         if [[ -z "${!key:-}" || "${!key}" == "$value" ]]; then
           export "${key}=${value}"
         elif [[ "$(declare -p CLUB3090_CONFIG_SOURCE 2>/dev/null)" == "declare -A"* \
