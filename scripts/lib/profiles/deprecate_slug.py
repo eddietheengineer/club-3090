@@ -27,10 +27,15 @@ What it changes, together:
                    route up (annotated `# status: deprecated`), --drop-gateway
                    removes it. The generated block of services/litellm/config.yaml
                    is regenerated when it changes.
+  card pages       the slug tables in docs/{SINGLE,DUAL,MULTI}_CARD.md are
+                   regenerated (tools/docs/slug_tables.py), which drops the
+                   deprecated rows.
 
 Then it checks the result: registry.yaml is canonical, the merged registry loads,
-the header parses back as deprecated, and litellm-emit --check is green. If any
-of that fails, every file goes back as it was.
+the header parses back as deprecated, and litellm-emit --check and slug_tables.py
+--check are green. If any of that fails, every file goes back as it was. A gateway
+block or slug table that is already stale before the run is refused, so an
+unrelated change never rides along.
 
 What it cannot do, it lists: hand-written mentions of the slug (launcher hints,
 docs, tests), the docs/UPSTREAM.md row, the per-model CHANGELOG entry, and the
@@ -57,6 +62,7 @@ from typing import Optional
 ROOT_DEFAULT = Path(__file__).resolve().parents[3]
 REGISTRY_REL = "scripts/lib/profiles/registry.yaml"
 LITELLM_REL = "services/litellm/config.yaml"
+SLUG_TABLES_REL = "tools/docs/slug_tables.py"
 GATE_ENV = "C3_ALLOW_CORE_PROMOTE"
 EXIT_REFUSED, EXIT_INTERNAL = 3, 2
 
@@ -386,7 +392,9 @@ def _deprecate(args, root, emoji_map, functional, header_status, dump_yaml, get_
     if args.dry_run:
         _info("dry-run — nothing written." + (
             f" The generated block of {LITELLM_REL} is regenerated on the real run if it "
-            f"changes." if on_gateway or keys else ""))
+            f"changes." if on_gateway or keys else "")
+              + (" The card pages' slug tables are regenerated on the real run."
+                 if (root / SLUG_TABLES_REL).is_file() else ""))
         return 0
 
     litellm = root / LITELLM_REL
@@ -396,7 +404,28 @@ def _deprecate(args, root, emoji_map, functional, header_status, dump_yaml, get_
                       f"(`bash {emit} --check` is red before this change), and regenerating it "
                       f"here would fold that unrelated change into the deprecation. Regenerate "
                       f"it in its own commit first: `bash {emit}`")
-    snapshot = {p: p.read_bytes() for p in (compose_path, reg_path, litellm) if p.is_file()}
+    tables = root / SLUG_TABLES_REL
+    pages: list[Path] = []
+    if tables.is_file():
+        # `--pages --check`, never `--pages` alone: a copy older than --pages (a --root
+        # checkout) takes an unknown flag as "rewrite the pages"; with --check it only checks.
+        listed = _run(root, [sys.executable, SLUG_TABLES_REL, "--pages", "--check"])
+        found = [ln.strip() for ln in listed.stdout.splitlines() if ln.strip()]
+        if listed.returncode == 0 and found and all(
+                ln.endswith(".md") and (root / ln).is_file() for ln in found):
+            pages = [root / ln for ln in found]
+        else:
+            _info(f"note: {SLUG_TABLES_REL} in {root} predates --pages; the card-page slug "
+                  f"tables are not regenerated (run it there by hand)")
+    if pages:
+        if _run(root, [sys.executable, SLUG_TABLES_REL, "--check"]).returncode != 0:
+            raise Refusal(f"the card pages' slug tables are already out of date (`python3 "
+                          f"{SLUG_TABLES_REL} --check` is red before this change), and "
+                          f"regenerating them here would fold that unrelated change into the "
+                          f"deprecation. Regenerate them in their own commit first: "
+                          f"`python3 {SLUG_TABLES_REL}`")
+    snapshot = {p: p.read_bytes() for p in (compose_path, reg_path, litellm, *pages)
+                if p.is_file()}
 
     def restore(why: str) -> int:
         for p, b in snapshot.items():
@@ -427,10 +456,20 @@ def _deprecate(args, root, emoji_map, functional, header_status, dump_yaml, get_
                 return restore("the gateway config could not be regenerated:\n"
                                + (gen.stderr or again.stdout or gen.stdout).strip()[-800:])
             regenerated = True
+    tables_written: list[str] = []
+    if pages:
+        gen = _run(root, [sys.executable, SLUG_TABLES_REL])
+        again = _run(root, [sys.executable, SLUG_TABLES_REL, "--check"])
+        if gen.returncode != 0 or again.returncode != 0:
+            return restore("the card pages' slug tables could not be regenerated:\n"
+                           + (gen.stderr or again.stderr or again.stdout).strip()[-800:])
+        tables_written = [p.relative_to(root).as_posix() for p in pages
+                          if p.is_file() and p.read_bytes() != snapshot.get(p)]
 
     _info()
     _info(f"wrote {compose_rel}, {REGISTRY_REL}" + (f", {LITELLM_REL} (regenerated block)"
-                                                    if regenerated else ""))
+                                                    if regenerated else "")
+          + "".join(f", {t} (regenerated slug table)" for t in tables_written))
     for topo, tgt in readback["defaults"].items():
         _info(f"  {entry['model']} {topo} default now: "
               + (tgt or "none functional — the resolver says pick explicitly"))
@@ -475,8 +514,6 @@ def _deprecate(args, root, emoji_map, functional, header_status, dump_yaml, get_
               f"still hold")
     if (root / "models" / entry["model"] / "CHANGELOG.md").is_file():
         _info(f"  a dated entry in models/{entry['model']}/CHANGELOG.md (append-only)")
-    _info("  regenerate the card pages' slug tables: python3 tools/docs/slug_tables.py "
-          "(a deprecated slug drops out of them)")
     _info("  run: test-compose-status-drift, test-default-resolver, test-model-default-resolver, "
           "test-litellm-generate, test-docs-slug-tables, then the full suite (a status change "
           "is catalog-shaped)")
