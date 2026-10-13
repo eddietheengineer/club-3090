@@ -704,7 +704,7 @@ patches:
   - id: vllm-default-thinking-budget
     # Patch D of the reasoning budget chosen by effort (2026-10-09): the floor. Ported from the
     # bucko local layer's default-thinking-budget/apply.py (same anchor).
-    model: [qwen3.8-27b, thinkingcap-qwen3.8-27b, qwen3.8-flash-next]
+    model: [qwen3.8-27b, thinkingcap-qwen3.8-27b]
     files:
       - models/qwen3.8-27b/vllm/patches/vllm-default-thinking-budget
     load_bearing_when:
@@ -748,8 +748,6 @@ patches:
           - vllm/thinkingcap38-27b-multi8-supermax
           - vllm/thinkingcap38-27b-multi8-ultrafast
           - vllm/thinkingcap38-27b-multi8-ultramax
-          - bucko-vllm/qwen3.8-flash-next-ple-dual
-          - bucko-vllm/qwen3.8-flash-next-swift15-dual
         reason: "--override-generation-config cannot set thinking_token_budget (get_diff_sampling_param's allowlist drops it — vllm#54469), so every endpoint patch B does not hook — Responses API (whose budget field the gateway drops), /v1/completions, /v1/chat/completions/batch — reasons unbounded. SamplingParams.__post_init__ now falls back to $CLUB3090_DEFAULT_THINKING_TOKEN_BUDGET, which the compose's effort_budget.py shell-env exports as the budget of its default effort (REASONING_EFFORT, default low -> 4096, maintainer-set 2026-10-09). An explicit request budget (and B's map budget, set on the request first) wins; trace-replay requests get none. It also budgets thinking-OFF requests: inert there (the Qwen3.8 thinking-off prompt holds a closed think block; V2 _thinking_budget_kernel returns when last_start <= last_end) — proven offline on the real V2 kernel under the Triton interpreter. Costs: both V2 budget kernels now run on every decode step (unmeasured); #58231 exposure widens to any request that overrides top_k to 0/-1 with top_p<1 under spec decode."
         evidence: "models/qwen3.8-27b/vllm/patches/vllm-default-thinking-budget/README.md; selftest.sh; scripts/lib/profiles-local/.../bucko-vllm/patches/default-thinking-budget (validated local original)"
     delivery:               # DEPRECATED/READ-ONLY (test-only) — see header
@@ -764,7 +762,7 @@ patches:
       invoke: "bash /etc/club3090/default-thinking-budget/install.sh"
       invoked_before: vllm-serve
       wired_at: [volumes, entrypoint]
-      note: "Runs after the shell-env line (which exports or, with THINKING_BUDGETS=off, unsets CLUB3090_DEFAULT_THINKING_TOKEN_BUDGET). Validates the env first (non-integer -> boot refused before anything is patched; empty -> patched but inert), then inserts the floor after the 3-line `self.thinking_token_budget = validate_thinking_token_budget(` statement: marker present -> AST-verified no-op; anchor missing / not unique -> boot REFUSED naming the anchor and the README's re-anchor steps. Requires --reasoning-parser (a budget without one is refused per request); all 39 vllm-stable composes pass qwen3. The two bucko-vllm composes (Flash-Next) set the floor directly as CLUB3090_DEFAULT_THINKING_TOKEN_BUDGET (THINKING_TOKEN_BUDGET, default 16384) with no effort map, and run install.sh before bucko's own qwen38-serve launcher. Boot log: one `[vllm-default-thinking-budget] applied: ... floor=N` or `already applied` line."
+      note: "Runs after the shell-env line (which exports or, with THINKING_BUDGETS=off, unsets CLUB3090_DEFAULT_THINKING_TOKEN_BUDGET). Validates the env first (non-integer -> boot refused before anything is patched; empty -> patched but inert), then inserts the floor after the 3-line `self.thinking_token_budget = validate_thinking_token_budget(` statement: marker present -> AST-verified no-op; anchor missing / not unique -> boot REFUSED naming the anchor and the README's re-anchor steps. Requires --reasoning-parser (a budget without one is refused per request); all 39 wired composes pass qwen3. Boot log: one `[vllm-default-thinking-budget] applied: ... floor=N` or `already applied` line."
     drift_guard:
       kind: boot
       check: "bash models/qwen3.8-27b/vllm/patches/vllm-default-thinking-budget/selftest.sh vllm/vllm-openai:v0.31.0 — offline, no GPU: the compose's shell-env line exports the floor, install twice (2nd byte-identical no-op), AST placement + positive control, the floor on real SamplingParams / Responses / completions / an unhooked chat request / msgpack round trip, thinking-off inertness on the real V2 kernel (Triton CPU interpreter) with thinking-on positive controls, and the negative controls (non-integer floor / duplicated anchor / removed anchor each refuse). Live: scripts/probe-effort-budget.sh (Responses -> floor; thinking off -> no reasoning, no stray </think>)."
@@ -777,6 +775,43 @@ patches:
       status: ours
       criticality: "EXCEPTION CLASS (AGENTS.md upstream-first; maintainer decision D8, 2026-10-09). Criticality: runaway reasoning is a measured defect, not a tuning preference -- Flash-Next 2026-10-07: cap cut-offs on cli-40, -30% retry tokens recovered by a budget. The Responses API cannot carry a budget through the gateway at all, so without a server-side floor it is unbounded."
       drop_when: "upstream ships a server-default budget in the pinned release that reaches EVERY entrypoint we budget, the Responses API included (vllm#54469 as filed covers chat + completions only) -> set the floor through it, remove the 39 compose mounts + install calls, retire this row."
+  - id: bucko-default-thinking-budget
+    # The bucko-vllm slugs' own copy of the default-thinking-budget floor: the original that
+    # vllm-default-thinking-budget (above) was ported from. Same anchor, but it does NOT read
+    # SamplingParams.trace_decode_token_ids, which bucko's vLLM base (0.1.dev20073+g8e685d198)
+    # lacks: the core patch refuses to boot there (2026-10-13, switch.sh boot of the albucino slug).
+    model: [qwen3.8-flash-next]
+    files:
+      - models/qwen3.8-flash-next/bucko-vllm/patches/default-thinking-budget
+    load_bearing_when:
+      - composes:
+          - bucko-vllm/qwen3.8-flash-next-ple-dual
+          - bucko-vllm/qwen3.8-flash-next-swift15-dual
+        reason: "vLLM honours thinking_token_budget only per request, and --override-generation-config cannot set it (vllm#54469), so every endpoint reasons unbounded unless the client sends a budget. SamplingParams.__post_init__ falls back to $CLUB3090_DEFAULT_THINKING_TOKEN_BUDGET (THINKING_TOKEN_BUDGET, default 16384) when a request sets none; an explicit value wins; unset, empty or -1 = stock behaviour. 16384 measured 2026-10-07 on Swift xhigh cli-40 runaways: 3/4 pass against 1/4 under a 16K total cap."
+        evidence: "models/qwen3.8-flash-next/bucko-vllm/patches/default-thinking-budget/apply.py; learnings/qwen3.8-flash-next.md 2026-10-07 (stack-level); boot log line on every boot"
+    delivery:               # DEPRECATED/READ-ONLY (test-only) — see header
+      dockerfile_bake: false
+      entrypoint_invoke: true
+      genesis: false
+    delivery_gaps: []
+    delivery_mechanism: install_script
+    delivery_spec:
+      script: models/qwen3.8-flash-next/bucko-vllm/patches/default-thinking-budget/apply.py
+      mounted_at: /etc/club3090/thinking-budget
+      invoke: "python3 /etc/club3090/thinking-budget/apply.py"
+      invoked_before: vllm-serve
+      wired_at: [volumes, entrypoint]
+      note: "Runs in the entrypoint after umask 0002 and before bucko's own /usr/local/bin/qwen38-serve. Marker-gated (a second run is a no-op); anchor missing or not unique -> boot refused. Boot log: one `[thinking-budget-default] applied` or `already applied` line."
+    drift_guard:
+      kind: boot
+      check: "Boot each bucko-vllm slug through switch.sh and read the `[thinking-budget-default]` line; an anchor that moved refuses the boot rather than serving without the floor."
+      on_fail: boot-refused
+    upstream:
+      ref: "vllm-project/vllm#54469 (thinking_token_budget not settable as a server default); #55432 maps a top-level reasoning_effort only"
+      status: ours
+      criticality: "EXCEPTION CLASS (AGENTS.md upstream-first; maintainer decision 2026-10-13 to keep it when the slugs moved to core). Runaway reasoning is a measured defect: Swift xhigh cli-40 runaways 1/4 -> 3/4 pass with the floor (2026-10-07)."
+      drop_when: "the pinned bucko image ships a server-default thinking budget, or bucko's base gains what vllm-default-thinking-budget needs (then switch these composes to that patch and retire this entry)."
+    status: verified
   - id: qwen-w4a8-int8-act
     model: [qwen3.6-27b, thinkingcap-27b]
     files:
