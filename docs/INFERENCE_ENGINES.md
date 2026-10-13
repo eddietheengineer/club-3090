@@ -104,7 +104,7 @@ All five are actively developed. ktransformers is positioned as research but pro
 | **PFlash (prompt-compression)** | ❌ | ⚠️ Luce experimental | ❌ | ❌ | ❌ |
 | **Async / overlap scheduling** | ✅ Zero-bubble ([PR #32951](https://github.com/vllm-project/vllm/pull/32951)) | ❌ | ✅ Spec V2 with overlap (default v0.5.11) | ⚠️ via SGLang | ❌ |
 
-**Notes on Qwen3-Next family** (DeltaNet hybrid attention): **only MTP works** today. EAGLE/DFlash/draft/ngram all blocked on KV rollback support — see vLLM [#39931](https://github.com/vllm-project/vllm/issues/39931). MTP is the rolling default for our shipped Qwen3.6-27B composes.
+**Notes on Qwen3-Next family** (DeltaNet hybrid attention): EAGLE / the original DFlash / draft / ngram are blocked on KV rollback support — see vLLM [#39931](https://github.com/vllm-project/vllm/issues/39931). Two paths work: the built-in **MTP** head, the rolling default for our shipped Qwen3.6-27B composes, and **DFlash2**, an external block-drafter with its own rollback ([vllm#52816](https://github.com/vllm-project/vllm/pull/52816), native in vLLM since v0.28.0, after this snapshot), which the Qwen3.8-27B `super*` / `ultra*` slugs run on vLLM and SGLang.
 
 ---
 
@@ -347,4 +347,4 @@ This file ages quickly — all five projects ship frequently (some multiple rele
 4. Add new feature rows where a project ships something the others don't
 5. Don't preserve historical "this used to be ❌, now ✅" — that lives in each project's release notes, not here
 
-Last refresh of the upstream matrices: **2026-05-07**. On 2026-10-13 the catalog-facing parts were corrected (the banner, the TL;DR and MoE picks, the per-model picks, the ik_llama.cpp and beellama.cpp notes, the reasoning-format default and two dead compose paths); the upstream versions and feature cells were not re-researched.
+Last refresh of the upstream matrices: **2026-05-07**. On 2026-10-13 the catalog-facing parts were corrected (the banner, the TL;DR and MoE picks, the per-model picks, the ik_llama.cpp and beellama.cpp notes, the reasoning-format default, two dead compose paths and the Qwen3-Next spec-decode note); the upstream versions and feature cells were not re-researched.
