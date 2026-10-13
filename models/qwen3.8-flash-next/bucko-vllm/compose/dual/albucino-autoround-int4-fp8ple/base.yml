@@ -1,0 +1,238 @@
+# ===========================================================================
+# Profile (at-a-glance):
+#   Model:     Qwen3.8-Flash-Next (albucino W4A16 AutoRound INT4 + FP8 PLE hybrid)
+#   Topology:  Dual 3090 PCIe (TP=2, no NVLink); experts and the PLE table offloaded to host RAM
+#   Drafter:   MTP n=3 (albucino's compact INT4 draft, runtime/mtp-int4-g32)
+#   KV:        bf16
+#   Vision:    no
+#   Max ctx:   262K
+#   Genesis:   N/A — Genesis is Qwen3-Next-specific
+#   Status:    🐣 Incubating
+#   Caveats:   community recipe on bucko's engine; quality NOT validated here (no 8-pack,
+#              verify-stress or soak), benched only. Single-stream by design (max_num_seqs=1).
+#              --tool-call-parser qwen3_coder has known-broken STREAMING tool calls on this stack.
+#   Best for:  long-context single-stream Flash-Next on 2x3090 with ~135 GB of host RAM
+# ---------------------------------------------------------------------------
+#
+# Qwen3.8-Flash-Next — W4A16 + FP8 PLE, dual 3090, community recipe.
+#
+# Provenance: DominikBucko/qwen38-flash-next-2x3090 (Apache-2.0).
+#   REBUILT 2026-09-26 at 4e74b439 (was 2adf47b1): upstream #20, the "fast 256K"
+#   runtime. A runtime release only: the checkpoint is unchanged, no re-download.
+#   Its fast-profile switches are ON below, minus the P2P custom all-reduce.
+#   MEASURED 2026-09-26 (switch.sh boot 536 s, 230 W, bench.sh, one boot; swap-flagged
+#   like the 09-18 row): narr/code 77.2/79.3 (was 65.5/73.1), prefill@10K/90K 1,289/1,655
+#   (was 797/966). One 126,796-token request: TTFT 79.4 s (1,596 in-tok/s), decode 65.2
+#   over 2,048 tok (upstream, with P2P: 2,752 / 104.5). verify-full 0 fails, MTP AL 2.39.
+#   RAM 116 GB used after boot; VRAM 23.0 -> 23.7 GB/card across the 131K request.
+#   CLEAN re-bench (fresh boot, swap reset AFTER the load, swap check PASS): narr/code
+#   77.0/80.7, prefill@10K/90K 1,355/1,644, 126,796-tok request 1,562 in-tok/s, 64.8 decode.
+#   ⚠️ The checkpoint load fills the host's 8 GB swap every boot (page cache + ~135 GB resident
+#   > 224 GB), even at vm.swappiness=10; for a clean bench: sudo swapoff -a && sudo swapon -a
+#   after the server is healthy.
+#   BUCKO'S OWN HARNESS (scripts/benchmark_serving.py, sha256 f5699b24…, repo-chat, greedy,
+#   ignore_eos, 3 runs): 131,072+2,048 -> ~1,590 in-tok/s, decode 78.9 (upstream 2,735 / 100.0);
+#   260,096+2,048 -> ~1,545 in-tok/s, decode 80.8 (upstream 2,654 / 99.2). ~58% prefill, ~80%
+#   decode: no P2P all-reduce (decode) and GPU1 at Gen4 x8 (expert streaming) are the rig gaps.
+#   ⚠️ CORRECTION: that harness run was at 370/420 W (driver defaults), NOT 230 W — an NVIDIA
+#   module reload before it had reset the cap. At our usual 230 W the gap to upstream is larger.
+#   2026-09-18 note: REBUILT at 2adf47b1 (was ceaa9fa, 10 commits behind). It builds
+#   clean from a FRESH CLONE now, so the local .dockerignore patch this file used
+#   to describe is DROPPED — upstream #6 fixed it.
+# Upstream claims 256K ctx, 75.6 tok/s at 258K in + 4K out, 135 tok/s warm short
+# decode, on 2x3090 + 128 GiB RAM.
+#
+# Engine: bucko-vllm, a vLLM derivative + overlay (PLE offload, QSA cache, humming MoE
+# kernels): the author's official GHCR release image, pinned by digest in
+# engines/bucko-vllm.yml (v0.5.0); until 2026-10-06 it was a local build of the repo's
+# Dockerfile. It is NOT our vllm engine profile and must not be repointed at one.
+#
+# CPU-Offload-Host-RAM-GB: 135
+#   ⤷ MEASURED 2026-09-18 on this rig, on a full boot of this exact compose at
+#     the shipped defaults (image :2adf47b, CPU_OFFLOAD_GB=30, hot88, ctx 262144),
+#     after the model served a real generation:
+#         cgroup anon   57.64 GB   (PLE 51.20 GB held in RAM + ~6.4 GB runtime)
+#         cgroup shmem  77.37 GB   (the UVA expert offload — anonymous SHARED
+#                                   memory, NOT /dev/shm: that tmpfs held 21 MB)
+#         ------------------------------------
+#         RESIDENT     135.00 GB   = 125.7 GiB
+#     Corroborated independently by the system delta: `free` used went
+#     6.6 GB → 141.7 GB across the boot = 135.1 GB.
+#     ⚠️ Do NOT size this from `memory.current` (231 GB here) — that includes
+#     172 GB of reclaimable page cache from streaming a 129 GB checkpoint off
+#     EXT4. anon+shmem is the part the box must actually hold.
+#     ⛔ TWO EARLIER VALUES WERE WRONG, in both directions:
+#       • 128 — upstream's documented "2x3090 + 128 GiB" BOX SIZE. A rig spec,
+#         not a requirement, and nothing backed it (this header key did not
+#         exist, so preflight_cpu_offload_ram() had nothing to read).
+#       • 121 — derived 2026-09-18 as "PLE 51.27 + all experts 64.53 + headroom"
+#         from the schema's generic "worst case: all experts on CPU" phrasing.
+#         That framing does not fit this recipe: the split is PINNED by
+#         CPU_OFFLOAD_GB, not a dynamic cache that can degrade to all-CPU. It
+#         also assumed cpu_offload_gb was per-GPU (30x2=60); the boot log says
+#         "Total CPU offloaded parameters: 29.6" per worker. Derivation lost to
+#         measurement by 14 GB — and landed further from the truth than the
+#         unsourced 128 it replaced.
+#     ⚠️ UNIT TRAP, and it is NOT specific to this slug: preflight compares this
+#     header against `MemTotal_kB/1024/1024`, i.e. GiB, while the key is named
+#     ...-GB. 135 here is GB (= 125.7 GiB), so the gate is ~7% conservative.
+#     Every sibling header carries the same mismatch — flagged, not compensated
+#     for locally, because fudging one entry breaks if the gate is ever fixed.
+#     Registry `host_ram_gb` is the NOMINAL figure and must stay <= this.
+services:
+  qwen38-flash-next-ple:
+    image: ${BUCKO_IMAGE:-ghcr.io/dominikbucko/qwen38-flash-next-2x3090@sha256:75adfc64ba1576b8a677f455d54891c152444e4bf43fbc37cb8f1885a8db3387}  # v0.5.0
+    # `vllm-` first: the naming contract (docs/ADDING_ENGINES.md) wants a container to
+    # read as its engine's family, and bucko-vllm is a vLLM derivative; `bucko` says
+    # which. ESTATE_CONTAINER overrides it, as in every curated compose.
+    container_name: "${ESTATE_CONTAINER:-vllm-bucko-qwen38-flash-next-ple}"
+    user: "0:${DOCKER_GID:-1000}"
+    gpus: all
+    ipc: host
+    cap_add:
+      - SYS_PTRACE
+    shm_size: 16gb
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    ports:
+      # Stack convention: honour BIND_HOST and ESTATE_PORT like every curated
+      # compose. Upstream hard-binds 127.0.0.1; that hides the endpoint from the
+      # estate layer, which resolves a slug's port through ESTATE_PORT.
+      # The container side is 8000 by CONVENTION, matching every core vLLM compose
+      # (fix the internal port, vary the host side). It is no longer a constraint:
+      # detect.PORT_MAP_ANY_RE accepts any internal port for a container the
+      # registry claims (#1219), so this could be 20272:20272. Left at 8000 because
+      # changing the port the app binds inside the image is an entrypoint question,
+      # not a detection one, and would need a real boot to verify.
+      - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-20272}}:8000"
+    environment:
+      # Internal listen port, 8000 by convention (see the ports: note above).
+      PORT: "8000"
+      # Both cards, stated explicitly. The recipe runs --tensor-parallel-size 2
+      # INSIDE the image's entrypoint, so a reader of this compose (ours included)
+      # cannot otherwise tell it is a dual-GPU config.
+      CUDA_VISIBLE_DEVICES: "0,1"
+      SERVED_MODEL_NAME: "${SERVED_MODEL_NAME:-qwen3.8-flash-next-ple}"
+      # Upstream's validated 2x3090/128GB profile (configs/2x3090-128gb.env).
+      MAX_MODEL_LEN: "${MAX_MODEL_LEN:-262144}"
+      # Server-side DEFAULT reasoning budget (club-3090 patch, ../../../patches/default-thinking-budget):
+      # a request without thinking_token_budget gets this; an explicit one wins. When the
+      # reasoning reaches it, vLLM closes the thinking block and the model answers. -1 = off.
+      # 16384 measured 2026-10-07 on Swift xhigh cli-40 runaways: 3/4 pass vs 1/4 under a
+      # 16K total cap (learnings/qwen3.8-flash-next.md). Clients need max_tokens above it.
+      CLUB3090_DEFAULT_THINKING_TOKEN_BUDGET: "${THINKING_TOKEN_BUDGET:-16384}"
+      # ⚠️ 2048, NOT upstream's 4096. MEASURED 2026-09-08 on this rig: at 4096 a
+      # 10k-token prefill OOMs on BOTH cards (expandable_segments mapping failure
+      # -> torch.OutOfMemoryError -> EngineDeadError), taking the engine down; the
+      # model sits at ~98%/91% VRAM resident, leaving nothing for prefill
+      # activations. At 2048 the same 10k prefill completes: 10,424 prompt tokens,
+      # HTTP 200, engine alive. Decode is unaffected (activation size, not KV).
+      # ⭐ 4096 since 2026-09-19. This was 2048 because, MEASURED AT hot88, a 10k
+      # prefill at 4096 OOM'd on BOTH cards (expandable_segments mapping failure
+      # -> torch.OutOfMemoryError -> EngineDeadError) with the model at ~98%/91%
+      # VRAM. Re-tested after adopting hot84 and VALIDATED over three boots:
+      #                      @2048        @4096 (n=2)     delta
+      #   prefill @10K       591.8        796.3           +34.6%  ⭐
+      #   prefill @90K       598.1        970.8           +62.3%  ⭐
+      #   decode @90K depth  47.82        57.67           +20.6%
+      #   decode narrative   66.04        65.10           -1.4%   } FLAT: small,
+      #   decode code        70.15        71.27           +1.6%   } opposite signs
+      #   VRAM peak/card     22,836 MiB   24,100 MiB      +1,264
+      # Soak (SOAK_MODE=continuous, 25 turns, own boot): PASS — VRAM growth 4 MiB
+      # /200, 0 errors, 0/25 silent-empty, TPS retention 100.0%.
+      # ⚠️ 4096 costs ~942 MiB/card while hot84 returned only ~462 — a TRADE, not
+      # found money. This runs at 98.1% VRAM with 476 MiB/card of margin.
+      # ⚠️ `expandable_segments: memory mapping failed with OOM` still fires a
+      # deterministic 14x at LOAD on both devices. That is a fixed load-time cost,
+      # NOT creep: the count never moved across the soak and growth was 4 MiB.
+      # At hot88 the ESCALATION to EngineDeadError was the signal, not the warning.
+      # ⚠️ ALL OF THIS IS C=1 (max_num_seqs: 1). The remaining margin is untested
+      # against concurrency and against vision (upstream #14), which would want room
+      # this config no longer has. Revert with MAX_NUM_BATCHED_TOKENS=2048.
+      MAX_NUM_BATCHED_TOKENS: "${MAX_NUM_BATCHED_TOKENS:-4096}"
+      MAX_PARALLEL_LOADING_WORKERS: "${MAX_PARALLEL_LOADING_WORKERS:-1}"
+      MAX_NUM_SEQS: "${MAX_NUM_SEQS:-1}"
+      KV_CACHE_MEMORY_BYTES: "${KV_CACHE_MEMORY_BYTES:-4429185024}"
+      CPU_OFFLOAD_GB: "${CPU_OFFLOAD_GB:-30}"
+      VLLM_PLE_OFFLOAD_READY_TIMEOUT: "${VLLM_PLE_OFFLOAD_READY_TIMEOUT:-1200}"
+      # ⭐ 84 = UPSTREAM'S DEFAULT since their #13 ("for prefill headroom");
+      # hot88 is now the opt-in. We ship theirs. MEASURED here 2026-09-19,
+      # one fresh boot per arm, alternating, bench.sh 3 warm + 5 measured:
+      #                     hot88          hot84        delta
+      #   VRAM/card ready   23,012 MiB     22,550 MiB   -462 MiB  ⭐
+      #   VRAM/card peak    23,256 MiB     22,836 MiB   -420 MiB
+      #   decode narrative  68.38 tok/s    66.04        -3.4%
+      #   decode code       73.40 tok/s    70.15        -4.4%
+      #   prefill @10K      570.3 tok/s    591.8        +3.8%
+      #   host RAM          136.65 GB      136.30 GB    noise
+      #   KV pool           276,313 tok    276,313      unchanged
+      # ⚠️ ONLY THE VRAM DELTA IS ESTABLISHED. It is deterministic allocation,
+      # consistent at both sampling points. The throughput deltas are n=1 boot
+      # per arm against a ~2.8% boot-to-boot noise floor — suggestive, not
+      # measured. They are reported because decode and prefill move in OPPOSITE
+      # directions, which is the trade this knob describes; do not quote them
+      # as a result without more boots.
+      # ⚠️ The freed VRAM goes to NEITHER host RAM nor KV: the hot cache is a
+      # VRAM-side COPY whose master buffer stays whole on the host (so
+      # host_ram_gb needs no revision), and this compose PINS the KV pool via
+      # KV_CACHE_MEMORY_BYTES. It is pure prefill-activation headroom.
+      VLLM_WNA16_STATIC_HOT_CACHE_SIZE: "${VLLM_WNA16_STATIC_HOT_CACHE_SIZE:-84}"
+      VLLM_WNA16_STATIC_HOT_CACHE_MAX_TOKENS: "${VLLM_WNA16_STATIC_HOT_CACHE_MAX_TOKENS:-16}"
+      # ⚠️ SUSPECT — bucko's value, kept because this is their recipe, but flagged.
+      # In THIS build the env default is `None` = DENSE checkpoints, so 1600 is an
+      # explicit opt-IN to SPARSE retention. Upstream vllm#55760 / #55861 (merged
+      # 2026-09-08, in v0.29.0) revert exactly that default to dense for hybrid +
+      # EAGLE/MTP models, because with sparse retention only the latest replay
+      # boundary keeps a Mamba checkpoint and EAGLE drops the tail block from
+      # prefix-cache hits — leaving the checkpoints unreachable and the Mamba cache
+      # group at ~0% hits (upstream production report: "0 hit tokens"; 0% -> 49.5%
+      # after the fix). This compose is a hybrid running MTP_DEPTH=3, i.e. the exact
+      # combination described. UNTESTED HERE — A/B it by unsetting to inherit dense:
+      #     VLLM_PREFIX_CACHE_RETENTION_INTERVAL= docker compose up
+      # ⛔ Do NOT "fix" this by deleting the line: the CLI arg from vllm#52216 does
+      #    NOT exist in this pinned fork (EngineArgs has no retention field), so the
+      #    env var is the only control, and it is NOT deprecated on this build.
+      VLLM_PREFIX_CACHE_RETENTION_INTERVAL: "${VLLM_PREFIX_CACHE_RETENTION_INTERVAL:-1600}"
+      VLLM_QSA_EXACT_TOPK: "${VLLM_QSA_EXACT_TOPK:-0}"
+      MTP_DEPTH: "${MTP_DEPTH:-3}"
+      # Fast 256K runtime switches (upstream #20, configs/fast-256k.env), ON here.
+      # Upstream ships them OFF by default and bundles them with a P2P custom
+      # all-reduce, which this rig cannot use (QEMU VM, no GPU P2P), so that one
+      # stays off below. Set any of these to 0 to revert it.
+      # Stream each layer's cold experts to the GPU ahead of large prefill chunks.
+      QWEN38_STREAM_STAGE: "${QWEN38_STREAM_STAGE:-1}"
+      QWEN38_STREAM_STAGE_MIN_TOKENS: "${QWEN38_STREAM_STAGE_MIN_TOKENS:-1536}"
+      # Overlap down-projection expert copies with the gate/up GEMM in decode.
+      QWEN38_STAGE_OVERLAP: "${QWEN38_STAGE_OVERLAP:-1}"
+      # Overlap host input preparation with GPU work.
+      QWEN38_ASYNC_SCHEDULING: "${QWEN38_ASYNC_SCHEDULING:-1}"
+      # Tensor-core skinny GEMM for decode-sized dense projections.
+      QWEN38_TRITON_SKINNY: "${QWEN38_TRITON_SKINNY:-1}"
+      # Re-read the 51.2 GB PLE table into RAM after the checkpoint load evicts it.
+      QWEN38_PLE_PREFAULT: "${QWEN38_PLE_PREFAULT:-1}"
+      # Draft-only restricted MTP vocabulary; the target still verifies every token.
+      VLLM_MTP_DRAFT_VOCAB_RANGES: "${VLLM_MTP_DRAFT_VOCAB_RANGES:-[[0,65536],[248044,248320]]}"
+      # ⚠️ REQUIRED on this rig: 2x3090 is PCIe-only (no NVLink), so vLLM's
+      # custom all-reduce must stay off. Upstream defaults it off too.
+      DISABLE_CUSTOM_ALL_REDUCE: "${DISABLE_CUSTOM_ALL_REDUCE:-1}"
+      PYTORCH_CUDA_ALLOC_CONF: "${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
+    volumes:
+      # Mount the model root ITSELF and address the checkpoint inside the
+      # container, matching every curated compose on this stack. Naming a
+      # subdirectory on the HOST side of the mapping instead makes preflight
+      # double the prefix and refuse on a path that plainly exists.
+      # NB: preflight scans this file as TEXT, so do not write an example
+      # host-side mapping in a comment here — it gets read as a real volume.
+      - "${MODEL_DIR:-/mnt/models/huggingface}:/models:ro"
+      - "../../../patches/default-thinking-budget:/etc/club3090/thinking-budget:ro"
+      # Persistent Humming/Triton JIT caches (upstream JIT_CACHE_DIR): no kernel
+      # recompiles on every start or inside the first long request.
+      - "${CLUB3090_ENGINE_CACHE_DIR:-../../../cache}/humming:/root/.humming"
+      - "${CLUB3090_ENGINE_CACHE_DIR:-../../../cache}/triton:/root/.triton"
+    # Apply the default-thinking-budget patch, then hand over to the image's own launcher
+    # (qwen38-serve) with the same arguments. The patch refuses to boot if its anchor moved.
+    entrypoint: ["bash", "-c", "python3 /etc/club3090/thinking-budget/apply.py && exec /usr/local/bin/qwen38-serve \"$$@\"", "--"]
+    # The image's entrypoint takes the model path as its argument.
+    command: ["/models/qwen3.8-flash-next-w4a16-fp8ple"]
+    restart: ${CLUB3090_RESTART:-unless-stopped}

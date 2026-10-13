@@ -6225,6 +6225,73 @@ entries:
         presence_penalty: 0.0
         repetition_penalty: 1.0
     sampler_default_mode: thinking
+  bucko-vllm/qwen3.8-flash-next-ple-dual:
+    origin: core
+    model: qwen3.8-flash-next
+    weights_variant: albucino-autoround-int4-fp8ple
+    workload: long-ctx-single
+    engine: bucko-vllm
+    drafter: null
+    spec_method: mtp
+    kv_format: bf16
+    act_format: 16bit
+    act8_capable: false
+    offload: residency
+    moe_cache: false
+    host_ram_gb: 135
+    kv_offload: null
+    chat_template: native
+    tp: 2
+    max_ctx: 262144
+    max_num_seqs: 1
+    mem_util: 0.9
+    compose_path: models/qwen3.8-flash-next/bucko-vllm/compose/dual/albucino-autoround-int4-fp8ple/base.yml
+    requires_nvlink: false
+    requires_homogeneous_arch: false
+    required_engine_features: []
+    default_port: 20272
+    kvcalc_key: SKIP
+    status: incubating
+    status_note: "Community recipe: DominikBucko/qwen38-flash-next-2x3090 (Apache-2.0), on bucko's official CI-built GHCR release image pinned by digest (v0.5.0). Field values READ FROM THE RUNNING ENGINE, not assumed: kv_format bf16 (kv_cache_dtype=auto on a bfloat16 model -- NOT fp8, which BENCHMARKS row 3 previously claimed); mem_util 0.9 is vLLM's default and only nominal: the recipe pins kv_cache_memory_bytes=4429185024 and vLLM logs 'does not respect the gpu_memory_utilization config'; offload 'residency' is the nearest catalogue token for cpu_offload_gb=30 with cpu_offload_params=['experts'] over offload_backend=uva -- the catalogue has no UVA-specific token. moe_backend=humming, MTP n=3 built-in. host_ram_gb 135 MEASURED 2026-09-18 on a full boot of this compose at shipped defaults, after a real generation: cgroup anon 57.64 GB (PLE 51.20 in RAM + runtime) + shmem 77.37 GB (the UVA expert offload -- anonymous SHARED memory, not /dev/shm, which held 21 MB) = 135.00 GB, corroborated by the system delta (free used 6.6 -> 141.7 GB = 135.1). Do NOT size from memory.current (231 GB) -- that is mostly reclaimable page cache from streaming a 129 GB checkpoint. Supersedes TWO wrong values: 128 (upstream's BOX SIZE, unsourced) and 121 (derived from the schema's generic 'all experts on CPU' worst case, which does not fit a recipe whose split is pinned by CPU_OFFLOAD_GB; it also assumed cpu_offload_gb was per-GPU, but the boot log reports 'Total CPU offloaded parameters: 29.6'). The compose now carries a CPU-Offload-Host-RAM-GB header so preflight can gate it. REBUILT 2026-09-18 at 2adf47b1 (was ceaa9fa, 10 commits behind): builds clean from a fresh clone now, so the local .dockerignore patch is DROPPED (upstream #6). KV pool 276,313 tokens vs 240,663 before (+14.8%) and now EXCEEDS the 262,144 declared context, so the old 'fillable 91%' caveat is gone -- credit upstream #11 (QSA prefill workspace bounded, peak temp alloc 266 -> 73.5 MiB). hot84 ADOPTED 2026-09-19 as upstream's default (#13, 'for prefill headroom'); hot88 is now upstream's opt-in and we no longer diverge. Measured one fresh boot per arm, alternating: VRAM/card 23,012 -> 22,550 MiB at ready and 23,256 -> 22,836 peak, i.e. ~450 MiB/card of activation headroom -- the ONLY established delta (deterministic allocation, consistent at both sampling points). Throughput moved too (decode narrative 68.38 -> 66.04, code 73.40 -> 70.15, prefill@10K 570.3 -> 591.8) but at n=1 boot per arm against a ~2.8% boot-to-boot noise floor that is SUGGESTIVE ONLY -- reported because decode and prefill move in opposite directions, which is the trade the knob describes. host_ram_gb UNCHANGED at ~136 GB measured both ways: the hot cache is a VRAM-side copy whose master buffer stays whole on the host, and the KV pool is pinned by KV_CACHE_MEMORY_BYTES so it cannot absorb the freed bytes either. FOLLOW-UP: the compose ships MAX_NUM_BATCHED_TOKENS=2048 because 4096 OOM'd a 10k prefill on both cards at hot88; ~450 MiB/card back is aimed squarely at that, so 4096 is worth a retest. MAX_NUM_BATCHED_TOKENS 4096 SHIPPED 2026-09-19 (was 2048, which existed because 4096 OOM'd a 10k prefill on both cards at hot88). Validated over 3 boots + a continuous soak: prefill @10K +34.6% (591.8 -> 796.3), @90K +62.3% (598.1 -> 970.8), decode FLAT (-1.4% narr / +1.6% code, opposite signs = noise); soak PASS with 4 MiB VRAM growth / 200, 0 errors, 100% TPS retention. Runs at 98.1% VRAM, 476 MiB/card margin; the 14 'expandable_segments ... OOM' warnings are a LOAD-TIME fixed cost, not creep (count unchanged across the soak). Revert with MAX_NUM_BATCHED_TOKENS=2048. ⚠️ ALL C=1. ⚠️ max_num_seqs=1 and maximum concurrency 1.05x at full context: this recipe is single-stream BY DESIGN, and upstream #10 (PLE handshake during concurrent CUDA graph capture) fixed a startup hang with two concurrent requests that we never exercised at C=1."
+    weights_companions: []
+    gateway: false
+    serve_aliases: []
+    required_sm: 8.6
+    category: frontier
+  bucko-vllm/qwen3.8-flash-next-swift15-dual:
+    origin: core
+    model: qwen3.8-flash-next
+    weights_variant: ukisai-swift15-autoround-int4
+    workload: long-ctx-single
+    engine: bucko-vllm
+    drafter: null
+    spec_method: mtp
+    kv_format: bf16
+    act_format: 16bit
+    act8_capable: false
+    offload: residency
+    moe_cache: false
+    host_ram_gb: 170
+    kv_offload: null
+    chat_template: native
+    tp: 2
+    max_ctx: 262144
+    max_num_seqs: 1
+    mem_util: 0.9
+    compose_path: models/qwen3.8-flash-next/bucko-vllm/compose/dual/ukisai-swift15-autoround-int4/base.yml
+    requires_nvlink: false
+    requires_homogeneous_arch: false
+    required_engine_features: []
+    default_port: 20240
+    kvcalc_key: SKIP
+    status: incubating
+    status_note: "UkisAI Swift-1.5 (thinks shorter) on bucko v0.5.0, albucino's compact MTP draft borrowed (companion albucino-mtp-int4-g32). MEASURED 2026-10-06 at this slug's defaults (custom all-reduce off): 85.35 / 90.16 decode (albucino on the same settings 79.5 / 83.1), prefill 1,634 / 2,102 @10K/@90K, MTP AL 2.92, host RAM ~169 GB (BF16 PLE). With the full fast-256k profile: 90.7 / 92.6. Quality unmeasured."
+    weights_companions:
+      - albucino-mtp-int4-g32
+    gateway: false
+    serve_aliases: []
+    required_sm: 8.6
+    category: frontier
 
 defaults:
   qwen3.6-27b:
