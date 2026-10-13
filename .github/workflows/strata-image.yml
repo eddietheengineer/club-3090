@@ -34,8 +34,9 @@ jobs:
   build:
     if: github.repository == 'noonghunna/club-3090'
     runs-on: ubuntu-24.04
-    # A 4-vCPU, 15 GB runner. setup.py would compile with 2 jobs (cpu_count // 2), which took
-    # 5,435 s (2026-10-13); build.sh --jobs 4 uses all four. 6 h is the cap.
+    # A 4-vCPU, 15 GB runner. setup.py would compile with 2 jobs (cpu_count // 2); build.sh
+    # --jobs 4 uses all four. Measured on v0.1.43.1, 2026-10-13: compile 5,435 s -> 4,516 s, run
+    # 95 -> 79 min, no out-of-memory. 6 h is the cap.
     timeout-minutes: 340
     steps:
       - name: Checkout
