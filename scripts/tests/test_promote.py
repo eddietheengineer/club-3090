@@ -521,3 +521,72 @@ class TestLocalEngineProfile:
         assert res.returncode == 3, res.stderr + res.stdout
         assert "LOCAL-layer only" in res.stderr
         assert not (root / "scripts/lib/profiles/models/my-model.yml").exists()
+
+
+# ── core writes regenerate the card pages' slug tables ───────────────────────
+# test-docs-slug-tables fails CI on a stale table, and a new model adds rows, so a
+# core write regenerates them itself (as deprecate-slug and export --apply do).
+
+CARD_PAGES = ("docs/SINGLE_CARD.md", "docs/DUAL_CARD.md", "docs/MULTI_CARD.md")
+CORE_SLUG = "vllm/my-model-dual-autoround-int4"
+
+
+@pytest.fixture()
+def root_with_tables(root):
+    (root / "tools/docs").mkdir(parents=True, exist_ok=True)
+    shutil.copy2(REPO / "tools/docs/slug_tables.py", root / "tools/docs/slug_tables.py")
+    (root / "docs").mkdir(exist_ok=True)
+    for rel in CARD_PAGES:
+        shutil.copy2(REPO / rel, root / rel)
+    return root
+
+
+def _dual_table(root):
+    text = (root / "docs/DUAL_CARD.md").read_text(encoding="utf-8")
+    a = text.index("<!-- BEGIN GENERATED: slug-table dual -->")
+    return text[a:text.index("<!-- END GENERATED: slug-table dual -->", a)]
+
+
+class TestCoreSlugTables:
+    def test_core_write_regenerates_the_slug_tables(self, root_with_tables):
+        root = root_with_tables
+        assert f"`{CORE_SLUG}`" not in _dual_table(root)
+        res = _run_cli(root, _spec(layer_local=False), "--layer", "core",
+                       env_extra={"C3_ALLOW_CORE_PROMOTE": "1"})
+        assert res.returncode == 0, res.stderr + res.stdout
+        assert "regenerated the slug table in docs/DUAL_CARD.md" in res.stdout, res.stdout
+        assert f"`{CORE_SLUG}`" in _dual_table(root)
+        chk = subprocess.run([sys.executable, "tools/docs/slug_tables.py", "--check"],
+                             cwd=str(root), capture_output=True, text=True)
+        assert chk.returncode == 0, chk.stdout + chk.stderr
+
+    def test_core_dry_run_plans_the_tables_and_writes_nothing(self, root_with_tables):
+        root = root_with_tables
+        before = (root / "docs/DUAL_CARD.md").read_bytes()
+        res = _run_cli(root, _spec(layer_local=False), "--layer", "core", "--dry-run",
+                       env_extra={"C3_ALLOW_CORE_PROMOTE": "1"})
+        assert res.returncode == 0, res.stderr + res.stdout
+        assert "regenerate the card pages' slug tables" in res.stdout, res.stdout
+        assert (root / "docs/DUAL_CARD.md").read_bytes() == before
+        assert not (root / "scripts/lib/profiles/models/my-model.yml").exists()
+
+    def test_core_refuses_tables_already_stale(self, root_with_tables):
+        root = root_with_tables
+        page = root / "docs/DUAL_CARD.md"
+        text = page.read_text(encoding="utf-8")
+        end = "<!-- END GENERATED: slug-table dual -->"
+        page.write_text(text.replace(end, "| stale | row |\n" + end, 1), encoding="utf-8")
+        stale = page.read_bytes()
+        res = _run_cli(root, _spec(layer_local=False), "--layer", "core",
+                       env_extra={"C3_ALLOW_CORE_PROMOTE": "1"})
+        assert res.returncode == 3, res.stderr + res.stdout
+        assert "already out of date" in res.stderr
+        assert page.read_bytes() == stale
+        assert not (root / "scripts/lib/profiles/models/my-model.yml").exists()
+
+    def test_local_layer_leaves_the_tables_alone(self, root_with_tables):
+        root = root_with_tables
+        before = {rel: (root / rel).read_bytes() for rel in CARD_PAGES}
+        res = _run_cli(root, _spec(), "--layer", "local")
+        assert res.returncode == 0, res.stderr + res.stdout
+        assert {rel: (root / rel).read_bytes() for rel in CARD_PAGES} == before

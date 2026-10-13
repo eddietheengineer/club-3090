@@ -53,6 +53,9 @@ refused, #1202), and the entry is written with ``status="incubating"`` (hidden f
   2. the compose file anywhere under ``models/``
   3. the entry merged into ``scripts/lib/profiles/registry.yaml`` (a canonical
      rewrite of the data file; compose_registry.py is only its loader).
+  4. the card pages' slug tables regenerated (``tools/docs/slug_tables.py``), so
+     test-docs-slug-tables stays green; tables already stale before the run are
+     refused, so an unrelated change never rides along.
 Double-gated: requires ``--layer core`` AND ``C3_ALLOW_CORE_PROMOTE=1`` in the
 environment. Anything else refuses BEFORE writing — community users can never
 reach the core catalog through this tool.
@@ -308,6 +311,42 @@ def _append_registry_entry(root: Path, slug: str, kwargs: dict) -> None:
 
 def _run(cmd: list[str], *, cwd: Path) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True)
+
+
+_SLUG_TABLES_REL = "tools/docs/slug_tables.py"
+
+
+def _slug_table_pages(root: Path) -> list[Path]:
+    """The card pages tools/docs/slug_tables.py manages in ``root``; [] when the
+    checkout has no such tool, or one older than --pages. Asked with
+    `--pages --check`, never `--pages` alone: an older copy takes an unknown flag
+    as "rewrite the pages", but with --check it only checks."""
+    if not (root / _SLUG_TABLES_REL).is_file():
+        return []
+    listed = _run([sys.executable, _SLUG_TABLES_REL, "--pages", "--check"], cwd=root)
+    found = [ln.strip() for ln in listed.stdout.splitlines() if ln.strip()]
+    if listed.returncode == 0 and found and all(
+            ln.endswith(".md") and (root / ln).is_file() for ln in found):
+        return [root / ln for ln in found]
+    _info(f"note: {_SLUG_TABLES_REL} predates --pages; the card-page slug tables are not "
+          f"regenerated (run it by hand)")
+    return []
+
+
+def _regenerate_slug_tables(root: Path, pages: list[Path]) -> list[str]:
+    """Rewrite the card pages' slug tables after a core write; the pages it changed.
+    No rollback, like the rest of a core write: the error names the git command."""
+    before = {pg: pg.read_bytes() for pg in pages}
+    gen = _run([sys.executable, _SLUG_TABLES_REL], cwd=root)
+    again = _run([sys.executable, _SLUG_TABLES_REL, "--check"], cwd=root)
+    rels = [pg.relative_to(root).as_posix() for pg in pages]
+    if gen.returncode != 0 or again.returncode != 0:
+        raise InternalError(
+            "the card pages' slug tables could not be regenerated:\n"
+            + (gen.stderr or again.stderr or again.stdout).strip()[-800:]
+            + f"\n[promote] NO ROLLBACK — the model is written; regenerate the tables with "
+              f"`python3 {_SLUG_TABLES_REL}`, or revert: git checkout -- {' '.join(rels)}")
+    return [rel for pg, rel in zip(pages, rels) if pg.read_bytes() != before[pg]]
 
 
 def _post_write_checks(root: Path, spec: dict, profile_path: Path) -> None:
@@ -768,6 +807,9 @@ def plan_lines(root: Path, spec: dict) -> list[str]:
         f"  merge entry into {_REGISTRY_YAML_REL} (canonical rewrite — no source edit)",
         f"  slug: {slug}  model: {mid}  variant: {spec['default_weight_variant']}",
         "  then: import-sanity + registry-emit.sh --json re-check",
+        *(["  then: regenerate the card pages' slug tables ("
+           + ", ".join(pg.relative_to(root).as_posix() for pg in spec["_slug_pages"]) + ")"]
+          if spec.get("_slug_pages") else []),
         "  NO ROLLBACK — git is the rollback (dry-run writes nothing).",
     ]
 
@@ -1026,6 +1068,15 @@ def main(argv: Optional[list[str]] = None) -> int:
             spec = json.loads(Path(args.spec_file).read_text(encoding="utf-8"))
         spec = _apply_model_spec(spec)
         spec = validate_spec(spec, root, args.layer)
+        if spec["_layer"] == "core":
+            spec["_slug_pages"] = _slug_table_pages(root)
+            if spec["_slug_pages"] and _run([sys.executable, _SLUG_TABLES_REL, "--check"],
+                                            cwd=root).returncode != 0:
+                raise Refusal(f"the card pages' slug tables are already out of date (`python3 "
+                              f"{_SLUG_TABLES_REL} --check` is red before this change), and "
+                              f"regenerating them here would fold that unrelated change into "
+                              f"this model. Regenerate them in their own commit first: "
+                              f"`python3 {_SLUG_TABLES_REL}`")
     except Refusal as exc:
         print(f"[promote] REFUSED: {exc}", file=sys.stderr)
         return EXIT_COLLISION
@@ -1060,6 +1111,9 @@ def main(argv: Optional[list[str]] = None) -> int:
 
         # ── Post-write sanity ───────────────────────────────────────────────
         _post_write_checks(root, spec, profile_path)
+        if spec.get("_slug_pages"):
+            for rel in _regenerate_slug_tables(root, spec["_slug_pages"]):
+                _info(f"regenerated the slug table in {rel}")
     except InternalError as exc:
         if snap is None:
             raise
