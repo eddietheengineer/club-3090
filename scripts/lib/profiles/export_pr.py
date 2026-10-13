@@ -361,10 +361,71 @@ def translated_entry(state: dict, entry: dict, reg_mod=None, root: Optional[Path
     kw["compose_path"] = core_compose_rel(reg_mod, str(entry["slug"]), kw)
     if not kw.get("kvcalc_key"):
         kw["kvcalc_key"] = "SKIP"  # non-vLLM default; vLLM was gated in completeness_gaps
+    moved = (state.get("core_ports") or {}).get(str(entry["slug"]))
+    if moved is not None:
+        kw["default_port"] = moved  # assign_core_ports: out of the local band
     # PUBLISH IS NOT A RENAME (#1202 P3): local slugs already ARE
     # '<engine>/<name>', so the core slug is the slug the user has been running,
     # and every reference they hold survives publication.
     return {"slug": str(entry["slug"]), "kwargs": kw, "local_compose": entry["kwargs"]["compose_path"]}
+
+
+# ── curated ports ───────────────────────────────────────────────────────────
+# The curated catalog's ports are 8010-8199. 20200-20299 is the LOCAL layer's
+# band (promote.py hands every local model 20200 + crc32(id) % 100), which is what
+# lets a `git pull` of curated slugs never collide with a user's own. A local slug
+# exported as it is carries that 202xx port into core and squats the band: #1668
+# shipped bucko's slugs on 20240/20272 that way, and #1674's strata slugs came out
+# on 20219/20291 until a local model hashed onto 20291 collided with one. So every
+# exported slug whose port is outside the curated band, or already taken there,
+# gets the lowest free curated port, and its compose's ${PORT:-N} moves with it.
+CURATED_PORTS = range(8010, 8200)
+LOCAL_PORTS = range(20200, 20300)
+
+
+def assign_core_ports(reg_mod, model_states: list[dict]) -> tuple[list[str], list[str]]:
+    """Set state[\"core_ports\"] = {slug: new port} on every state, for the slugs
+    that need one. Returns (notes, gaps); a full curated band is a gap."""
+    curated = {int(e["default_port"]) for e in reg_mod.COMPOSE_REGISTRY.values()
+               if str(e.get("default_port") or "").isdigit()}
+    taken = set(curated)
+    notes: list[str] = []
+    gaps: list[str] = []
+    for st in model_states:
+        st["core_ports"] = {}
+        for e in st["entries"]:
+            port = e["kwargs"].get("default_port")
+            if isinstance(port, int) and port in CURATED_PORTS and port not in taken:
+                taken.add(port)
+                continue
+            new = next((p for p in CURATED_PORTS if p not in taken), None)
+            if new is None:
+                gaps.append(f"{e['slug']}: no free port left in the curated band "
+                            f"{CURATED_PORTS.start}-{CURATED_PORTS.stop - 1}; extend CURATED_PORTS "
+                            "in export_pr.py (and the band in docs/BRING_YOUR_OWN.md)")
+                continue
+            taken.add(new)
+            st["core_ports"][str(e["slug"])] = new
+            why = ("the local layer's 202xx band" if isinstance(port, int) and port in LOCAL_PORTS
+                   else "outside the curated band" if port not in CURATED_PORTS
+                   else "already a curated slug's" if port in curated
+                   else "another exported slug's too")
+            notes.append(f"{e['slug']}: port {port} is {why}; the curated slug gets {new}")
+    return notes, gaps
+
+
+_PORT_DEFAULT = re.compile(r"\$\{PORT:-(\d+)\}")
+
+
+def move_compose_port(text: str, new: int) -> tuple[Optional[str], Optional[int]]:
+    """(the compose with its ${PORT:-N} default set to new, the N it had), or
+    (None, None) when it has no such default or several different ones, and the
+    export refuses rather than guesses. The N can differ from the registry's port:
+    a compose copied from a curated sibling keeps the sibling's."""
+    found = {int(n) for n in _PORT_DEFAULT.findall(text)}
+    if len(found) != 1:
+        return None, None
+    return _PORT_DEFAULT.sub(f"${{PORT:-{new}}}", text), found.pop()
 
 
 # ── what a maintainer would bounce the PR for ───────────────────────────────
@@ -994,10 +1055,14 @@ def build(root: Path, *, model_states: list[dict], engine: Optional[dict], netwo
                          "this one): " + ", ".join(engine["left_out"]))
         todo += etodo
 
+    port_notes, port_gaps = assign_core_ports(reg_mod, model_states)
+    gaps += port_gaps
     for st in model_states:
         gaps += completeness_gaps(root, st)
     if gaps:
         return files, notes, gaps
+    notes += port_notes
+    ports_md = [f"- {n}" for n in port_notes]
     for st in model_states:
         gaps += catalog_rule_gaps(root, st, network=network, findings_out=findings)
         mid = st["model_id"]
@@ -1012,6 +1077,17 @@ def build(root: Path, *, model_states: list[dict], engine: Optional[dict], netwo
             text, rebased, ships, mgaps, carry = rebase_mounts(
                 root, t["local_compose"], t["kwargs"]["compose_path"], local_text)
             gaps += mgaps
+            if t["slug"] in st["core_ports"]:
+                new_port = st["core_ports"][t["slug"]]
+                moved, had = move_compose_port(text, new_port)
+                if moved is None:
+                    gaps.append(f"{t['slug']}: its port moves to {new_port}, but the compose has no "
+                                "single ${PORT:-N} default to move (none, or several different ones)")
+                else:
+                    text = moved
+                    if had != e["kwargs"].get("default_port"):
+                        notes.append(f"{t['slug']}: the compose's ${{PORT:-{had}}} disagreed with the "
+                                     f"registry's {e['kwargs'].get('default_port')}; both are {new_port} now")
             files[t["kwargs"]["compose_path"]] = text
             for rel in carry:
                 notes.append(f"{t['slug']}: carries {rel}, which the compose mounts")
@@ -1038,6 +1114,8 @@ def build(root: Path, *, model_states: list[dict], engine: Optional[dict], netwo
         ("**Mounts re-pointed for the core location** (the local layer sits three "
          "directories deeper than `models/`):", rebased_md),
         ("**Files carried from the local layer** (the composes mount them):", carried_md),
+        (f"**Ports moved into the curated band** ({CURATED_PORTS.start}–{CURATED_PORTS.stop - 1}; "
+         "202xx is the local layer's):", ports_md),
     ):
         if items:
             extra += ([""] if extra else []) + [title, ""] + items

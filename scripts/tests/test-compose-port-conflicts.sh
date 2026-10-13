@@ -96,3 +96,46 @@ active = sum(len(v) for v in byport.values())
 print(f"OK: no un-allowlisted cross-model port collisions "
       f"({active} active slug-ports; ALLOW={sorted(ALLOW)} still valid).")
 PY
+
+# Gate 2: every CURATED slug's default_port is in the curated band, 8010-8199.
+# 20200-20299 is the local layer's: promote.py gives each local model
+# 20200 + crc32(id) % 100, so a curated slug there can land on a user's own model
+# with the next `git pull`, and gate 1 above can't see it (it checks one merged
+# registry, not which layer a port belongs to). bucko's two slugs shipped on
+# 20240/20272 that way, because export_pr.py carried their local ports into core;
+# it now assigns a curated port itself. Core entries only, since local slugs live
+# in 202xx by design. The bands come from export_pr.py, which assigns the ports.
+python3 - <<'PY'
+import sys
+from scripts.lib.profiles import compose_registry as cr
+from scripts.lib.profiles.export_pr import CURATED_PORTS, LOCAL_PORTS
+
+band = f"{CURATED_PORTS.start}-{CURATED_PORTS.stop - 1}"
+
+
+def outside(entries):
+    return sorted((s, e.get("default_port")) for s, e in entries.items()
+                  if e.get("default_port") is not None and e["default_port"] not in CURATED_PORTS)
+
+
+# Negative control first: the check has to fire on a 202xx port and on one just
+# past the band, and pass one inside it, or a green below means nothing.
+probe = {"x/local-band": {"default_port": LOCAL_PORTS.start + 40},
+         "x/past-band": {"default_port": CURATED_PORTS.stop},
+         "x/in-band": {"default_port": CURATED_PORTS.start}}
+if [s for s, _ in outside(probe)] != ["x/local-band", "x/past-band"]:
+    print("FAIL: the curated-band check doesn't tell a 202xx port from a curated one (negative control)")
+    sys.exit(1)
+
+bad = outside(cr.COMPOSE_REGISTRY)
+if bad:
+    print(f"FAIL: curated slugs off the curated port band {band}:")
+    for slug, port in bad:
+        where = "the local layer's 202xx band" if port in LOCAL_PORTS else "outside the band"
+        print(f"  {slug}: {port} ({where})")
+    print("Fix: give it a free curated port: the registry default_port and the compose's")
+    print("     ${PORT:-NNNN}. export_pr.py picks one itself; if the band is full, extend")
+    print("     CURATED_PORTS there (and the band in docs/BRING_YOUR_OWN.md).")
+    sys.exit(1)
+print(f"OK: all {len(cr.COMPOSE_REGISTRY)} curated slugs are on the curated port band {band}.")
+PY

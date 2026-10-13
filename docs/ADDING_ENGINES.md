@@ -241,7 +241,7 @@ The compose layout, header and registry contract are the same as in [ADDING_MODE
 | `test-compose-mounts-resolve` | relative mounts resolve; a compose that mounts caches ships `<model>/<engine>/cache/` with its `.gitignore` |
 | `test-compose-env-declared-unused` | every declared env var is read. A launcher that consumes vars inside the image needs its prefix added to `ENGINE_PREFIXES` (as `EXL3_`/`TABBY_` were) |
 | `test-compose-status-drift` | the header `Status:` matches the registry |
-| `test-compose-port-conflicts` | no `default_port` collides across models |
+| `test-compose-port-conflicts` | no `default_port` collides across models, and every curated one is on 8010–8199 (202xx is the local layer's) |
 | `test-engine-label-matches-compose` | the compose's `image:` default equals the profile's `install.spec` |
 | `test-launch-knobs` | catalogued knobs the compose reads are covered for its kind (see §4) |
 
