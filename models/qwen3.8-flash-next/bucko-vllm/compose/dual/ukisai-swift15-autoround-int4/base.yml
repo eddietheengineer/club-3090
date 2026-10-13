@@ -75,7 +75,8 @@ services:
       SERVED_MODEL_NAME: "${SERVED_MODEL_NAME:-qwen3.8-flash-next-swift15}"
       # Upstream's validated 2x3090/128GB profile (configs/2x3090-128gb.env).
       MAX_MODEL_LEN: "${MAX_MODEL_LEN:-262144}"
-      # Server-side DEFAULT reasoning budget (club-3090 patch, ../../../patches/default-thinking-budget):
+      # Server-side DEFAULT reasoning budget (patches.yml vllm-default-thinking-budget, the core
+      # copy of this recipe's original local patch; mounted from models/qwen3.8-27b/vllm/patches):
       # a request without thinking_token_budget gets this; an explicit one wins. When the
       # reasoning reaches it, vLLM closes the thinking block and the model answers. -1 = off.
       # 16384 measured 2026-10-07 on Swift xhigh cli-40 runaways: 3/4 pass vs 1/4 under a
@@ -183,15 +184,17 @@ services:
       # double the prefix and refuse on a path that plainly exists.
       # NB: preflight scans this file as TEXT, so do not write an example
       # host-side mapping in a comment here — it gets read as a real volume.
-      - "${MODEL_DIR:-/mnt/models/huggingface}:/models:ro"
-      - "../../../patches/default-thinking-budget:/etc/club3090/thinking-budget:ro"
+      - "${MODEL_DIR:-../../../../../../models-cache}:/models:ro"
+      - "../../../../../qwen3.8-27b/vllm/patches/vllm-default-thinking-budget:/etc/club3090/default-thinking-budget:ro"
       # Persistent Humming/Triton JIT caches (upstream JIT_CACHE_DIR): no kernel
       # recompiles on every start or inside the first long request.
       - "${CLUB3090_ENGINE_CACHE_DIR:-../../../cache}/humming:/root/.humming"
       - "${CLUB3090_ENGINE_CACHE_DIR:-../../../cache}/triton:/root/.triton"
-    # Apply the default-thinking-budget patch, then hand over to the image's own launcher
+    # umask 0002 (group-writable cache files), the vllm-default-thinking-budget patch (it
+    # validates CLUB3090_DEFAULT_THINKING_TOKEN_BUDGET and refuses the boot if its anchor
+    # moved), then hand over to the image's own launcher
     # (qwen38-serve) with the same arguments. The patch refuses to boot if its anchor moved.
-    entrypoint: ["bash", "-c", "python3 /etc/club3090/thinking-budget/apply.py && exec /usr/local/bin/qwen38-serve \"$$@\"", "--"]
+    entrypoint: ["bash", "-c", "umask 0002 && bash /etc/club3090/default-thinking-budget/install.sh && exec /usr/local/bin/qwen38-serve \"$$@\"", "--"]
     # The image's entrypoint takes the model path as its argument.
     command: ["/models/swift-1.5-qwen3.8-flash-next-w4a16-autoround",
               "/models/qwen3.8-flash-next-w4a16-fp8ple/runtime/mtp-int4-g32"]
