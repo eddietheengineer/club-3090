@@ -1,6 +1,8 @@
 # Inference engine comparison — vLLM, llama.cpp, SGLang, ktransformers, ik_llama.cpp
 
-Pragmatic comparison of the five engines this stack interacts with most. **Versions captured 2026-05-07** — all five projects move fast; verify against upstream release notes before making a long-horizon decision. Linked sources at the bottom.
+> **An upstream snapshot, not the catalog.** The matrices below describe the upstream projects as of 2026-05-07. For the engines club-3090's catalog runs today, what each is for and its page, see **[engines/README.md](engines/README.md)**. Two of the five engines compared here are not in the catalog: ik_llama.cpp is out (every `ik-llama/` slug is deprecated), and ktransformers has no engine profile. The catalog also runs engines this page doesn't cover: our MoE expert-cache llama.cpp build (`llamacpp-club3090`), ExLlamaV3 and PrismML llama.cpp.
+
+Pragmatic comparison of five upstream engines. **Versions captured 2026-05-07** — all five projects move fast; verify against upstream release notes before making a long-horizon decision. Linked sources at the bottom.
 
 This doc isn't an evangelism piece. It's a *picker* — which engine to reach for when the workload demands a specific feature, and where each engine still has structural gaps. Coverage is biased toward what matters on **club-3090's hardware class** (consumer Ampere/Ada/Blackwell + 24-32 GB VRAM cards + community workstations), not enterprise H100/B200 deployments.
 
@@ -12,13 +14,11 @@ This doc isn't an evangelism piece. It's a *picker* — which engine to reach fo
 
 | Workload | Engine | Why |
 |---|---|---|
-| **Production multi-tenant chat / API** (24-48 GB VRAM, fits-VRAM models) | **vLLM** | Continuous batching + paged attention + extensive tool-call/structured-output support; Genesis patches close most Qwen3-Next gaps |
+| **Production multi-tenant chat / API** (24-48 GB VRAM, fits-VRAM models) | **vLLM** | Continuous batching + paged attention + extensive tool-call/structured-output support |
 | **Single-card max-quality on small-VRAM rigs** (12-24 GB), bulletproof | **llama.cpp** | Engine-agnostic memory model; no Cliff 1/2 footguns; broadest model coverage; q4_0/q8_0 KV |
 | **Hyper-optimized prefix caching, structured outputs, multimodal at scale** | **SGLang** | RadixAttention-class prefix cache + FSM-native structured outputs + best-in-class spec-decode V2 |
-| **Big MoE (>VRAM) on consumer hardware** (M2/Kimi/DeepSeek-class) | **ktransformers** (or SGLang+kt-kernel) | Router-aware hot-expert caching; 1.5-2× decode TPS over llama.cpp's layer-uniform `--n-cpu-moe` |
+| **Big MoE (>VRAM) on consumer hardware** (M2/Kimi/DeepSeek-class) | upstream: **ktransformers** (or SGLang+kt-kernel). In this catalog: **[`llamacpp-club3090`](engines/LLAMACPP_CLUB3090.md)** | ktransformers: router-aware hot-expert caching; 1.5-2× decode TPS over llama.cpp's layer-uniform `--n-cpu-moe`. `llamacpp-club3090`: [@leloch](https://github.com/leloch/llama.cpp)'s expert cache keeps the experts the router reuses in spare VRAM (not in mainline llama.cpp) |
 | **Apple Silicon** | **llama.cpp** (Metal) or **SGLang** (MLX backend, v0.5.10+) | Both work; MLX backend is newer but native |
-| **Qwen3.x + MTP on llama.cpp without PR-branch building** | **ik_llama.cpp** | Qwen MTP merged on main (vs mainline's open [PR #22673](https://github.com/ggml-org/llama.cpp/pull/22673)); GLM-4.x MTP also working |
-| **DeepSeek-R1 / Kimi-K2 / large MoE on consumer hardware (alternative to ktransformers)** | **ik_llama.cpp** | Fused MoE kernels + smart expert reduction (`-ser`) + on-the-fly MLA tensors; ships as a llama.cpp fork rather than separate engine |
 
 ---
 
@@ -88,7 +88,7 @@ All five are actively developed. ktransformers is positioned as research but pro
 | **CPU KV offload** | ✅ pluggable policies ([PR #37160](https://github.com/vllm-project/vllm/pull/37160)) | ⚠️ via mmap | ✅ Decode Radix Cache (v0.5.11) | N/A | ⚠️ via mmap |
 | **Disk KV offload** | ✅ FlexKV ([PR #34328](https://github.com/vllm-project/vllm/pull/34328)) + LMCache | ⚠️ | ⚠️ | ❌ | ⚠️ |
 
-**Notes**: llama.cpp's q4_0 KV is the *only* engine choice when you need 4-bit KV at 200K+ ctx on 24 GB VRAM. vLLM's TurboQuant 3-bit KV (TQ3) is comparable ratio but Qwen3-Next-only via Sandermage's [Genesis patches](https://github.com/Sandermage/genesis-vllm-patches).
+**Notes**: llama.cpp's q4_0 KV is the *only* engine choice when you need 4-bit KV at 200K+ ctx on 24 GB VRAM. vLLM's TurboQuant 3-bit KV (TQ3) came from Sandermage's [Genesis patches](https://github.com/Sandermage/genesis-vllm-patches) and is retired here.
 
 ---
 
@@ -121,7 +121,7 @@ All five are actively developed. ktransformers is positioned as research but pro
 | **MXFP4 MoE online quant** | ✅ | ❌ | ✅ MXFP8/MXFP4 | ✅ DeepSeek-V4-Flash (kt-kernel MXFP4 op) | ❌ |
 | **Disaggregated prefill/decode** | ✅ ~5% overhead reduction | ❌ | ✅ Decode Radix Cache (v0.5.11) | ⚠️ via SGLang | ❌ |
 
-**Bottom line on big-MoE**: ktransformers (or kt-kernel via SGLang) is the only engine with router-aware hot-expert caching. Sustainable benchmark on DeepSeek-V2 (2× 3090): **9 TPS @ 45% VRAM** (kt) vs **7.5 TPS @ 95% VRAM** (llama.cpp `--n-cpu-moe`) — +20% TPS at half the VRAM.
+**Bottom line on big-MoE**: of these five upstream engines, ktransformers (or kt-kernel via SGLang) is the only one with router-aware hot-expert caching. This catalog's answer is a llama.cpp build carrying [@leloch](https://github.com/leloch/llama.cpp)'s expert cache ([engines/LLAMACPP_CLUB3090.md](engines/LLAMACPP_CLUB3090.md)), plus ExLlamaV3 with CPU-computed experts ([engines/EXLLAMAV3.md](engines/EXLLAMAV3.md)). Sustainable benchmark on DeepSeek-V2 (2× 3090): **9 TPS @ 45% VRAM** (kt) vs **7.5 TPS @ 95% VRAM** (llama.cpp `--n-cpu-moe`) — +20% TPS at half the VRAM.
 
 ---
 
@@ -172,7 +172,7 @@ All five are actively developed. ktransformers is positioned as research but pro
 | **Video** | ⚠️ Frame-by-frame | ⚠️ | ✅ Diffusion (LTX-2, FLUX) | ❌ | ⚠️ |
 | **Image generation** | ❌ | ❌ | ✅ Diffusion (FLUX, Qwen-Image fused kernels) | ❌ | ❌ |
 
-**Practical for our stack**: Gemma 4 vision + Qwen3.6 vision both work via vLLM (see `models/gemma-4-31b/` and `models/qwen3.6-27b/long-vision.yml`); llama.cpp `--mmproj` is the single-card fallback.
+**Practical for our stack**: Gemma 4 and Qwen3.6 vision both work via vLLM, and llama.cpp `--mmproj` serves vision too; the card pages ([SINGLE_CARD.md](SINGLE_CARD.md), [DUAL_CARD.md](DUAL_CARD.md)) list which slugs carry it.
 
 ---
 
@@ -185,10 +185,10 @@ All five are actively developed. ktransformers is positioned as research but pro
 | **Grammar (GBNF / EBNF)** | ✅ via outlines/lm-format-enforcer/xgrammar | ✅ Native GBNF | ✅ FSM-based | ⚠️ | ✅ Native GBNF |
 | **JSON schema mode** | ✅ | ✅ | ✅ Best-in-class FSM | ⚠️ | ✅ |
 | **Function calling enforcement** | ✅ tool-choice | ⚠️ Soft | ✅ Strict | ⚠️ | ⚠️ Soft |
-| **Reasoning-channel separation** | ✅ qwen3 reasoning parser | ⚠️ Default ON via peg-native + `<think>` parsing → routes to `reasoning_content` field. **Most clients (incl. opencode) ignore this and hang** ([issue #97](https://github.com/noonghunna/club-3090/issues/97)). Workaround: `--reasoning-format none` flag (now default in our `llamacpp/default` compose). | ✅ | ⚠️ | ⚠️ Inherits llama.cpp default |
+| **Reasoning-channel separation** | ✅ qwen3 reasoning parser | ⚠️ Default ON via peg-native + `<think>` parsing → routes to `reasoning_content` field. **Most clients (incl. opencode) ignore this and hang** ([issue #97](https://github.com/noonghunna/club-3090/issues/97)). Workaround: `--reasoning-format none`. Our llama.cpp composes default to `deepseek` (`REASONING_FORMAT` overrides it). | ✅ | ⚠️ | ⚠️ Inherits llama.cpp default |
 | **Streaming tool-call deltas** | ✅ + Anthropic API compat | ✅ | ✅ + Responses API streaming | ⚠️ | ✅ |
 
-**Notes**: SGLang's RadixAttention + native FSM makes structured output the headline strength. Our [bounded-thinking compose](../models/qwen3.6-27b/vllm/compose/single/autoround-int4/bounded-thinking.yml) uses vLLM's xgrammar; could re-do on SGLang for a probable speedup but vLLM is the daily-driver here.
+**Notes**: SGLang's RadixAttention + native FSM makes structured output the headline strength. Our retired [bounded-thinking compose](../models/qwen3.6-27b/vllm/compose/_archive/single/autoround-int4/bounded-thinking.yml) used vLLM's xgrammar.
 
 ---
 
@@ -247,25 +247,17 @@ Q1: Does the model fit your VRAM at desired quant?
        ├── NO (dense doesn't fit) → No good options on consumer rig.
        │      Lower quant, smaller model, or rent cloud.
        └── YES → 
+              In this catalog → llamacpp-club3090 (expert cache in spare VRAM)
+                                or ExLlamaV3 (CPU-computed experts)
+              Upstream alternatives:
               Q5: Big MoE (>2× VRAM, < 96 GB RAM)?
               ├── YES → ktransformers (or SGLang+kt-kernel)
-              └── NO (just slightly over) → llama.cpp `--n-cpu-moe`
-                  OR ik_llama.cpp (better DeepSeek/Kimi MoE kernels)
+              └── NO (just slightly over) → llama.cpp `-ot` / `--n-cpu-moe`
 ```
 
-### Specific picks for club-3090's shipped models
+### Specific picks for club-3090's models
 
-| Model | Daily driver | Reason |
-|---|---|---|
-| **Qwen3.6-27B** (dense hybrid, fits VRAM) | **vLLM** (stock) | Multi-tenant, full feature set, Cliff 1/2 closed on TP=2 |
-| **Qwen3.6-27B** (single-card no-cliffs path) | **llama.cpp** | Different memory model; no Cliff 2b under multi-turn |
-| **Qwen3.6-27B** (single-card with MTP, no PR-branch building) | **ik_llama.cpp** | MTP merged on main — get the ~+34% TPS lift without rebuilding from PR #22673 |
-| **Gemma 4 31B** (dual-card) | **vLLM** + MTP/DFlash overlays | Best spec-decode story, vision support |
-| **Gemma 4 31B** (single-card long-ctx + spec-dec) | **beellama.cpp** (experimental, unofficial sm_86 image) | Only single-card engine with Gemma-4 windowed KV *and* DFlash spec-dec in one GGUF |
-| **Carnice / Qwopus / variants** | **vLLM** | Same daily-driver path |
-| **(future) MiniMax-M2.7-REAP-172B** | **ktransformers** + SGLang | Big-MoE > VRAM, router-aware caching is the unlock |
-| **(future) GPT-OSS-120B** | **ktransformers** or **llama.cpp** `--n-cpu-moe` | Either works; ktransformers ~+20% TPS but harder to deploy |
-| **(future) DeepSeek-V4-Flash** | **ktransformers** (kt-kernel native MXFP4) | Best support for V4-Flash architecture |
+The per-model picks live in the registry, not here. The card pages ([SINGLE_CARD.md](SINGLE_CARD.md), [DUAL_CARD.md](DUAL_CARD.md), [MULTI_CARD.md](MULTI_CARD.md)) list every slug per topology, generated from it, with ⭐ on each model's default; [engines/README.md](engines/README.md) says what each engine in the catalog is for.
 
 ---
 
@@ -297,38 +289,21 @@ Q1: Does the model fit your VRAM at desired quant?
 ### ik_llama.cpp
 - **Smaller community than mainline llama.cpp** — bugs take longer to surface, fewer cross-rig data points.
 - **No tagged releases** — rolls on main; no version pinning story for production users.
-- **Official Docker image** ships (`ghcr.io/ikawrakow/ik-llama-cpp:cu13-server`, digest-pinned in our composes). This stack uses it for the **[advanced-quant track](engines/IK_LLAMA.md)** — fork-exclusive **IQK imatrix quants** (`IQ4_KS`), the best quality-per-bit in the GGUF world. See [QUANTIZATION.md](QUANTIZATION.md).
+- **Official Docker image** ships (`ghcr.io/ikawrakow/ik-llama-cpp:cu13-server`). **This catalog no longer uses it:** ik_llama.cpp is out, and every `ik-llama/` slug is deprecated. [engines/IK_LLAMA.md](engines/IK_LLAMA.md) is kept as a reference for its fork-exclusive **IQK imatrix quants** (`IQ4_KS`); see [QUANTIZATION.md](QUANTIZATION.md).
 - **Diverging quant naming from mainline** — IQ_K series flags differ; cross-engine GGUF compatibility caveats.
 - **Spec-decode coverage** — MTP merged + two-stage ngram+MTP ([PR #1789](https://github.com/ikawrakow/ik_llama.cpp/pull/1789)) + hybrid-aware recurrent checkpoints ([PR #1774](https://github.com/ikawrakow/ik_llama.cpp/pull/1774)). No EAGLE3 / DFlash; lags mainline on those research paths.
 - **Smaller maintainer surface** — primarily Iwan Kawrakow + a handful of contributors. Not the right pick for production where you need >1 person to debug a kernel issue.
 
 ### beellama.cpp
 
-[beellama.cpp](https://github.com/Anbeeld/beellama.cpp) is Anbeeld's llama.cpp fork. Its two fork-exclusive levers are **DFlash** (cross-attention speculative decoding — a small DFlash draft GGUF reads the target's recent hidden states and predicts multiple tokens ahead, verified in one target pass) and **TurboQuant / TCQ KV cache types** on top of mainline-lineage **SWA-aware windowed KV**. On this stack it is the single-card answer for two cases the other engines can't cover together:
+**Retired here 2026-07-27:** every beellama slug is 🗑️ Deprecated (Anbeeld #98, won't fix: v0.4.x DFlash is the upstream implementation carrying the VRAM regression, and the v0.3.2-preview pin is unmaintained). `beellama/dflash` was the single-card default; Qwen3.6-27B's single-card default is now `vllm/minimal`.
 
-- **Gemma-4-31B single-card long-context + spec-dec** — the only engine that does Gemma-4 windowed KV (big context) *and* a Gemma-4 spec-dec arch in one GGUF. ik_llama has the MTP arch but allocates full KV (≈24K single-card wall); mainline llama.cpp windows KV but its plain Gemma-4 decode is slow (~10 TPS).
+[beellama.cpp](https://github.com/Anbeeld/beellama.cpp) is Anbeeld's llama.cpp fork. Its two fork-exclusive levers are **DFlash** (cross-attention speculative decoding — a small DFlash draft GGUF reads the target's recent hidden states and predicts multiple tokens ahead, verified in one target pass) and **TurboQuant / TCQ KV cache types** on top of mainline-lineage **SWA-aware windowed KV**. On this stack it was the single-card answer for two cases the other engines couldn't cover together:
+
+- **Gemma-4-31B single-card long-context + spec-dec** — Gemma-4 windowed KV (big context) *and* a Gemma-4 spec-dec arch in one GGUF.
 - **Qwen3.6-27B tool-grammar-neutral spec-dec** — the external DFlash drafter does not share the target distribution, so it does not amplify the CodeAct attractor the built-in MTP head does ([club-3090#237](https://github.com/noonghunna/club-3090/discussions/237)).
 
-Honest gaps:
-
-- **No *official* upstream Docker image yet (upstream ships Windows binaries + source only); we publish an unofficial *multi-arch* build.** We compile `Anbeeld/beellama.cpp` (MIT) for **sm_86 / sm_89 / sm_120 (RTX 3090 / 4090 / 5090)** and publish it as **`ghcr.io/noonghunna/beellama-cpp:multiarch-b9459-07ac3ce`**. Users on any of those cards can **pull and run**:
-
-  ```bash
-  docker pull ghcr.io/noonghunna/beellama-cpp:multiarch-b9459-07ac3ce
-  ```
-
-  **RETIRED 2026-07-27:** all beellama slugs are 🗑️ Deprecated (Anbeeld #98 won't-fix — v0.4.x DFlash is the upstream implementation carrying the VRAM regression; the v0.3.2-preview pin is unmaintained). `beellama/dflash` *was* the single-card default; the walk now resolves to `ik-llama/iq4ks-mtp`. Historical notes below kept as-is: **Caveat: sm_89 / sm_120 are compiled but UNVALIDATED** — only sm_86 / RTX 3090 is verified on club-3090's rig, so 4090 / 5090 users should treat it as unverified and report back via the *numbers-from-your-rig* issue template. Anbeeld's official v0.3.0 (CI + Docker) is in progress ([discussion #239](https://github.com/noonghunna/club-3090/discussions/239)); when it lands we drop our unofficial image. **To build your own image** (a different arch, or to self-host), from a clone of the fork (Linux GCC + CUDA):
-
-  ```bash
-  cmake -B build -DGGML_CUDA=ON -DGGML_NATIVE=ON \
-    -DGGML_CUDA_FA=ON -DGGML_CUDA_FA_ALL_QUANTS=ON \
-    -DCMAKE_CUDA_ARCHITECTURES=86 -DCMAKE_BUILD_TYPE=Release
-  cmake --build build -j
-  ```
-
-  Use `-DCMAKE_CUDA_ARCHITECTURES=89` for an RTX 4090, `120` for a 5090, etc. To produce a Docker image for your arch, bake the fork's `.devops/cuda.Dockerfile` with `CUDA_DOCKER_ARCH=<arch>` (a **semicolon list** like `"86;89;120"` builds one multi-arch image — that is exactly how our published image is built) and the `-DGGML_CUDA_FA_ALL_QUANTS=ON` flag — the stock Dockerfile omits it, and **`FA_ALL_QUANTS` is required for the TurboQuant / TCQ cache types** (and for the `q5_0`/`q4_1` KV the composes default to). Point the composes at it per-launch with `BEELLAMA_IMAGE=...`.
-- **Server target ENTRYPOINT is `/app/llama-server`** — compose `command:` is server flags only (same shape as the ik-llama / llama-cpp composes).
-- **Single-stream / `-np 1`** — DFlash is single-slot by default; same compute-bound single-card caveat as the other llama.cpp-family composes.
+Its engine profile (`beellama-local`) pins Anbeeld's official image by digest; the deprecated slugs still launch by name with `--force`.
 
 ---
 
@@ -372,4 +347,4 @@ This file ages quickly — all five projects ship frequently (some multiple rele
 4. Add new feature rows where a project ships something the others don't
 5. Don't preserve historical "this used to be ❌, now ✅" — that lives in each project's release notes, not here
 
-Last refresh: **2026-05-07**.
+Last refresh of the upstream matrices: **2026-05-07**. On 2026-10-13 the catalog-facing parts were corrected (the banner, the TL;DR and MoE picks, the per-model picks, the ik_llama.cpp and beellama.cpp notes, the reasoning-format default and two dead compose paths); the upstream versions and feature cells were not re-researched.
