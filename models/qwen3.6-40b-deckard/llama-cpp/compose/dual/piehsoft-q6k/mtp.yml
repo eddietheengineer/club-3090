@@ -45,10 +45,11 @@
 # (the IMMUTABLE tag for the 2026-06-09 build, digest sha256:1c4ff61a…). MTP
 # `--spec-type draft-mtp` (PR #22673, mainline) works on it. We pin the immutable
 # bXXXX — NOT the rolling `:server-cuda` (it regressed at b9282 with a crash loop,
-# #187). The shared `llama-cpp-local` engine pins the older b9246 (for the 27B —
-# too old for Deckard-40B), so we pin the newer b9570 at the compose level via
-# LLAMACPP_IMAGE rather than bumping the shared engine pin. Bump via .env once a
-# newer build is validated:  LLAMACPP_IMAGE=ghcr.io/ggml-org/llama.cpp:server-cuda-bXXXX
+# #187). Back then the shared `llama-cpp-local` pin was the older b9246, too old
+# for Deckard-40B, so this compose pinned b9570 itself. The shared pin has since
+# moved past it, and since 2026-10-13 the launchers inject it as LLAMACPP_IMAGE:
+# export LLAMACPP_IMAGE in the shell for a one-off build (a saved value loses to
+# the pin), or move the pin with engine-pin-bump.sh llama-cpp-local.
 #
 # Override defaults via .env or shell:
 #   MODEL_DIR              host dir to mount as /models  (default: ../../../../../../models-cache)

@@ -78,7 +78,7 @@
 #   REASONING_FORMAT       reasoning routing   (default: deepseek — extracts <think> to reasoning_content)
 #   REPEAT_PENALTY / REPEAT_LAST_N  anti-loop  (defaults: 1.1 / 256)
 #   PORT                   host port           (default: 8073)
-#   LLAMACPP_IMAGE         engine image        (default: pinned b9570)
+#   LLAMACPP_IMAGE         engine image        (default: the llama-cpp-local pin, injected by the launchers)
 #
 # Quick start:
 #   1. Fetch the GGUF (setup.sh/launch.sh auto-fetch it, or manually):

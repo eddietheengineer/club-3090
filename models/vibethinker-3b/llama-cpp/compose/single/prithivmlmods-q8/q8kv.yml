@@ -65,7 +65,7 @@
 #   REPEAT_PENALTY   anti-loop           (default: 1.0 = card-faithful; set 1.1 if loops appear)
 #   PORT             host port           (default: 8075)
 #   CUDA_VISIBLE_DEVICES  which GPU      (default: 0 — single card, leaves GPU 1 free)
-#   LLAMACPP_IMAGE   engine image        (default: rolling server-cuda; launcher injects engine pin)
+#   LLAMACPP_IMAGE   engine image        (the launchers inject the llama-cpp-local pin)
 services:
   llama-cpp-vibethinker-3b:
     image: ${LLAMACPP_IMAGE:-ghcr.io/ggml-org/llama.cpp@sha256:6ac921528d613deb0fd142c654735e594a446a1c37a069eeab08d8fd974d4bec}
