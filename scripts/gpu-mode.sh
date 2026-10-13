@@ -448,39 +448,11 @@ stop_27b_dual_mtp() {
     compose_at "$DUAL_27B_DIR" "down" fp8-mtp.yml && echo "done" || echo "skipped"
 }
 
-start_27b_dual_dflash() {
-    printf "  ${GREEN}▲${NC} Starting 27b-dual-dflash..."
-    compose_at "$DUAL_27B_DIR" "up -d" dflash.yml && echo "done" || { echo "failed"; c3_mark_start_failure "27b-dual-dflash"; }
-}
-stop_27b_dual_dflash() {
-    printf "  ${RED}▼${NC} Stopping 27b-dual-dflash..."
-    compose_at "$DUAL_27B_DIR" "down" dflash.yml && echo "done" || echo "skipped"
-}
-
-start_27b_dual_dflash_noviz() {
-    printf "  ${GREEN}▲${NC} Starting 27b-dflash-noviz..."
-    compose_at "$DUAL_27B_DIR" "up -d" dflash-noviz.yml && echo "done" || { echo "failed"; c3_mark_start_failure "27b-dual-dflash-noviz"; }
-}
-stop_27b_dual_dflash_noviz() {
-    printf "  ${RED}▼${NC} Stopping 27b-dflash-noviz..."
-    compose_at "$DUAL_27B_DIR" "down" dflash-noviz.yml && echo "done" || echo "skipped"
-}
-
-start_27b_dual_turbo() {
-    printf "  ${GREEN}▲${NC} Starting 27b-dual-turbo..."
-    compose_at "$DUAL_27B_DIR" "up -d" turbo.yml && echo "done" || { echo "failed"; c3_mark_start_failure "27b-dual-turbo"; }
-}
-stop_27b_dual_turbo() {
-    printf "  ${RED}▼${NC} Stopping 27b-dual-turbo..."
-    compose_at "$DUAL_27B_DIR" "down" turbo.yml && echo "done" || echo "skipped"
-}
-
-# Stop every 27b serving variant before starting a new one
+# Stop the 27b dual scene before starting another. The dflash / dflash-noviz / turbo
+# variants it also stopped were retired with their composes (#280), and compose_at
+# skips a missing file, so their helpers only printed a "done" for nothing.
 stop_all_27b() {
     stop_27b_dual_mtp
-    stop_27b_dual_dflash
-    stop_27b_dual_dflash_noviz
-    stop_27b_dual_turbo
 }
 
 # Qwen3.6-35B-A3B (MoE, 3B active / 35B total) dual-card vLLM — production slug
@@ -693,10 +665,10 @@ show_status() {
     # LLM probe ports are REGISTRY-DERIVED (slug → port via the shared lookup
     # helper; the constants block above already paid the one cached emit), so a
     # port move in the catalog updates status automatically. Literal fallbacks
-    # preserve today's behavior when the registry can't be consulted. Deferred
-    # sites need semantic decisions first: :8013 is labelled dflash-noviz but
-    # the registry maps that port to vllm/qwen-27b-dual-max; :8030/:8032 are
-    # multi-slug ports; :8090/:8188/:4000 are infra, not registry variants.
+    # preserve today's behavior when the registry can't be consulted. Still
+    # literal: :8013 (vllm/qwen-27b-dual-max; its label was fixed in bcabbb2d);
+    # :8030/:8032 are multi-slug ports; :8090/:8188/:4000 are infra, not
+    # registry variants.
     local p_27b_dual=8010 p_a3b_dual=8051 p_llamacpp=8020 p_gemma12b=8038
     local p_qat=8033 p_thinkingcap=8099 p_deckard=8199
     if declare -F registry_lookup_port >/dev/null 2>&1; then
@@ -914,7 +886,6 @@ mode_27b() {
     echo -e "${CYAN}═══ Switching to 27B dual-card MTP mode (default) ═══${NC}"
     echo "Starting: Qwen3.6-27B MTP n=3 + fp8 KV + 262K + vision + 2 streams (TP=2)"
     echo "Port: 8010 | Container: vllm-qwen36-27b-dual"
-    echo "Stopping: other 27B variants"
     echo ""
     stop_all_gemma
     stop_deckard
@@ -922,9 +893,6 @@ mode_27b() {
     stop_comfyui
     stop_step_voice
     _director_evict_if_gpu
-    stop_27b_dual_dflash
-    stop_27b_dual_dflash_noviz
-    stop_27b_dual_turbo
     wait_gpu_vram_settle     # let the torn-down scene's VRAM release before TP=2 boots (#535 follow-up)
     start_27b_dual_mtp
     start_service litellm
