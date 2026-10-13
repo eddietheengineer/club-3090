@@ -1104,7 +1104,9 @@ _DISK_TEST_REL = "scripts/tests/test-compose-registry-disk.sh"
 _DISK_ENTRIES = re.compile(r'(len\(COMPOSE_REGISTRY\) == )(\d+)(, f"registry expects )(\d+)( entries)')
 _DISK_FILES = re.compile(r'(len\(disk_paths\) == )(\d+)(, f"disk expects )(\d+)( compose files)')
 APPLY_GUARDS = ("test-compose-registry-disk", "test-compose-status-drift",
-                "test-compose-mounts-resolve", "test-model-weights-registry")
+                "test-compose-mounts-resolve", "test-model-weights-registry",
+                "test-docs-slug-tables")
+_SLUG_TABLES_REL = "tools/docs/slug_tables.py"
 
 _APPLY_CHECK = r"""
 import json, sys
@@ -1329,6 +1331,19 @@ def apply_bundle(root: Path, target: Path, files: dict[str, Any], states: list[d
         if bumped is not None:
             modified[disk_test] = bumped
 
+    # last of the refusals: the more specific ones above say what's actually wrong
+    pages: list[Path] = []
+    if (target / _SLUG_TABLES_REL).is_file():
+        listed = _run_in(target, [sys.executable, _SLUG_TABLES_REL, "--pages"])
+        if listed.returncode != 0:
+            raise Refusal(f"`python3 {_SLUG_TABLES_REL} --pages` failed in {target}:\n"
+                          + (listed.stderr or listed.stdout).strip()[-800:])
+        pages = [target / ln.strip() for ln in listed.stdout.splitlines() if ln.strip()]
+        if _run_in(target, [sys.executable, _SLUG_TABLES_REL, "--check"]).returncode != 0:
+            raise Refusal(f"the card pages' slug tables in {target} are already out of date "
+                          f"(`python3 {_SLUG_TABLES_REL} --check` is red), and regenerating them "
+                          f"here would fold that unrelated change into this PR. Regenerate them "
+                          f"in their own commit first: `python3 {_SLUG_TABLES_REL}`")
     _info(f"apply into {target} (branch {branch or '?'}):")
     for p in new_files:
         _info(f"  add    {p.relative_to(target)}")
@@ -1336,6 +1351,9 @@ def apply_bundle(root: Path, target: Path, files: dict[str, Any], states: list[d
         _info(f"  merge  {_REGISTRY_YAML_REL}: {', '.join(slugs)}")
     for p in modified:
         _info(f"  edit   {p.relative_to(target)}")
+    if slugs and pages:
+        _info(f"  regen  the card pages' slug tables "
+              f"({', '.join(p.relative_to(target).as_posix() for p in pages)})")
     if slugs and (target / _DISK_TEST_REL) not in modified:
         _info(f"  (not bumped: {_DISK_TEST_REL}'s counts don't match the target today — "
               "fix them by hand)")
@@ -1348,7 +1366,8 @@ def apply_bundle(root: Path, target: Path, files: dict[str, Any], states: list[d
 
     write_bundle(out, files)              # PR_BODY.md for the PR, and a record of what went in
     baseline = guard_results(target)
-    snapshot = {p: p.read_bytes() for p in [*modified, target / _REGISTRY_YAML_REL]}
+    snapshot = {p: p.read_bytes() for p in [*modified, target / _REGISTRY_YAML_REL, *pages]
+                if p.is_file()}
     created: list[Path] = []
 
     def restore(why: str) -> int:
@@ -1399,9 +1418,19 @@ def apply_bundle(root: Path, target: Path, files: dict[str, Any], states: list[d
         chk = _run_in(target, cmd)
         if chk.returncode != 0:
             return restore(f"{what}:\n" + (chk.stderr or chk.stdout).strip()[-800:])
+    tables_written: list[str] = []
+    if slugs and pages:
+        gen = _run_in(target, [sys.executable, _SLUG_TABLES_REL])
+        again = _run_in(target, [sys.executable, _SLUG_TABLES_REL, "--check"])
+        if gen.returncode != 0 or again.returncode != 0:
+            return restore("the card pages' slug tables could not be regenerated:\n"
+                           + (gen.stderr or again.stderr or again.stdout).strip()[-800:])
+        tables_written = [p.relative_to(target).as_posix() for p in pages
+                          if p.is_file() and p.read_bytes() != snapshot.get(p)]
 
     _info(f"applied: {len(new_files)} file(s) added, {len(slugs)} registry entr"
-          f"{'y' if len(slugs) == 1 else 'ies'} merged, {len(modified)} file(s) edited")
+          f"{'y' if len(slugs) == 1 else 'ies'} merged, {len(modified)} file(s) edited"
+          + (f", slug tables regenerated in {', '.join(tables_written)}" if tables_written else ""))
     _info("guards in the target:")
     red = []
     for g, (code, fails) in guard_results(target).items():
@@ -1419,8 +1448,7 @@ def apply_bundle(root: Path, target: Path, files: dict[str, Any], states: list[d
                 _info(f"         {ln}")
     _info("still to do there: test-profiles-compat and test-launch-compat (the engine's "
           "supported_model_families and the hardware profiles' supported_kv_formats must "
-          "name the new combinations), python3 tools/docs/slug_tables.py (the card pages' "
-          "slug tables; test-docs-slug-tables), diagnose-profile.sh <slug>, a boot through "
+          "name the new combinations), diagnose-profile.sh <slug>, a boot through "
           "switch.sh + verify-full, then the full suite — this is a catalog-shape change.")
     todo = _still_to_do(files.get("PR_BODY.md") or "")
     if todo:

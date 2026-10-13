@@ -150,6 +150,7 @@ python3 scripts/lib/profiles/export_pr.py --spec-file "$TMP/spec.json" --root "$
 out="$(C3_ALLOW_CORE_PROMOTE= apply_ "$T" --dry-run)"; code=$?
 [[ $code -eq 0 && "$out" == *"add    $COMPOSE"* && "$out" == *"merge  scripts/lib/profiles/registry.yaml: $SLUG"* \
    && "$out" == *"edit   $PROFILE"* && "$out" == *"edit   scripts/tests/test-compose-registry-disk.sh"* \
+   && "$out" == *"regen  the card pages' slug tables"* \
    && "$out" == *"dry-run — nothing written"* ]] && untouched "$T" \
   && ok "--dry-run lists every change, needs no gate, writes nothing" || fail "dry-run (rc=$code): $out"
 
@@ -175,11 +176,13 @@ command grep -q '== 171, f"registry expects 171 entries' "$T/scripts/tests/test-
 (cd "$T" && python3 scripts/lib/profiles/migrate_registry_to_yaml.py --check >/dev/null 2>&1) \
   && ok "the target's registry.yaml is canonical" || fail "registry not canonical"
 changed="$(git -C "$T" status --porcelain --untracked-files=all | sort | tr '\n' '|')"
-want="$(printf '%s\n' " M $PROFILE" " M scripts/lib/profiles/registry.yaml" " M scripts/tests/test-compose-registry-disk.sh" "?? $COMPOSE" | sort | tr '\n' '|')"
-[[ "$changed" == "$want" ]] && ok "exactly those four paths changed" || fail "changed: $changed"
+want="$(printf '%s\n' " M $PROFILE" " M scripts/lib/profiles/registry.yaml" " M scripts/tests/test-compose-registry-disk.sh" " M docs/DUAL_CARD.md" "?? $COMPOSE" | sort | tr '\n' '|')"
+[[ "$changed" == "$want" ]] && ok "exactly those five paths changed (the dual card page's slug table among them)" || fail "changed: $changed"
+[[ "$out" == *"slug tables regenerated in docs/DUAL_CARD.md"* ]] && command grep -qF "\`$SLUG\`" "$T/docs/DUAL_CARD.md" \
+  && ok "the new slug has a row in the regenerated dual table" || fail "slug table: $out"
 [[ "$out" == *"ok   test-compose-registry-disk"* && "$out" == *"ok   test-model-weights-registry"* \
    && "$out" == *"ok   test-compose-mounts-resolve"* && "$out" == *"ok   test-compose-status-drift"* \
-   && "$out" != *"red above"* ]] \
+   && "$out" == *"ok   test-docs-slug-tables"* && "$out" != *"red above"* ]] \
   && ok "guards in the target all green, status drift included" || fail "guards: $out"
 [[ -f "$TMP/out-t-refuse/PR_BODY.md" ]] && ok "the bundle (PR_BODY.md) is written beside it" || fail "no PR_BODY.md"
 
@@ -189,6 +192,14 @@ out="$(apply_ "$T3")"; code=$?
 [[ $code -eq 0 && "$out" == *"--   test-compose-mounts-resolve: red before the apply too"* \
    && "$out" == *"ok   test-compose-status-drift"* && "$out" != *"red above"* ]] \
   && ok "a guard red before the apply is not blamed on it" || fail "baseline (rc=$code): $out"
+
+# 5b. slug tables already stale in the target: refused before anything is written
+T5="$(target t-stale-tables)"
+sed -i '0,/<!-- END GENERATED: slug-table dual -->/s//| stale | row |\n<!-- END GENERATED: slug-table dual -->/' "$T5/docs/DUAL_CARD.md"
+commit_in "$T5" "stale the dual table"
+out="$(apply_ "$T5")"; code=$?
+[[ $code -eq 3 && "$out" == *"slug tables in"*"already out of date"* ]] && untouched "$T5" \
+  && ok "slug tables stale before the apply are refused, nothing written" || fail "stale tables (rc=$code): $out"
 
 # 6. a check failing after the write puts the target back
 T4="$(target t-restore)"

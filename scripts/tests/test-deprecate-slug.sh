@@ -81,11 +81,14 @@ cp scripts/tests/test-compose-status-drift.sh "$R/scripts/tests/"
 cp -r models "$R/"
 cp -r services/litellm "$R/services/"
 cp -r tools/tui-core "$R/tools/"
-mkdir -p "$R/docs"; cp docs/UPSTREAM.md "$R/docs/"
+mkdir -p "$R/docs" "$R/tools/docs"; cp docs/UPSTREAM.md docs/SINGLE_CARD.md docs/DUAL_CARD.md docs/MULTI_CARD.md "$R/docs/"
+cp tools/docs/slug_tables.py "$R/tools/docs/"
+DUAL_PAGE="$R/docs/DUAL_CARD.md"
+dual_table() { awk '/BEGIN GENERATED: slug-table dual/{f=1} f; /END GENERATED: slug-table dual/{f=0}' "$DUAL_PAGE"; }   # the generated block only: prose may name a slug
 REG="$R/scripts/lib/profiles/registry.yaml"
 DUAL_COMPOSE="$R/models/qwen3.6-27b/vllm/compose/dual/autoround-int4/fp8-mtp.yml"
 dep() { bash "$R/scripts/deprecate-slug.sh" "$@" 2>&1 | command grep -v '^\[compat\]'; return "${PIPESTATUS[0]}"; }
-state() { cat "$REG" "$DUAL_COMPOSE" "$R/services/litellm/config.yaml" | sha256sum; }
+state() { cat "$REG" "$DUAL_COMPOSE" "$R/services/litellm/config.yaml" "$DUAL_PAGE" | sha256sum; }
 entry() { (cd "$R" && python3 -c "import sys; from scripts.lib.profiles.compose_registry import get_registry; print(get_registry()[sys.argv[1]].get(sys.argv[2]))" "$1" "$2"); }
 dflt() { (cd "$R" && python3 -c "import sys; from scripts.lib.profiles.compose_registry import DEFAULTS; print(DEFAULTS.get(tuple(sys.argv[1:])))" "$@"); }
 WHY="Superseded by vllm/qwen-27b-dual-max on every measured axis (#1234)."
@@ -136,7 +139,8 @@ rm -rf "$R/scripts/lib/profiles-local/"{models.d,composes,engines.d,extends.d,re
 # dry-run: the diff, and still nothing written
 out="$(C3_ALLOW_CORE_PROMOTE= dep vllm/dual --reason "$WHY" "${OK_ARGS[@]}" --dry-run)"; code=$?
 [[ $code -eq 0 && "$out" == *"+#   Status:    🗑️ Deprecated"* && "$out" == *"+      dual: vllm/qwen-27b-dual-max"* \
-   && "$out" == *"dry-run — nothing written"* && "$(state)" == "$S0" ]] \
+   && "$out" == *"dry-run — nothing written"* && "$out" == *"slug tables are regenerated on the real run"* \
+   && "$(state)" == "$S0" ]] \
   && ok "--dry-run shows the diff without the gate and writes nothing" || fail "dry-run (rc=$code): $out"
 
 # 3. the real thing
@@ -154,6 +158,9 @@ bash "$R/scripts/tests/test-compose-status-drift.sh" >/dev/null 2>&1 && ok "test
 (cd "$R" && python3 scripts/lib/profiles/migrate_registry_to_yaml.py --check >/dev/null 2>&1) && ok "registry.yaml canonical" || fail "registry not canonical"
 (cd "$R" && bash scripts/lib/litellm-emit.sh --check "$R" >/dev/null 2>&1) && ok "litellm-emit --check green" || fail "litellm-emit --check red"
 command grep -q "# status: deprecated" "$R/services/litellm/config.yaml" && ok "gateway route kept, annotated deprecated" || fail "no deprecated annotation in the gateway config"
+[[ "$out" == *"docs/DUAL_CARD.md (regenerated slug table)"* ]] && (cd "$R" && python3 tools/docs/slug_tables.py --check >/dev/null 2>&1) \
+  && ! dual_table | command grep -qF '`vllm/dual`' && ! dual_table | command grep -qF '`vllm/qwen-27b-dual-fast`' \
+  && ok "card pages: slug tables regenerated, both deprecated rows gone, --check green" || fail "slug tables: $out"
 [[ "$out" == *"qwen3.6-27b dual default now: vllm/qwen-27b-dual-max"* && "$out" == *"hand-written mentions in scripts/ and tools/"* \
    && "$out" == *"under models/"* && "$out" == *"models/qwen3.6-27b/CHANGELOG.md"* ]] \
   && ok "reports the resolver result, mentions (models/ too) and CHANGELOG" || fail "report: $out"
@@ -193,6 +200,13 @@ out="$(dep "$NONDEF" --reason "Test: stale gateway.")"; code=$?
 after="$(cat "$REG" "$N_COMPOSE" "$CFG" | sha256sum)"
 [[ $code -eq 3 && "$out" == *"already out of date"* && "$before" == "$after" ]] \
   && ok "a gateway config stale before the run is refused, nothing written" || fail "stale gateway (rc=$code): $out"
+(cd "$R" && bash scripts/lib/litellm-emit.sh "$R" >/dev/null 2>&1)   # the gateway check runs first: make it green
+sed -i '0,/<!-- END GENERATED: slug-table dual -->/s//| stale | row |\n<!-- END GENERATED: slug-table dual -->/' "$DUAL_PAGE"
+before="$(cat "$REG" "$N_COMPOSE" "$DUAL_PAGE" | sha256sum)"
+out="$(dep "$NONDEF" --reason "Test: stale slug tables.")"; code=$?
+after="$(cat "$REG" "$N_COMPOSE" "$DUAL_PAGE" | sha256sum)"
+[[ $code -eq 3 && "$out" == *"slug tables are already out of date"* && "$before" == "$after" ]] \
+  && ok "slug tables stale before the run are refused, nothing written" || fail "stale slug tables (rc=$code): $out"
 ls "$R"/scripts/lib/profiles/*.deprecate.tmp "$R"/models/*/*/compose/*/*/*.deprecate.tmp >/dev/null 2>&1 \
   && fail "temp files left behind" || ok "no temp files left behind"
 

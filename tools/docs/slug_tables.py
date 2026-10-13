@@ -3,6 +3,7 @@
 
     python3 tools/docs/slug_tables.py          # rewrite the generated blocks in place
     python3 tools/docs/slug_tables.py --check  # exit 1 (with a diff) if any block is stale
+    python3 tools/docs/slug_tables.py --pages  # the pages it manages, one repo-relative path per line
 
 Each card page carries one or more marked blocks:
 
@@ -190,6 +191,10 @@ def rebuild(text: str) -> str:
 
 
 def main(argv: list[str]) -> int:
+    if "--pages" in argv:
+        for path in sorted(set(PAGES.values())):
+            print(path.relative_to(ROOT).as_posix())
+        return 0
     check = "--check" in argv
     stale = 0
     for path in sorted(set(PAGES.values())):
