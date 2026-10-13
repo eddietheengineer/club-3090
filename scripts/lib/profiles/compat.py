@@ -275,11 +275,11 @@ class EngineProfile:
     genesis_pin: Optional[str] = None
     notes: Optional[str] = None
     # #1365: the compose env var this engine's image is injected as. None means
-    # the engine has no single image env -- either it is not an image pin at all
-    # (pip engines, local builds), or one profile serves two binaries under
-    # different vars (llama-cpp-local: LLAMACPP_IMAGE vs IK_LLAMA_IMAGE). The
-    # resolver returns {} for those rather than raising, so a slug is still
-    # resolvable for hardware injection even when its image cannot be pinned.
+    # the engine has no single image env -- it is not an image pin at all (pip
+    # engines, local builds). The resolver returns {} for those rather than
+    # raising, so a slug is still resolvable for hardware injection even when its
+    # image cannot be pinned. (llama-cpp-local was null too while its live slugs
+    # spanned two binaries; it names LLAMACPP_IMAGE since 2026-10-13.)
     image_env: Optional[str] = None
     # Where the engine comes from (docs/ADDING_ENGINES.md, "CONTRACT — engine
     # lineage"): relation stock | patched | derivative | fork | new, its base and

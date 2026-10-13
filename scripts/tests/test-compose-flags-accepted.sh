@@ -131,7 +131,8 @@ for row in "${ROWS[@]}"; do
     # ⚠️ ONE ENGINE ID, TWO BINARIES. ik-llama/* slugs register against
     # `llama-cpp-local` but their composes pin ${IK_LLAMA_IMAGE:-…}, a different
     # fork with a different flag set (that split is why #1365 gave the profile
-    # `image_env: null`). Checking an ik compose against the MAINLINE binary
+    # `image_env: null` until every ik slug was deprecated; it names
+    # LLAMACPP_IMAGE since 2026-10-13). Checking an ik compose against the MAINLINE binary
     # would be a confident wrong answer in both directions. They are skipped
     # by the image comparison below, which is what keeps them out.
     compose_img="$(command sed -nE 's/^[[:space:]]*image:[[:space:]]*"?\$\{[A-Z_0-9]+:-([^}"]+)\}"?.*/\1/p;s/^[[:space:]]*image:[[:space:]]*"?([^$"[:space:]]+)"?[[:space:]]*$/\1/p' "$c" | head -1)"

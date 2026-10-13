@@ -623,6 +623,8 @@ if _bl_path.exists():
 # ${ENGINE_IMAGE:-literal} env-fallback form) — the pin truth for engines with
 # no docker-image install.spec (ik / llama.cpp pin per-compose or roll by policy).
 _IMG_RE = _re.compile(r"^\s*image:\s*[\"']?(?:\$\{[A-Z_0-9]+:-)?([^\s}\"']+)\}?", _re.M)
+# The variable an `image: ${VAR:-default}` line reads, or None for a literal image.
+_IMG_VAR_RE = _re.compile(r"^\s*image:\s*[\"']?\$\{([A-Z_0-9]+):-", _re.M)
 
 
 def _compose_image_default(compose_path: str):
@@ -631,6 +633,15 @@ def _compose_image_default(compose_path: str):
     except OSError:
         return None
     m = _IMG_RE.search(txt)
+    return m.group(1) if m else None
+
+
+def _compose_image_var(compose_path: str):
+    try:
+        txt = (root / compose_path).read_text(encoding="utf-8")
+    except OSError:
+        return None
+    m = _IMG_VAR_RE.search(txt)
     return m.group(1) if m else None
 
 # First `--served-model-name` argument in the compose — PLAIN-TEXT parse (no
@@ -656,16 +667,19 @@ def _compose_served_name(compose_path: str):
 
 def _current_pin(slug: str, compose_path: str):
     """The pin a launcher-started serve actually runs TODAY: the engine
-    profile's docker-image spec when it has one (launchers inject it), else
-    the compose's image default."""
+    profile's docker-image spec when the compose's `image:` reads the variable
+    the launchers inject it as, else the compose's image default."""
     try:
         exports = resolve_variant_pin(profiles, slug)
-        # Nightly pins export a bare SHA (VLLM_NIGHTLY_SHA) — not comparable to
-        # an image string; fall through to the compose default for those.
-        # empty == this engine exposes no single injectable image var (#1365);
-        # that is a normal answer now, not a raise -- fall through to the compose default.
-        if exports and "VLLM_NIGHTLY_SHA" not in exports:
-            return next(iter(exports.values()))
+        # Only the variable the compose reads counts. The deprecated ik-llama/*
+        # slugs are registered to llama-cpp-local, whose pin is injected as
+        # LLAMACPP_IMAGE, but their composes read IK_LLAMA_IMAGE; a literal
+        # image ignores the injection altogether. Nightly pins export a bare
+        # SHA (VLLM_NIGHTLY_SHA) and their image lines don't open with ${VAR:-,
+        # so they fall through to the compose default as before.
+        var = _compose_image_var(compose_path)
+        if var and var in exports:
+            return exports[var]
     except ProfileError:
         pass
     return _compose_image_default(compose_path)

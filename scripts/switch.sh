@@ -124,11 +124,11 @@ club_config_load "${ROOT_DIR}"
 source "${ROOT_DIR}/scripts/lib/engine-cache.sh"
 # shellcheck source=lib/slug-label.sh
 source "${ROOT_DIR}/scripts/lib/slug-label.sh"
-# #632 — surface a user engine-image pin (ik-llama / llama.cpp images are NOT
-# profile-injected, so a .env/shell pin is the only override path; echo it so a
-# wrong-image boot is never silent).  Fires only when actually set.
+# #632 — surface a user ik-llama image pin (that image is NOT profile-injected, so
+# a .env/shell pin is the only override path; echo it so a wrong-image boot is
+# never silent). Fires only when actually set. LLAMACPP_IMAGE is injected from
+# llama-cpp-local's profile since 2026-10-13, so the pin arm below reports it.
 [[ -n "${IK_LLAMA_IMAGE:-}" ]] && echo "[switch] ik-llama image pinned: ${IK_LLAMA_IMAGE}"
-[[ -n "${LLAMACPP_IMAGE:-}" ]] && echo "[switch] llama.cpp image pinned: ${LLAMACPP_IMAGE}"
 
 # Surface the resolved MODEL_DIR + its source so the precedence is unambiguous
 # (the exact confusion fixed in 9a27de83 / #187). Unset → the compose's built-in
@@ -1233,7 +1233,7 @@ export_variant_engine_pin() {
       # is the shell's. Empty counts as unset, so the pin applies.
       # Lines go to STDOUT: check_variant dry-runs this function with stdout
       # discarded, so a stderr line would print twice.
-      VLLM_NIGHTLY_SHA|VLLM_IMAGE|BEELLAMA_IMAGE|EXLLAMAV3_IMAGE|SGLANG_IMAGE|LLAMACPP_CLUB3090_IMAGE|LLAMACPP_PRISM_IMAGE)
+      VLLM_NIGHTLY_SHA|VLLM_IMAGE|BEELLAMA_IMAGE|EXLLAMAV3_IMAGE|SGLANG_IMAGE|LLAMACPP_IMAGE|LLAMACPP_CLUB3090_IMAGE|LLAMACPP_PRISM_IMAGE)
         if [[ -z "${!key:-}" || "${!key}" == "$value" ]]; then
           export "${key}=${value}"
         elif [[ "$(declare -p CLUB3090_CONFIG_SOURCE 2>/dev/null)" == "declare -A"* \
