@@ -37,14 +37,16 @@ build step, the edit refuses and the build stops; it never ships a native build 
 Everything else is upstream's: the Dockerfile at the release's commit (CUDA 13.0 devel base, so the
 host needs an NVIDIA driver ≥ 580) and the image encoder (`BUILD_VISION=1`).
 
-**GPU archs: upstream's default plus `90`.** Upstream builds `75;80;86;89;120` (RTX 20 / 30 / 40 / 50
-and the A-series). We add `90` because H100 is a club hardware class. A card whose arch isn't in the
-image still starts, but `setup.py` compiles the engine for it at the first start of every fresh
+**GPU archs: upstream's default,** `75;80;86;89;120` (RTX 20 / 30 / 40 / 50 and the A-series). sm_90
+(H100) was in the list briefly (#1671) and was dropped on 2026-10-13: about a sixth of every build for
+an arch upstream doesn't list and nobody has run Strata on. A card whose arch isn't in the image still
+starts, but `setup.py` compiles the engine for it at the first start of every fresh
 container (the engine lives in the image, not on `/data`). That follows from `setup.py`'s reuse test; it
 hasn't been tested. Other cards:
 
 | Card | Arch | |
 |---|---|---|
+| H100 | `90` | not built: compiles at each fresh container's first start (the `v0.1.43.1` image pinned on 2026-10-13 still carries it) |
 | B200 / GB200 | `100` | not built (no club hardware class): compiles at each fresh container's first start |
 | DGX Spark (GB10) | `121` | **can't run**: ARM CPU, while the image is x86-64 and Strata's CPU kernels are x86 SIMD |
 | P100 / V100 | `60` / `70` | not built: CUDA 13 dropped them; upstream's experimental CUDA 12 build isn't in this image |
@@ -101,5 +103,5 @@ A published image is not a pin. To move the strata engine profile to a new relea
   user's saved setting may still name has to stay pullable.
 - **When `portable.py` refuses**, read upstream's new Dockerfile, move the edits to the new text, and run
   the build by hand once before letting CI publish.
-- **When the flag check fails**, `strata-entrypoint.sh` in the compose recipe needs the new spelling first;
+- **When the flag check fails**, `../launcher/strata-entrypoint.sh` (both composes mount it) needs the new spelling first;
   update both together.

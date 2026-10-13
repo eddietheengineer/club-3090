@@ -1008,6 +1008,8 @@ class TestApply:
             f"?? {CORE_COMPOSE_REL}",
             " M scripts/lib/profiles/registry.yaml",
             " M scripts/tests/test-compose-registry-disk.sh",
+            # --apply regenerates the card pages' slug tables (#1663); the slug is dual
+            " M docs/DUAL_CARD.md",
         }
         assert _in_target(t, (
             "from scripts.lib.profiles.compat import load_profiles\n"

@@ -6236,7 +6236,7 @@ entries:
     kv_format: bf16
     act_format: 16bit
     act8_capable: false
-    offload: residency
+    offload: uva
     moe_cache: false
     host_ram_gb: 135
     kv_offload: null
@@ -6252,8 +6252,9 @@ entries:
     default_port: 20272
     kvcalc_key: SKIP
     status: incubating
-    status_note: "Community recipe: DominikBucko/qwen38-flash-next-2x3090 (Apache-2.0), on bucko's official CI-built GHCR release image pinned by digest (v0.5.0). Field values READ FROM THE RUNNING ENGINE, not assumed: kv_format bf16 (kv_cache_dtype=auto on a bfloat16 model -- NOT fp8, which BENCHMARKS row 3 previously claimed); mem_util 0.9 is vLLM's default and only nominal: the recipe pins kv_cache_memory_bytes=4429185024 and vLLM logs 'does not respect the gpu_memory_utilization config'; offload 'residency' is the nearest catalogue token for cpu_offload_gb=30 with cpu_offload_params=['experts'] over offload_backend=uva -- the catalogue has no UVA-specific token. moe_backend=humming, MTP n=3 built-in. host_ram_gb 135 MEASURED 2026-09-18 on a full boot of this compose at shipped defaults, after a real generation: cgroup anon 57.64 GB (PLE 51.20 in RAM + runtime) + shmem 77.37 GB (the UVA expert offload -- anonymous SHARED memory, not /dev/shm, which held 21 MB) = 135.00 GB, corroborated by the system delta (free used 6.6 -> 141.7 GB = 135.1). Do NOT size from memory.current (231 GB) -- that is mostly reclaimable page cache from streaming a 129 GB checkpoint. Supersedes TWO wrong values: 128 (upstream's BOX SIZE, unsourced) and 121 (derived from the schema's generic 'all experts on CPU' worst case, which does not fit a recipe whose split is pinned by CPU_OFFLOAD_GB; it also assumed cpu_offload_gb was per-GPU, but the boot log reports 'Total CPU offloaded parameters: 29.6'). The compose now carries a CPU-Offload-Host-RAM-GB header so preflight can gate it. REBUILT 2026-09-18 at 2adf47b1 (was ceaa9fa, 10 commits behind): builds clean from a fresh clone now, so the local .dockerignore patch is DROPPED (upstream #6). KV pool 276,313 tokens vs 240,663 before (+14.8%) and now EXCEEDS the 262,144 declared context, so the old 'fillable 91%' caveat is gone -- credit upstream #11 (QSA prefill workspace bounded, peak temp alloc 266 -> 73.5 MiB). hot84 ADOPTED 2026-09-19 as upstream's default (#13, 'for prefill headroom'); hot88 is now upstream's opt-in and we no longer diverge. Measured one fresh boot per arm, alternating: VRAM/card 23,012 -> 22,550 MiB at ready and 23,256 -> 22,836 peak, i.e. ~450 MiB/card of activation headroom -- the ONLY established delta (deterministic allocation, consistent at both sampling points). Throughput moved too (decode narrative 68.38 -> 66.04, code 73.40 -> 70.15, prefill@10K 570.3 -> 591.8) but at n=1 boot per arm against a ~2.8% boot-to-boot noise floor that is SUGGESTIVE ONLY -- reported because decode and prefill move in opposite directions, which is the trade the knob describes. host_ram_gb UNCHANGED at ~136 GB measured both ways: the hot cache is a VRAM-side copy whose master buffer stays whole on the host, and the KV pool is pinned by KV_CACHE_MEMORY_BYTES so it cannot absorb the freed bytes either. FOLLOW-UP: the compose ships MAX_NUM_BATCHED_TOKENS=2048 because 4096 OOM'd a 10k prefill on both cards at hot88; ~450 MiB/card back is aimed squarely at that, so 4096 is worth a retest. MAX_NUM_BATCHED_TOKENS 4096 SHIPPED 2026-09-19 (was 2048, which existed because 4096 OOM'd a 10k prefill on both cards at hot88). Validated over 3 boots + a continuous soak: prefill @10K +34.6% (591.8 -> 796.3), @90K +62.3% (598.1 -> 970.8), decode FLAT (-1.4% narr / +1.6% code, opposite signs = noise); soak PASS with 4 MiB VRAM growth / 200, 0 errors, 100% TPS retention. Runs at 98.1% VRAM, 476 MiB/card margin; the 14 'expandable_segments ... OOM' warnings are a LOAD-TIME fixed cost, not creep (count unchanged across the soak). Revert with MAX_NUM_BATCHED_TOKENS=2048. ⚠️ ALL C=1. ⚠️ max_num_seqs=1 and maximum concurrency 1.05x at full context: this recipe is single-stream BY DESIGN, and upstream #10 (PLE handshake during concurrent CUDA graph capture) fixed a startup hang with two concurrent requests that we never exercised at C=1."
-    weights_companions: []
+    status_note: "Community recipe: DominikBucko/qwen38-flash-next-2x3090 (Apache-2.0), on bucko's official CI-built GHCR release image pinned by digest (v0.5.0). Field values READ FROM THE RUNNING ENGINE, not assumed: kv_format bf16 (kv_cache_dtype=auto on a bfloat16 model -- NOT fp8, which BENCHMARKS row 3 previously claimed); mem_util 0.9 is vLLM's default and only nominal: the recipe pins kv_cache_memory_bytes=4429185024 and vLLM logs 'does not respect the gpu_memory_utilization config'; offload 'uva': cpu_offload_gb=30 with cpu_offload_params=['experts'] over offload_backend=uva (it read 'residency' until 2026-10-13). The compact MTP draft in the repo's runtime/mtp-int4-g32 is its own variant, albucino-mtp-int4-g32, listed as a companion. moe_backend=humming, MTP n=3 built-in. host_ram_gb 135 MEASURED 2026-09-18 on a full boot of this compose at shipped defaults, after a real generation: cgroup anon 57.64 GB (PLE 51.20 in RAM + runtime) + shmem 77.37 GB (the UVA expert offload -- anonymous SHARED memory, not /dev/shm, which held 21 MB) = 135.00 GB, corroborated by the system delta (free used 6.6 -> 141.7 GB = 135.1). Do NOT size from memory.current (231 GB) -- that is mostly reclaimable page cache from streaming a 129 GB checkpoint. Supersedes TWO wrong values: 128 (upstream's BOX SIZE, unsourced) and 121 (derived from the schema's generic 'all experts on CPU' worst case, which does not fit a recipe whose split is pinned by CPU_OFFLOAD_GB; it also assumed cpu_offload_gb was per-GPU, but the boot log reports 'Total CPU offloaded parameters: 29.6'). The compose now carries a CPU-Offload-Host-RAM-GB header so preflight can gate it. REBUILT 2026-09-18 at 2adf47b1 (was ceaa9fa, 10 commits behind): builds clean from a fresh clone now, so the local .dockerignore patch is DROPPED (upstream #6). KV pool 276,313 tokens vs 240,663 before (+14.8%) and now EXCEEDS the 262,144 declared context, so the old 'fillable 91%' caveat is gone -- credit upstream #11 (QSA prefill workspace bounded, peak temp alloc 266 -> 73.5 MiB). hot84 ADOPTED 2026-09-19 as upstream's default (#13, 'for prefill headroom'); hot88 is now upstream's opt-in and we no longer diverge. Measured one fresh boot per arm, alternating: VRAM/card 23,012 -> 22,550 MiB at ready and 23,256 -> 22,836 peak, i.e. ~450 MiB/card of activation headroom -- the ONLY established delta (deterministic allocation, consistent at both sampling points). Throughput moved too (decode narrative 68.38 -> 66.04, code 73.40 -> 70.15, prefill@10K 570.3 -> 591.8) but at n=1 boot per arm against a ~2.8% boot-to-boot noise floor that is SUGGESTIVE ONLY -- reported because decode and prefill move in opposite directions, which is the trade the knob describes. host_ram_gb UNCHANGED at ~136 GB measured both ways: the hot cache is a VRAM-side copy whose master buffer stays whole on the host, and the KV pool is pinned by KV_CACHE_MEMORY_BYTES so it cannot absorb the freed bytes either. FOLLOW-UP: the compose ships MAX_NUM_BATCHED_TOKENS=2048 because 4096 OOM'd a 10k prefill on both cards at hot88; ~450 MiB/card back is aimed squarely at that, so 4096 is worth a retest. MAX_NUM_BATCHED_TOKENS 4096 SHIPPED 2026-09-19 (was 2048, which existed because 4096 OOM'd a 10k prefill on both cards at hot88). Validated over 3 boots + a continuous soak: prefill @10K +34.6% (591.8 -> 796.3), @90K +62.3% (598.1 -> 970.8), decode FLAT (-1.4% narr / +1.6% code, opposite signs = noise); soak PASS with 4 MiB VRAM growth / 200, 0 errors, 100% TPS retention. Runs at 98.1% VRAM, 476 MiB/card margin; the 14 'expandable_segments ... OOM' warnings are a LOAD-TIME fixed cost, not creep (count unchanged across the soak). Revert with MAX_NUM_BATCHED_TOKENS=2048. ⚠️ ALL C=1. ⚠️ max_num_seqs=1 and maximum concurrency 1.05x at full context: this recipe is single-stream BY DESIGN, and upstream #10 (PLE handshake during concurrent CUDA graph capture) fixed a startup hang with two concurrent requests that we never exercised at C=1."
+    weights_companions:
+      - albucino-mtp-int4-g32
     gateway: false
     serve_aliases: []
     required_sm: 8.6
@@ -6269,7 +6270,7 @@ entries:
     kv_format: bf16
     act_format: 16bit
     act8_capable: false
-    offload: residency
+    offload: uva
     moe_cache: false
     host_ram_gb: 170
     kv_offload: null
@@ -6292,6 +6293,68 @@ entries:
     serve_aliases: []
     required_sm: 8.6
     category: frontier
+  strata/qwen3.8-flash-next-iq3s-dual:
+    origin: core
+    model: qwen3.8-flash-next
+    weights_variant: ista-iq3s
+    workload: long-ctx-single
+    engine: strata
+    drafter: null
+    spec_method: mtp
+    kv_format: q8_0
+    act_format: 16bit
+    act8_capable: false
+    offload: engine
+    moe_cache: false
+    host_ram_gb: 60
+    kv_offload: null
+    chat_template: native
+    tp: 2
+    max_ctx: 131072
+    max_num_seqs: 1
+    mem_util: null
+    compose_path: models/qwen3.8-flash-next/strata/compose/dual/ista-iq3s/base.yml
+    requires_nvlink: false
+    requires_homogeneous_arch: false
+    required_engine_features: []
+    default_port: 8188
+    kvcalc_key: SKIP
+    status: incubating
+    status_note: "Two 3090s, Strata layer split (auto K=24): 18,768 experts resident (76%), decode hit ~99.7%. 122.5 / 153.9 decode, 2,228 / 3,364 prefill @10K/@90K on 0.1.43.1 (BENCHMARKS.md, Qwen3.8-Flash-Next / Strata, 2026-10-13; 0.1.33 measured 93.6 / 125.4). First start ~14 min (MTP fetch); later starts ~30 s. Engine: strata-club3090, club-3090's image of upstream Strata 0.1.43.1 (models/qwen3.8-flash-next/strata/image/); the numbers above are from the 0.1.33 local build unless dated later. Field values from the running engine: kv_format q8_0 is the nearest catalog token for Strata's int8 KV (32K cells resident in VRAM, the rest streamed to RAM via --kv-resident 32768); offload 'residency' = every expert page-locked in host RAM + a profile-filled, adaptively swapped VRAM expert cache; MTP is Strata's own draft layer (--spec 4, min-p 0.5). host_ram_gb 60 MEASURED on the dual arm 2026-10-06 (MemAvailable 218 -> 163.6 GiB while serving ≈ 58.4 GB). One request at a time; no vLLM-style KV offload. ⚠️ Strata's /health reports loaded:true before the engine fills its cache; the engine log line 'ready: http' is the real gate. ⚠️ IQ3_S quality unmeasured (8-pack pending)."
+    weights_companions: []
+    gateway: false
+    serve_aliases: []
+  strata/qwen3.8-flash-next-iq3s-single:
+    origin: core
+    model: qwen3.8-flash-next
+    weights_variant: ista-iq3s
+    workload: long-ctx-single
+    engine: strata
+    drafter: null
+    spec_method: mtp
+    kv_format: q8_0
+    act_format: 16bit
+    act8_capable: false
+    offload: engine
+    moe_cache: false
+    host_ram_gb: 60
+    kv_offload: null
+    chat_template: native
+    tp: 1
+    max_ctx: 131072
+    max_num_seqs: 1
+    mem_util: null
+    compose_path: models/qwen3.8-flash-next/strata/compose/single/ista-iq3s/base.yml
+    requires_nvlink: false
+    requires_homogeneous_arch: false
+    required_engine_features: []
+    default_port: 8189
+    kvcalc_key: SKIP
+    status: incubating
+    status_note: "One 3090 (GPU0), same install as the dual slug: 8,746 experts resident, decode hit ~90-93%. 106.1 / 121.5 decode, 1,920 / 2,359 prefill @10K/@90K on 0.1.43.1 (BENCHMARKS.md, Qwen3.8-Flash-Next / Strata, 2026-10-13; 0.1.33 measured 78.5 / 93.2). Engine: strata-club3090, club-3090's image of upstream Strata 0.1.43.1 (models/qwen3.8-flash-next/strata/image/); the numbers above are from the 0.1.33 local build unless dated later. Field values from the running engine: kv_format q8_0 is the nearest catalog token for Strata's int8 KV (32K cells resident in VRAM, the rest streamed to RAM via --kv-resident 32768); offload 'residency' = every expert page-locked in host RAM + a profile-filled, adaptively swapped VRAM expert cache; MTP is Strata's own draft layer (--spec 4, min-p 0.5). host_ram_gb 60 MEASURED on the dual arm 2026-10-06 (MemAvailable 218 -> 163.6 GiB while serving ≈ 58.4 GB). One request at a time; no vLLM-style KV offload. ⚠️ Strata's /health reports loaded:true before the engine fills its cache; the engine log line 'ready: http' is the real gate. ⚠️ IQ3_S quality unmeasured (8-pack pending)."
+    weights_companions: []
+    gateway: false
+    serve_aliases: []
 
 defaults:
   qwen3.6-27b:

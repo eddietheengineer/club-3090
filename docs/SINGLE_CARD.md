@@ -37,8 +37,9 @@ before you put an agent on it.
 |  | `vllm/qwen38-27b-single-fast` | 🧪 experimental | 262144 | [single/autoround-int4/mtp.yml](../models/qwen3.8-27b/vllm/compose/single/autoround-int4/mtp.yml) | [#1024](https://github.com/noonghunna/club-3090/discussions/1024) |  |
 |  | `vllm/qwen38-27b-single-nvfp4` | 🧪 experimental | 65536 | [single/nvfp4/mtp.yml](../models/qwen3.8-27b/vllm/compose/single/nvfp4/mtp.yml) | [#1024](https://github.com/noonghunna/club-3090/discussions/1024) |  |
 |  | `llama-cpp-prism/qwen38-27b-single-ternary-pq2` | 🐣 incubating | 262144 | [single/prism-ternary-pq2/ternary.yml](../models/qwen3.8-27b/llama-cpp-prism/compose/single/prism-ternary-pq2/ternary.yml) | — |  |
+| **Qwen3.8-Flash-Next (MoE, Qwen)** | `strata/qwen3.8-flash-next-iq3s-single` | 🐣 incubating | 131072 | [single/ista-iq3s/base.yml](../models/qwen3.8-flash-next/strata/compose/single/ista-iq3s/base.yml) | — | host RAM ≥ 60 GB |
 
-15 slugs. ⭐ = the model's default for this topology (`bash scripts/switch.sh <model>/default`). Generated from the registry by `tools/docs/slug_tables.py`; don't edit by hand.
+16 slugs. ⭐ = the model's default for this topology (`bash scripts/switch.sh <model>/default`). Generated from the registry by `tools/docs/slug_tables.py`; don't edit by hand.
 <!-- END GENERATED: slug-table single -->
 
 ## Launch

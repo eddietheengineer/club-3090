@@ -1,0 +1,72 @@
+# ===========================================================================
+# Profile (at-a-glance):
+#   Model:     Qwen3.8-Flash-Next — ISTA-DASLab GSQ-RCO IQ3_S (2 shards: 54.8 GB experts +
+#              28.8 GB n-gram table), Strata's best-quality native format. Strata's setup
+#              SHA-256-checks both shards on the first start.
+#   Engine:    Strata 0.1.43.1 — ghcr.io/noonghunna/strata-club3090, built by club-3090 from
+#              upstream's Dockerfile at the release commit (models/qwen3.8-flash-next/strata/image/)
+#   Topology:  Single 3090 (GPU0; ESTATE_GPUS picks another), Strata `--gpu 0`. Shares the data
+#              volume (install, pack, MTP layer, config) with the dual slug; only the start flag differs.
+#   Drafter:   MTP — Strata's own draft layer (--spec 4, min-p 0.5), fetched into the data volume at setup
+#   KV:        Strata default (int8): 32K cells in VRAM, the rest streamed to RAM
+#   Vision:    no
+#   Max ctx:   131072
+#   Genesis:   N/A — Genesis is Qwen3-Next-specific
+#   Status:    🐣 Incubating
+#   Caveats:   Not gate-passing yet: IQ3_S quality unmeasured (8-pack pending). One request at a time.
+#              The first start needs the network (setup.py installs Python packages and range-reads
+#              ~5 GB of MTP tensors from Qwen/Qwen3.8-Flash-Next) and ~60 GB of free host RAM. Host
+#              needs NVIDIA driver >= 580 (CUDA 13) and an AVX2 CPU; x86-64 only. Strata reasons by
+#              default and takes no server-side effort default (the vLLM Flash-Next slugs default to
+#              low); our tooling has no thinking-budget support for it yet. No launch knobs (SPEC_N,
+#              REASONING_EFFORT, ...): Strata's settings live in the setup config on the data volume.
+#              The FIRST start takes ~14 min on the reference rig (image pull ~2 min, MTP fetch ~10 min,
+#              MTP pack ~2 min), longer than switch.sh's 10-minute wait: give it READY_TIMEOUT=1800
+#              (or re-run switch.sh once it times out; the container keeps going). Later starts: ~30 s.
+#              Measured 2026-10-13 on 0.1.43.1: 106.1 / 121.5 decode, 1,920 / 2,359 prefill (BENCHMARKS.md, Qwen3.8-Flash-Next / Strata).
+# CPU-Offload-Host-RAM-GB: 60
+#   ⤷ MEASURED 2026-10-06: MemAvailable fell ~58.4 GB while serving. Strata page-locks every
+#     expert in host RAM whatever the card count, so this is also the worst case.
+#     Registry `host_ram_gb` is the NOMINAL figure and must stay <= this.
+#   Best for:  Flash-Next on ONE 3090 + ~64 GB RAM
+# ---------------------------------------------------------------------------
+# Strata (github.com/Niko1221/Strata) is its own engine for this model: see docs/engines/STRATA.md.
+# Sibling: ../../dual/ista-iq3s/base.yml (two cards, same data volume).
+#   bash scripts/switch.sh --force strata/qwen3.8-flash-next-iq3s-single
+# The first start runs Strata's one-time setup (SHA-256 check, pack, MTP layer; config kept on the
+# data volume). By hand: SETUP_ONLY=1 docker compose -f base.yml run --rm strata, then up -d.
+# ⚠️ Strata sizes its RAM tiers from FREE memory at start, so drop the page cache first on a
+#   box that just read large files. /health says loaded before the engine has filled its expert
+#   cache; the `ready: http` line in docker logs is the real gate.
+services:
+  strata:
+    image: ${STRATA_IMAGE:-ghcr.io/noonghunna/strata-club3090@sha256:7f8643c8aaf5455fddb01bff1e11a230d1e2105fdcaf160b6e68fbe2e46a3e7c}
+    container_name: ${ESTATE_CONTAINER:-strata-qwen38-flash-next-iq3s-single}
+    restart: ${CLUB3090_RESTART:-unless-stopped}
+    # root, with the launcher's group: what Strata writes to the data volume stays
+    # removable by the user (the entrypoint sets umask 0002)
+    user: "0:${DOCKER_GID:-1000}"
+    entrypoint: ["/bin/sh", "/opt/club3090/strata-entrypoint.sh"]
+    ulimits:
+      memlock: -1            # Strata pins (locks) RAM for the GPU; upstream's docker run uses -1
+    ports:
+      - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8189}}:8080"
+    environment:
+      CONTEXT: "${CONTEXT:-131072}"
+      KV: "${KV:-}"
+      SETUP_ONLY: "${SETUP_ONLY:-0}"
+      REINSTALL: "${REINSTALL:-0}"
+      STRATA_START_GPUS: "${STRATA_START_GPUS:-0}"
+      # the entrypoint passes --host 0.0.0.0 and --port 8080 itself (API_KEY, when set, too)
+    volumes:
+      - "${MODEL_DIR:-../../../../../../models-cache}/qwen3.8-flash-next-gsq-rco-gguf/IQ3_S:/gguf:ro"
+      # packs, MTP layer and config; the launchers put it under ~/.local/share/club-3090
+      - "${STRATA_DATA_DIR:-${CLUB3090_DATA_DIR:-../../..}/strata-data}:/data"
+      - "../../../launcher/strata-entrypoint.sh:/opt/club3090/strata-entrypoint.sh:ro"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['${ESTATE_GPUS:-0}']
+              capabilities: [gpu]

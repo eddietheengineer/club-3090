@@ -206,6 +206,19 @@ This is the "free 30 GB of disk" moment.
 - The composes set bucko's own launcher environment (`MTP_DEPTH`, `CPU_OFFLOAD_GB`, `QWEN38_*`,
   `VLLM_WNA16_STATIC_HOT_CACHE_*`): re-read the release notes for renamed or retired variables.
 
+### Strata
+
+- Pinned by digest to `ghcr.io/noonghunna/strata-club3090`, which our CI builds from each upstream release
+  (`.github/workflows/strata-image.yml`, recipe in `models/qwen3.8-flash-next/strata/image/`). A published
+  image is not a pin: boot both `strata/` slugs on the new digest, run `verify-full`, then
+  `scripts/engine-pin-bump.sh strata ghcr.io/noonghunna/strata-club3090@sha256:<digest>` and update
+  `lineage.source_ref` to the image's `club3090.upstream.revision` label.
+- The volatile parts are upstream's Dockerfile build step (the image build's `portable.py` refuses when its
+  anchors move) and the `setup.py` flags `launcher/strata-entrypoint.sh` passes (the image build fails when one
+  disappears). Both stop the build rather than publish a broken image.
+- The data volume carries Strata's pack and MTP layer between versions; a release that changes the pack
+  format re-prepares it at the first start (`REINSTALL=1` forces it).
+
 ### Luce DFlash / xtransformers / future engines
 
 - When adding a new engine, add an "Engine-specific notes" subsection here

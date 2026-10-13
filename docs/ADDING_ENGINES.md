@@ -44,7 +44,7 @@ Every engine declares how it relates to the engines we already ship. Lineage dec
 | **patched** | a stock image plus **our** patches, mounted at boot | everything; the patches fall under [PATCH_POLICY.md](PATCH_POLICY.md) | `patches.yml` entries and drift guards | `vllm-gemma-stable`, `vllm-diffusion-gemma` |
 | **derivative** | upstream engine pinned at a version, plus a **third party's** patch set or launcher, shipped as its own image | log format, metrics and API, but only for what it keeps unchanged | every difference: launcher env names, port, log wording, template handling | `vllm-lmcache` |
 | **fork** | a separately maintained source tree branched from an engine, with its own releases | whatever it hasn't diverged on; check, don't assume | everything it changed, plus the fork chain | `llamacpp-club3090-*`, `llama-cpp-prism` |
-| **new** | an independent codebase | nothing | the whole tooling contract below | `exllamav3` (TabbyAPI) |
+| **new** | an independent codebase | nothing | the whole tooling contract below | `exllamav3` (TabbyAPI), `strata` |
 
 The loader validates the field (`compat.py → _lineage`): unknown keys, an unknown relation, an unquoted numeric version and a malformed `chain` are refused. `test-engine-lineage` holds every curated profile to it.
 
