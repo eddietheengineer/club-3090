@@ -192,6 +192,29 @@ if [[ -n "${LC:-}" ]]; then
   else fail "llama-cpp-local attach (rc=$code): $(echo "$out" | tail -4)"; fi
 else fail "fixture: no live llama-cpp-local slug in llama-cpp/"; fi
 
+# 11b. mem_util is required only where it exists: a vLLM entry without one is refused,
+# a llama.cpp entry without one is not (every core llama.cpp entry carries None).
+if [[ -n "${LC:-}" ]]; then
+  res="$(py "$R5" "
+import json
+print(json.load(open('scripts/lib/profiles-local/registry.local.json'))['llamacpp/$LM-attach-test']['mem_util'])")"
+  [[ "$res" == "None" ]] && ok "register writes no mem_util for a llama.cpp slug (core's llama.cpp entries carry None)" \
+    || fail "register wrote mem_util=$res for a llama.cpp slug"
+  echo "{\"model_id\": \"$LM\"}" > "$TMP/spec-ll.json"
+  out="$(python3 scripts/lib/profiles/export_pr.py --spec-file "$TMP/spec-ll.json" --root "$R5" --check 2>&1)"
+  if [[ "$out" != *mem_util* ]]; then ok "llama.cpp slug without mem_util: no mem_util gap"
+  else fail "llama.cpp slug refused for mem_util: $(echo "$out" | command grep mem_util)"; fi
+fi
+py "$R" "
+import json
+p = 'scripts/lib/profiles-local/registry.local.json'
+d = json.load(open(p)); d['$SLUG']['mem_util'] = None
+json.dump(d, open(p, 'w'), indent=2)" >/dev/null
+out="$(python3 scripts/lib/profiles/export_pr.py --spec-file "$TMP/spec.json" --root "$R" --check 2>&1)"; code=$?
+if [[ $code -ne 0 && "$out" == *"$SLUG: registry kwarg 'mem_util' is required on a vllm-type engine"* ]]; then
+  ok "vLLM slug without mem_util: refused (negative control)"
+else fail "vLLM slug without mem_util (rc=$code): $(echo "$out" | command grep -v '^\[compat\]' | tail -4)"; fi
+
 # 12. a NEW model on an engine core already uses: core's prefix and directory too.
 # It used to be named after the engine id (vllm-stable/<model>), which
 # export_pr.py refuses, so every such slug needed a rename before a PR.

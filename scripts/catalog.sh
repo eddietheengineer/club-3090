@@ -552,6 +552,13 @@ if _undetectable:
     print("[catalog]   and publish on a listed container-side port to be detected.",
           file=sys.stderr)
 
+# mem_util is the compose's --gpu-memory-utilization / --mem-fraction-static, so only a
+# vLLM- or SGLang-type engine has one; every core llama.cpp / exl3 entry carries None,
+# and export_pr.py requires it only for those two types.
+_reg_type = (getattr(_engines.get(engine), "type", "") if engine in known
+             else normalize_type(etype_in or f.engine or "") or "")
+_mem_util = 0.9 if _reg_type in ("vllm", "sglang") else None
+
 spec = {
     "model_id": mid,
     "display_name": mid,
@@ -571,7 +578,7 @@ spec = {
         "spec_method": f.spec_method or None,
         "offload": _offload,
         "kv_format": kv or "f16", "tp": int(f.tp or 1),
-        "max_ctx": max_ctx, "max_num_seqs": 1, "mem_util": 0.9,
+        "max_ctx": max_ctx, "max_num_seqs": 1, "mem_util": _mem_util,
         "compose_path": cpath, "default_port": port, "kvcalc_key": "SKIP"}},
 }
 

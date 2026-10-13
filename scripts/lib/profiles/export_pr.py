@@ -415,9 +415,14 @@ def new_tp(state: dict) -> list[int]:
 
 REQUIRED_KWARGS = (
     "model", "weights_variant", "workload", "engine", "kv_format", "tp",
-    "max_ctx", "max_num_seqs", "mem_util", "compose_path", "default_port",
+    "max_ctx", "max_num_seqs", "compose_path", "default_port",
     "status",
 )
+# mem_util is the --gpu-memory-utilization / --mem-fraction-static the compose boots with,
+# so only vLLM- and SGLang-type engines have one (launch_compat reads it for those). Every
+# llama.cpp, exl3 and beellama entry in core carries None; requiring it everywhere refused
+# every such export. Decided by the engine profile's declared `type`, like kvcalc_key below.
+MEM_UTIL_TYPES = ("vllm", "sglang")
 
 
 def completeness_gaps(root: Path, state: dict) -> list[str]:
@@ -463,6 +468,10 @@ def completeness_gaps(root: Path, state: dict) -> list[str]:
         for key in REQUIRED_KWARGS:
             if kw.get(key) in (None, ""):
                 gaps.append(f"{slug}: registry kwarg {key!r} is required")
+        etype = types.get(str(kw.get("engine")))
+        if etype in MEM_UTIL_TYPES and kw.get("mem_util") in (None, ""):
+            gaps.append(f"{slug}: registry kwarg 'mem_util' is required on a {etype}-type engine "
+                        "(the compose's --gpu-memory-utilization / --mem-fraction-static)")
         if slug in reg_mod.COMPOSE_REGISTRY:
             gaps.append(f"{slug}: the curated catalog already has this slug")
         cpath = str(kw.get("compose_path") or "")
