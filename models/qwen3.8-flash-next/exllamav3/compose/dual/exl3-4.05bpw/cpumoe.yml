@@ -18,8 +18,10 @@
 #              SPEC_N=<n> depth; SPEC_N=0 / SPEC=off removes the flags.
 #   Drafter:   NONE as an artifact — see above. `drafter: null` in the registry,
 #              `spec_method: mtp`.
-#   KV:        FP16 (`cache_mode`). ⛔ The ONLY KV format validated on this
-#              engine here. exl3 offers quantised modes; none were booted.
+#   KV:        Q4 (`--cache-mode ${KV_TYPE:-Q4}`), chosen to maximise context
+#              (maintainer, 2026-09-18; see the cache-mode note below). Below
+#              this stack's q8 serving floor. exl3's modes: FP16|Q8|Q6|Q4. Until
+#              2026-10-13 this line said FP16, from before that choice.
 #   Thinking:  ✅ ON — `reasoning: true` with explicit <think> tokens.
 #   Vision:    ✅ yes — built INTO the quant (no mmproj artifact, unlike every
 #              GGUF path here). `vision_offload` keeps the tower in system RAM.
