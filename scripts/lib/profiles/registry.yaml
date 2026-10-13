@@ -6304,7 +6304,7 @@ entries:
     kv_format: q8_0
     act_format: 16bit
     act8_capable: false
-    offload: residency
+    offload: engine
     moe_cache: false
     host_ram_gb: 60
     kv_offload: null
@@ -6317,7 +6317,7 @@ entries:
     requires_nvlink: false
     requires_homogeneous_arch: false
     required_engine_features: []
-    default_port: 20219
+    default_port: 8188
     kvcalc_key: SKIP
     status: incubating
     status_note: "Two 3090s, Strata layer split (auto K=24): 18,768 experts resident (76%), decode hit ~99.7%. 122.5 / 153.9 decode, 2,228 / 3,364 prefill @10K/@90K on 0.1.43.1 (BENCHMARKS.md, Qwen3.8-Flash-Next / Strata, 2026-10-13; 0.1.33 measured 93.6 / 125.4). First start ~14 min (MTP fetch); later starts ~30 s. Engine: strata-club3090, club-3090's image of upstream Strata 0.1.43.1 (models/qwen3.8-flash-next/strata/image/); the numbers above are from the 0.1.33 local build unless dated later. Field values from the running engine: kv_format q8_0 is the nearest catalog token for Strata's int8 KV (32K cells resident in VRAM, the rest streamed to RAM via --kv-resident 32768); offload 'residency' = every expert page-locked in host RAM + a profile-filled, adaptively swapped VRAM expert cache; MTP is Strata's own draft layer (--spec 4, min-p 0.5). host_ram_gb 60 MEASURED on the dual arm 2026-10-06 (MemAvailable 218 -> 163.6 GiB while serving ≈ 58.4 GB). One request at a time; no vLLM-style KV offload. ⚠️ Strata's /health reports loaded:true before the engine fills its cache; the engine log line 'ready: http' is the real gate. ⚠️ IQ3_S quality unmeasured (8-pack pending)."
@@ -6335,7 +6335,7 @@ entries:
     kv_format: q8_0
     act_format: 16bit
     act8_capable: false
-    offload: residency
+    offload: engine
     moe_cache: false
     host_ram_gb: 60
     kv_offload: null
@@ -6348,7 +6348,7 @@ entries:
     requires_nvlink: false
     requires_homogeneous_arch: false
     required_engine_features: []
-    default_port: 20291
+    default_port: 8189
     kvcalc_key: SKIP
     status: incubating
     status_note: "One 3090 (GPU0), same install as the dual slug: 8,746 experts resident, decode hit ~90-93%. 106.1 / 121.5 decode, 1,920 / 2,359 prefill @10K/@90K on 0.1.43.1 (BENCHMARKS.md, Qwen3.8-Flash-Next / Strata, 2026-10-13; 0.1.33 measured 78.5 / 93.2). Engine: strata-club3090, club-3090's image of upstream Strata 0.1.43.1 (models/qwen3.8-flash-next/strata/image/); the numbers above are from the 0.1.33 local build unless dated later. Field values from the running engine: kv_format q8_0 is the nearest catalog token for Strata's int8 KV (32K cells resident in VRAM, the rest streamed to RAM via --kv-resident 32768); offload 'residency' = every expert page-locked in host RAM + a profile-filled, adaptively swapped VRAM expert cache; MTP is Strata's own draft layer (--spec 4, min-p 0.5). host_ram_gb 60 MEASURED on the dual arm 2026-10-06 (MemAvailable 218 -> 163.6 GiB while serving ≈ 58.4 GB). One request at a time; no vLLM-style KV offload. ⚠️ Strata's /health reports loaded:true before the engine fills its cache; the engine log line 'ready: http' is the real gate. ⚠️ IQ3_S quality unmeasured (8-pack pending)."

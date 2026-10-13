@@ -87,7 +87,9 @@ def _entry(
     # offload (GPU computes, weights stream over PCIe); "residency" = llama.cpp
     # CPU expert offload on a RESIDENCY-CAPABLE compose (declares
     # CPU-Offload-Bundle-MiB, so the launcher injects OT_G pin rules);
-    # "tensor-override" = plain -ot with no residency injection.
+    # "tensor-override" = plain -ot with no residency injection; "engine" = the
+    # engine manages expert offload itself (Strata: every expert page-locked in
+    # host RAM behind a GPU expert cache it fills and swaps), no compose flags.
     # ⚠️ BOTH pass -ot. The former value "n-cpu-moe" implied a --n-cpu-moe flag
     # that NO compose on this stack has ever used, and that name caused a real
     # misdiagnosis (the field read as drifted when it was correct). Renamed
