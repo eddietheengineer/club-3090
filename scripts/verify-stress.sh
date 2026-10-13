@@ -495,7 +495,13 @@ run_check() {
 # always saying "Check: docker logs $CONTAINER" — meaningless to a host-build
 # llama.cpp user. Engine class is detected once at startup and cached.
 detect_engine() {
+  # /props is not llama.cpp's alone: TabbyAPI and Strata serve a compatible one, so a
+  # container name or image that names a family wins, as in verify-full.sh.
   if curl -sf -m 3 "${URL}/props" >/dev/null 2>&1; then
+    local _props_kind
+    _props_kind="$(engine_kind_from_container "$CONTAINER")"
+    [[ "$_props_kind" == "unknown" ]] && _props_kind="$(engine_kind_from_image "$(docker inspect --format '{{.Config.Image}}' "$CONTAINER" 2>/dev/null)")"
+    [[ "$_props_kind" != "unknown" ]] && { echo "$_props_kind"; return 0; }
     echo "llamacpp"; return 0
   fi
   local fp
@@ -525,6 +531,8 @@ case "$ENGINE_KIND" in
     else
       LOG_CMD="docker logs ${CONTAINER} 2>&1 | tail -50"
     fi ;;
+  # Strata's engine writes to a log file inside the container; docker logs has only setup
+  strata) LOG_CMD="docker exec ${CONTAINER} sh -c 'tail -50 /opt/strata/strata-*.log'" ;;
   *) LOG_CMD="check your engine's stdout/stderr or container logs" ;;
 esac
 

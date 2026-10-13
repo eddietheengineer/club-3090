@@ -58,7 +58,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/club-containers.
 #   bash scripts/rebench-full.sh \
 #     --url http://192.168.1.50:8887 \
 #     --model 'Qwen3.6-27B MTP ik_llama:instruct' \
-#     --engine llama-cpp                              # vllm|llama-cpp|sglang|other
+#     --engine llama-cpp                              # vllm|llama-cpp|sglang|strata|other
 #
 #   When --url is passed, autodetect is skipped and the chained scripts run
 #   in host-only mode (CONTAINER=none) — no docker logs / docker inspect
@@ -158,7 +158,7 @@ OPTIONS
   --url URL       Target any OpenAI-compatible endpoint; skips container
                   autodetect and runs host-only (CONTAINER=none).
   --model NAME    Served-model-name (default: GET /v1/models).
-  --engine KIND   vllm|llama-cpp|sglang|other (use with --url).
+  --engine KIND   vllm|llama-cpp|sglang|strata|other (use with --url).
   -h, --help      Show this help and exit.
 
 ENV OVERRIDES (rarely needed — preflight autodetects our composes)
@@ -267,7 +267,7 @@ if ! curl -sf -m 5 "$URL/v1/models" >/dev/null 2>&1; then
   else
     echo "  start a compose first: gpu-mode <mode>" >&2
     echo "  or pass an external endpoint:" >&2
-    echo "    bash scripts/rebench-full.sh --url http://HOST:PORT --model NAME --engine vllm|llama-cpp|sglang|other" >&2
+    echo "    bash scripts/rebench-full.sh --url http://HOST:PORT --model NAME --engine vllm|llama-cpp|sglang|strata|other" >&2
   fi
   exit 1
 fi

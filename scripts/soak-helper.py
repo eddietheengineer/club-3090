@@ -586,12 +586,17 @@ _SGLANG_LOG_RE = re.compile(r"gen throughput \(token/s\):\s*([0-9]+(?:\.[0-9]+)?
 _LLAMACPP_LOG_RE = re.compile(
     r"(?<!prompt )eval time\s*=[^\n]*?([0-9]+(?:\.[0-9]+)?)\s*tokens per second"
 )
+# Strata's per-request line in docker logs; the rate is tokens over the time since the
+# first token (serve/server.py). Its /metrics is JSON unless asked for Prometheus text,
+# and carries no time_per_output_token, so the prom path finds nothing there.
+_STRATA_LOG_RE = re.compile(r"\[strata\] done: \d+ tokens in [0-9.]+ s \(([0-9]+(?:\.[0-9]+)?) tok/s\)")
 # A counter reading this far out is a parse error, not a measurement.
 ENGINE_TPS_SANE_MAX = 100000.0
 ENGINE_SOURCE_LABELS = {
     "prom-tpot": "engine-reported: /metrics time_per_output_token_seconds",
     "sglang-log": "engine-reported: SGLang 'gen throughput (token/s)' log line",
     "llamacpp-log": "engine-reported: llama.cpp 'eval time' log line",
+    "strata-log": "engine-reported: Strata '[strata] done' log line (tokens since the first token)",
 }
 
 
@@ -673,7 +678,8 @@ def _docker_logs_since(container, since_ts, timeout=15.0):
 
 def engine_rate_from_logs(text):
     """(tok/s, source) from the LAST engine decode-rate line in `text`."""
-    for regex, source in ((_SGLANG_LOG_RE, "sglang-log"), (_LLAMACPP_LOG_RE, "llamacpp-log")):
+    for regex, source in ((_SGLANG_LOG_RE, "sglang-log"), (_LLAMACPP_LOG_RE, "llamacpp-log"),
+                          (_STRATA_LOG_RE, "strata-log")):
         hits = regex.findall(text)
         if not hits:
             continue

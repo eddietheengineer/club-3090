@@ -472,7 +472,8 @@ if [[ "$ENGINE_KIND" == "unknown" && "${CONTAINER:-}" != "none" ]] && command -v
 fi
 
 PP_MODE="log"
-if [[ "$PP" == "1" || "$ENGINE_KIND" == "llamacpp" ]]; then
+# llama.cpp prints no aggregate prefill line; Strata logs to a file inside the container
+if [[ "$PP" == "1" || "$ENGINE_KIND" == "llamacpp" || "$ENGINE_KIND" == "strata" ]]; then
   PP_MODE="fallback"
 fi
 
@@ -763,6 +764,12 @@ if [[ "$CAPTURE" == "1" && -f "${ROOT_DIR}/scripts/lib/capture.sh" ]]; then
   # cross-check so it compares like with like.
   export CAP_MIN_DECODE_TOKENS="${CAP_MIN_DECODE_TOKENS:-32}"
   CAP_T0="$(date +%s)"
+  # Strata keeps its per-request numbers in GET /metrics, not in docker logs, so the
+  # window is two /metrics snapshots (scripts/lib/strata_metrics.py) instead of a log offset.
+  if [[ "$ENGINE_KIND" == "strata" ]]; then
+    python3 "${ROOT_DIR}/scripts/lib/strata_metrics.py" snapshot "$URL" > "$CAP_WORK/strata0.json" 2> "$CAP_WORK/strata0.err" \
+      || rm -f "$CAP_WORK/strata0.json"
+  fi
   export BENCH_PHASE_FILE="$CAP_WORK/phases" BENCH_SUMMARY_JSON="$CAP_WORK/summary.json"
   export BENCH_ENDPOINT="$ENDPOINT" BENCH_SHORT_EOS_FRAC="$SHORT_EOS_FRAC"
 fi
@@ -1638,7 +1645,23 @@ if (( CAP_ENABLED )); then
   # whole fire-rate block.
   CAP_REQS="$(cap_moe_parse timings 2>/dev/null \
               | awk '$1=="decode"{for(i=2;i<=NF;i++) if($i ~ /^n=/){split($i,a,"="); print a[2]; exit}}' || true)"
-  if cap_log_available "draft acceptance"; then
+  if [[ "$ENGINE_KIND" == "strata" ]]; then
+    if [[ -s "$CAP_WORK/strata0.json" ]] \
+       && python3 "${ROOT_DIR}/scripts/lib/strata_metrics.py" snapshot "$URL" > "$CAP_WORK/strata1.json" 2> "$CAP_WORK/strata1.err" \
+       && _sm="$(python3 "${ROOT_DIR}/scripts/lib/strata_metrics.py" delta "$CAP_WORK/strata0.json" "$CAP_WORK/strata1.json" 2> "$CAP_WORK/strata1.err")"; then
+      _sv() { sed -n "s/^$1=//p" <<<"$_sm"; }
+      echo "  Strata /metrics, every request in the capture window (warm-ups included): $(_sv requests) requests"
+      if [[ "$(_sv drafts_offered)" == 0 ]]; then
+        echo "  ⚠ WARN: no MTP drafts offered in the window: the draft layer is off or not working"
+      else
+        echo "  MTP drafts accepted $(_sv drafts_accepted) of $(_sv drafts_offered) ($(awk -v a="$(_sv accept_rate)" 'BEGIN{printf "%.1f", a*100}')%)"
+      fi
+      echo "  engine decode $(_sv decode_tok_s) tok/s · engine prefill $(_sv prefill_tok_s) tok/s (output tokens / decode time, prompt tokens read / prompt time)"
+    else
+      echo "  could not read Strata's /metrics for the window: $(cat "$CAP_WORK/strata1.err" "$CAP_WORK/strata0.err" 2>/dev/null | head -2)"
+      echo "  ⚠ This is NOT \"no drafts\": the numbers could not be read. Check: curl -s ${URL}/metrics"
+    fi
+  elif cap_log_available "draft acceptance"; then
     if _acc="$(cap_moe_parse acceptance 2>/dev/null)"; then
       _fired="$(printf '%s' "$_acc" | command grep -oE 'fired=[0-9]+' | cut -d= -f2)"
       _reqs="${CAP_REQS:-}"
@@ -2210,6 +2233,14 @@ bench_interconnect_block() {
   # but the NCCL/custom-AR layers and their shared verdict classifier do not.
   # Reporting them as "unknown" would incorrectly suggest that interconnect
   # setup failed (the same TabbyAPI-vs-llama.cpp classification trap as #1366).
+  # Strata: no NCCL in its source either; its layer split copies activations between
+  # cards itself (cudaMemcpyPeer when peer access is on, else through host memory).
+  if [[ "$ENGINE_KIND" == "strata" ]]; then
+    echo "  layer 2  NCCL use         : n/a — Strata's layer split does not use NCCL collectives"
+    echo "  layer 3  engine custom-AR : n/a — Strata's layer split; no custom all-reduce kernel"
+    echo "  verdict  : ℹ interconnect capability is reported above; Strata copies activations between cards itself and is not measured by the NCCL/custom-AR probes"
+    return 0
+  fi
   if [[ "$ENGINE_KIND" == "exllamav3" ]]; then
     echo "  layer 2  NCCL use         : n/a — ExLlamaV3 layer-split does not use NCCL collectives"
     echo "  layer 3  engine custom-AR : n/a — ExLlamaV3 layer-split; no custom all-reduce kernel"
@@ -2300,8 +2331,13 @@ if [[ "${CONTAINER:-}" != "none" ]] && command -v docker >/dev/null 2>&1 \
   # produced nothing" rather than "I only know one engine's wording". Seen in the wild on
   # club-3090#1251 (2x 5090, sgl/qwen38-27b-dual-fast): the section came back blank while
   # the drafter was running fine.
-  docker logs "${CONTAINER}" 2>&1 \
-    | command grep -E "SpecDecoding metrics|accept len:|draft acceptance" | tail -3 || true
+  if [[ "$ENGINE_KIND" == "strata" ]]; then
+    # Strata writes these to its engine log file inside the container, not to docker logs
+    docker exec "${CONTAINER}" sh -c 'grep -h "drafts accepted" /opt/strata/strata-*.log 2>/dev/null | tail -3' 2>/dev/null || true
+  else
+    docker logs "${CONTAINER}" 2>&1 \
+      | command grep -E "SpecDecoding metrics|accept len:|draft acceptance" | tail -3 || true
+  fi
 fi
 
 # Repeated at the END on purpose (#832): a reader who tails the log, or who

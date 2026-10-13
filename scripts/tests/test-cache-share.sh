@@ -40,13 +40,17 @@ def metrics(n):
                 f'sglang:cached_tokens_total{{cache_source="device",model_name="m"}} {3000 + 1900 * n}\n'
                 'sglang:cached_tokens_total{cache_source="host",model_name="m"} 200.0\n'
                 'sglang:cache_hit_rate{model_name="m"} 0.0\n')
+    if kind == "noowner":   # Strata: JSON /metrics unless asked for Prometheus text
+        return '{"engine": {"version": "0.1.43.1"}, "totals": {"requests": 1}}\n'
     return "llamacpp:prompt_tokens_total 42\n"
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
     def do_GET(self):
         if self.path.startswith("/v1/models"):
-            owned = {"vllm": "vllm", "sglang": "sglang", "llamacpp": "llamacpp"}[kind]
-            b = json.dumps({"data": [{"id": f"{kind}-model", "owned_by": owned}]}).encode()
+            card = {"id": f"{kind}-model"}
+            if kind != "noowner":   # Strata's /v1/models carries no owned_by at all
+                card["owned_by"] = {"vllm": "vllm", "sglang": "sglang", "llamacpp": "llamacpp"}[kind]
+            b = json.dumps({"data": [card]}).encode()
         elif self.path.startswith("/metrics"):
             b = metrics(hits["n"]).encode(); hits["n"] += 1
         else:
@@ -56,9 +60,9 @@ HTTPServer(("127.0.0.1", port), H).serve_forever()
 PY
 free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
 start() { python3 "$T/stub.py" "$1" "$2" & PIDS+=($!); }
-PV=$(free_port); PS=$(free_port); PL=$(free_port)
-start "$PV" vllm; start "$PS" sglang; start "$PL" llamacpp
-for p in "$PV" "$PS" "$PL"; do
+PV=$(free_port); PS=$(free_port); PL=$(free_port); PN=$(free_port)
+start "$PV" vllm; start "$PS" sglang; start "$PL" llamacpp; start "$PN" noowner
+for p in "$PV" "$PS" "$PL" "$PN"; do
   for _ in $(seq 1 50); do curl -sf -o /dev/null "http://127.0.0.1:$p/v1/models" && break; sleep 0.1; done
 done
 
@@ -75,6 +79,12 @@ out="$(bash "$ROOT/scripts/cache-share.sh" --port "$PS" 2>&1)"
 # 3. llama.cpp has no cached-token counter: listed, never reported as 0 %
 out="$(bash "$ROOT/scripts/cache-share.sh" --port "$PL" 2>&1)"
 [[ "$out" == *"llamacpp: no cached-token counter"* && "$out" != *"% from cache"* ]] || bad "llama.cpp must be 'not measured', not 0 %: $out"
+
+# 3b. an engine whose /v1/models has no owned_by (Strata): listed and "not measured". The
+#     empty field used to collapse under IFS=tab and crash the unpack with a traceback.
+out="$(bash "$ROOT/scripts/cache-share.sh" --port "$PN" 2>&1)"; rc=$?
+[[ $rc -eq 0 && "$out" == *":$PN  unknown  noowner-model"* && "$out" == *"no cached-token counter"* && "$out" != *Traceback* ]] \
+  || bad "no owned_by must be listed as not measured, not crash (rc=$rc): $out"
 
 # 4. --watch prints per-INTERVAL deltas (the stub adds 2,000 prompt / 1,900 cached per scrape on SGLang)
 out="$(bash "$ROOT/scripts/cache-share.sh" --port "$PS" --watch 1 --count 2 2>&1)"

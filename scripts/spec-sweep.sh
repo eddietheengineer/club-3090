@@ -97,6 +97,9 @@ if [[ -n "$SLUG" ]]; then
   # old code silently called that llamacpp and swept the wrong path; refusing
   # is the point of the fix.
   [[ "$ENGINE_FAMILY" != "unknown" ]] || { echo "unknown SLUG '$SLUG' (not in compose_registry, or its engine id is unrecognised — add it to scripts/lib/engine-kind.sh)" >&2; exit 2; }
+  # Strata's composes read no SPEC_N: its draft depth is --spec in the config setup.py writes,
+  # so every arm of a sweep would boot the same thing and report noise as a curve.
+  [[ "$ENGINE_FAMILY" != "strata" ]] || { echo "spec-sweep: not supported for Strata slugs ('$SLUG'): its draft depth is --spec in the setup config, not SPEC_N" >&2; exit 2; }
   if [[ -z "$URL" ]]; then
     PORT="$(python3 - "$SLUG" <<'PY'
 import sys

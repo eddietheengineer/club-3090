@@ -56,7 +56,7 @@
 # CONTRACT
 # --------
 #   thinking_budget_engine_kind
-#       Prints vllm | llamacpp | sglang | exllamav3 | unknown. Evidence, in
+#       Prints vllm | llamacpp | sglang | exllamav3 | strata | unknown. Evidence, in
 #       order: $CONTAINER name, its docker image, then /v1/models `owned_by`.
 #       The DECISION is engine-kind.sh's (#1282) — nothing here classifies.
 #   thinking_budget_verify <kind> <N>

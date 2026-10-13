@@ -450,3 +450,25 @@ class TestExllamav3Detection:
             assert _classify_engine_from_container(name) == "exllamav3"
         assert ENGINE_PREFIXES.match("tabbyapi-qwen38-flash-next-exl3-405")
         assert "5000" in ENGINE_INTERNAL_PORTS
+
+
+class TestStrataDetection:
+    """Strata serves on 8080 and answers /props like llama-server, so the port map
+    alone reads it as llamacpp: its ``strata-`` container name has to win."""
+
+    STRATA_PS = "strata-qwen38-flash-next-iq3s|0.0.0.0:20219->8080/tcp"
+
+    def test_found_and_classified_by_name_not_port(self):
+        with patch("asyncio.create_subprocess_exec", return_value=_proc(self.STRATA_PS)):
+            target = _run(detect_endpoint())
+        assert target.container == "strata-qwen38-flash-next-iq3s"
+        assert target.internal_port == 8080
+        assert target.engine == "strata"
+        assert target.url == "http://localhost:20219"
+
+    def test_engine_classifiers(self):
+        assert _classify_engine_from_container("strata-x") == "strata"
+        assert ENGINE_PREFIXES.match("strata-qwen38-flash-next-iq3s")
+        # positive control for the trap: the same port, a llama.cpp name, still reads llamacpp
+        assert _classify_engine_from_container("llama-cpp-x") == "llamacpp"
+        assert _classify_engine("8080") == "llamacpp"
