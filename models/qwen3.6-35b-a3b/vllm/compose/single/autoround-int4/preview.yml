@@ -84,6 +84,15 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    # The image's own entrypoint is `vllm serve`; this wrapper only adds the umask, so
+    # compile-cache files come out group-writable (catalog_rules.py `cache-umask`).
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        umask 0002
+        exec vllm serve "$$@"
+      - --
     command:
       - --override-generation-config
       - '{"temperature":${TEMP:-${TEMPERATURE:-0.6}},"top_p":${TOP_P:-0.95},"top_k":${TOP_K:-20},"min_p":${MIN_P:-0.0},"repetition_penalty":${REPEAT_PENALTY:-1.0}}'

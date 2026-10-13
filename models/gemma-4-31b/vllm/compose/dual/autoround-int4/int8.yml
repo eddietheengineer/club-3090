@@ -195,6 +195,7 @@ services:
       - /bin/bash
       - -c
       - |
+        umask 0002
         # vLLM PR #40391 (Gemma 4 per-token-head KV) — apply the lean diff to
         # stock v0.22.0 BEFORE vllm imports. Fail-loud: a non-zero exit aborts
         # boot rather than serving a half-patched engine.

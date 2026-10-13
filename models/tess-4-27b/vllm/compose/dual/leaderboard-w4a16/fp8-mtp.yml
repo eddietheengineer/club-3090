@@ -150,6 +150,7 @@ services:
       - bash
       - -c
       - |
+        umask 0002
         # NVLink auto-detection (sets NCCL env vars, _NVLINK_ENABLED).
         source /etc/club3090/detect_nvlink.sh
         bash /etc/club3090/pr48375/install.sh || exit 1

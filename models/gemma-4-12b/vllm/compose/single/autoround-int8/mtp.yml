@@ -84,6 +84,7 @@ services:
       - /bin/bash
       - -c
       - |
+        umask 0002
         # -- Drafter toggle: the same contract on every club-3090 compose --------
         #   SPEC_N=<n>  drafter depth (this compose defaults to 4); SPEC_N=0 disables
         #   SPEC=off    back-compat alias for SPEC_N=0

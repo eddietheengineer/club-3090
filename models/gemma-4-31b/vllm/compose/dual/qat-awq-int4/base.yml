@@ -122,6 +122,7 @@ services:
       - /bin/bash
       - -c
       - |
+        umask 0002
         # Overlay-free on v0.24.0 — no boot-time patch apply. Just NVLink autodetect + serve.
         source /etc/club3090/detect_nvlink.sh
         if [ "$${_CUSTOM_AR_ENABLED:-$${_NVLINK_ENABLED:-0}}" = "1" ]; then

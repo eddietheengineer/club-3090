@@ -192,6 +192,7 @@ services:
       - bash
       - -c
       - |
+        umask 0002
         
         
         
