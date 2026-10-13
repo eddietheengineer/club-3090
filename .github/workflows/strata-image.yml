@@ -34,7 +34,8 @@ jobs:
   build:
     if: github.repository == 'noonghunna/club-3090'
     runs-on: ubuntu-24.04
-    # 4 vCPUs compile with 2 jobs (setup.py's cpu_count // 2); 32 cores took 16 min. 6 h is the cap.
+    # A 4-vCPU, 15 GB runner. setup.py would compile with 2 jobs (cpu_count // 2), which took
+    # 5,435 s (2026-10-13); build.sh --jobs 4 uses all four. 6 h is the cap.
     timeout-minutes: 340
     steps:
       - name: Checkout
@@ -74,7 +75,7 @@ jobs:
           TAG: ${{ inputs.tag }}
           FORCE: ${{ inputs.force }}
         run: |
-          args=(--push)
+          args=(--push --jobs 4)
           if [ -n "$TAG" ]; then args+=(--tag "$TAG"); fi
           if [ "$FORCE" = "true" ]; then args+=(--force); fi
           bash models/qwen3.8-flash-next/strata/image/build.sh "${args[@]}"
