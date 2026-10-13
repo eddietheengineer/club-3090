@@ -36,15 +36,19 @@ else
     "engine_kind_from_engine_id llamacpp-club3090-v1.6:llamacpp" \
     "engine_kind_from_engine_id beellama-local:llamacpp" \
     "engine_kind_from_engine_id totally-new-engine:unknown" \
+    "engine_kind_from_engine_id strata:strata" \
     "engine_kind_from_container sglang-qwen38:sglang" \
     "engine_kind_from_container sgl-qwen38:sglang" \
     "engine_kind_from_container vllm-qwen36-27b:vllm" \
     "engine_kind_from_container llama-cpp-glm53:llamacpp" \
     "engine_kind_from_container ik-llama-qwen:llamacpp" \
     "engine_kind_from_container nothing-like-an-engine:unknown" \
+    "engine_kind_from_container strata-qwen38-flash-next-iq3s:strata" \
     "engine_kind_from_image lmsysorg/sglang:v0.5.19:sglang" \
     "engine_kind_from_image vllm/vllm-openai:v0.29.0:vllm" \
     "engine_kind_from_image ghcr.io/ggml-org/llama.cpp:llamacpp" \
+    "engine_kind_from_image ghcr.io/noonghunna/strata-club3090@sha256:0123abcd:strata" \
+    "engine_kind_from_image ghcr.io/noonghunna/llamacpp-club3090@sha256:0123abcd:llamacpp" \
     "engine_kind_from_fingerprint sglang-0.5.19:sglang" \
     "engine_kind_from_fingerprint vllm-0.29.0-tp2:vllm" \
     "engine_kind_from_fingerprint b10920-4df29be4f:llamacpp" \
@@ -128,7 +132,7 @@ fi
 # form and therefore missed soak-test.sh, which hand-listed the SAME set as a
 # grep alternation `^(vllm-|llama-cpp-|...)`. A gate that knows one spelling of a
 # copy-paste is a gate that certifies the other spelling as clean.
-hand="$(command grep -rnE "name=(vllm|llama-cpp|beellama|ik-llama|sglang|tabbyapi)-|\\^\\((vllm|llama-cpp|ik-llama|sglang|beellama)-\\|" \
+hand="$(command grep -rnE "name=(vllm|llama-cpp|beellama|ik-llama|sglang|tabbyapi|strata)-|\\^\\((vllm|llama-cpp|ik-llama|sglang|beellama|strata)-\\|" \
           "${ROOT}/scripts" --include='*.sh' 2>/dev/null \
           | command grep -v '/scripts/tests/' \
           | command grep -v '/scripts/lib/club-containers.sh' \
@@ -155,6 +159,8 @@ printf "schema_version: 1\nid: my-build\ndisplay_name: y\ntype: 'llama.cpp'  # f
   > "$FX/scripts/lib/profiles-local/engines.d/my-build.yml"
 printf 'schema_version: 1\nid: my-sgl\ndisplay_name: z\ntype: SGLang\n' \
   > "$FX/scripts/lib/profiles-local/engines.d/my-sgl.yml"
+printf 'schema_version: 1\nid: my-strata-build\ndisplay_name: s\ntype: strata\n' \
+  > "$FX/scripts/lib/profiles-local/engines.d/my-strata-build.yml"
 printf 'schema_version: 1\nid: odd-engine\ndisplay_name: o\ntype: tensorrt-llm\n' \
   > "$FX/scripts/lib/profiles-local/engines.d/odd.yml"
 # A stub registry: the slug path must read core AND local (get_registry), not
@@ -163,7 +169,7 @@ cat > "$FX/scripts/lib/profiles/compose_registry.py" <<'PY'
 def get_registry(root=None):
     return {"my-build/some-model": {"engine": "my-build"}}
 PY
-for pair in "derivative-x:vllm" "my-build:llamacpp" "my-sgl:sglang" "odd-engine:unknown" \
+for pair in "derivative-x:vllm" "my-build:llamacpp" "my-sgl:sglang" "my-strata-build:strata" "odd-engine:unknown" \
             "no-such-engine:unknown" "vllm-stable:vllm"; do
   id="${pair%:*}"; want="${pair##*:}"
   got="$(ENGINE_KIND_ROOT="$FX" engine_kind_from_engine_id "$id")"

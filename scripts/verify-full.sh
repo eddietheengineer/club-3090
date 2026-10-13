@@ -265,6 +265,7 @@ check_patches() {
     llamacpp) skip "llama.cpp engine — Genesis is vLLM-only, not applicable"; return 0 ;;
     sglang)   skip "SGLang engine — Genesis is vLLM-only, not applicable";    return 0 ;;
     exllamav3) skip "exl3/TabbyAPI engine — Genesis is vLLM-only, not applicable"; return 0 ;;
+    strata)   skip "Strata engine — Genesis is vLLM-only, not applicable";   return 0 ;;
     unknown)  ;;  # fall through; might still be vLLM under a non-standard container name
   esac
   if ! command -v docker >/dev/null 2>&1; then
@@ -402,6 +403,9 @@ except Exception as e:
           exllamav3)
             fail "model emitted <tool_call> as inline text (tool_calls[] empty)" \
                  "exl3/TabbyAPI picks the parser with --tool-format (qwen3_coder for Qwen3.x, glm4_5 for GLM); unset, the server emits the tags as plain text. Also check --tool-calls-in-reasoning matches how the model emits calls while reasoning is on." ;;
+      strata)
+        fail "model emitted <tool_call> as inline text (tool_calls[] empty)" \
+             "Strata parses tool calls in its own server (serve/), not through a --tool-call-parser flag. Check the image's Strata version (GET /metrics engine.version) against upstream's tool-call fixes, and whether the request's tools reached the template (GET /props chat_template)." ;;
       *)
         fail "model emitted <tool_call> as inline text (tool_calls[] empty)" \
              "On the Qwen3.6 vLLM tiers this is the MTP x TurboQuant incompat - use docker-compose.tools.yml or .tools-text.yml (README Known issues). On other stacks check --tool-call-parser and the chat template first." ;;
@@ -687,6 +691,45 @@ check_mtp_acceptance() {
   # generalized harness).
   case "$ENGINE_KIND" in
     llamacpp) skip "llama.cpp engine — MTP acceptance check is vLLM-log-format-specific (run engine-side verification separately)"; return 0 ;;
+    strata)
+      # Strata writes its per-request lines to a log file inside the container, not to
+      # docker logs, so a log grep here would find nothing and read as "no drafter".
+      # GET /metrics counts drafts offered and accepted; take it before and after one
+      # request (scripts/lib/strata_metrics.py). Every Strata slug runs its MTP layer, so
+      # no drafts at all is a failure, and so is a /metrics we cannot read.
+      local sm_dir sm_out sm_off sm_rate
+      sm_dir="$(mktemp -d)"
+      if ! python3 "${ROOT_DIR}/scripts/lib/strata_metrics.py" snapshot "${URL}" > "${sm_dir}/before.json" 2> "${sm_dir}/err"; then
+        fail "could not read ${URL}/metrics before the request" "$(cat "${sm_dir}/err")"; rm -rf "${sm_dir}"; return 1
+      fi
+      curl -sf -m 120 "${URL}/v1/chat/completions" \
+        -H "Content-Type: application/json" \
+        -d "{
+          \"model\": \"${MODEL}\",
+          \"messages\": [{\"role\": \"user\", \"content\": \"Count from 1 to 80, one number per line.\"}],
+          \"max_tokens\": 500,
+          \"temperature\": 0.0,
+          ${THINK_OFF_STD}\"chat_template_kwargs\": ${THINK_OFF_KW}
+        }" >/dev/null 2>&1 || { fail "acceptance-trigger request failed" "Check docker logs"; rm -rf "${sm_dir}"; return 1; }
+      if ! python3 "${ROOT_DIR}/scripts/lib/strata_metrics.py" snapshot "${URL}" > "${sm_dir}/after.json" 2> "${sm_dir}/err" \
+         || ! sm_out="$(python3 "${ROOT_DIR}/scripts/lib/strata_metrics.py" delta "${sm_dir}/before.json" "${sm_dir}/after.json" 2> "${sm_dir}/err")"; then
+        fail "could not read ${URL}/metrics after the request" "$(cat "${sm_dir}/err")"; rm -rf "${sm_dir}"; return 1
+      fi
+      rm -rf "${sm_dir}"
+      sm_off="$(sed -n 's/^drafts_offered=//p' <<<"$sm_out")"
+      sm_rate="$(sed -n 's/^accept_rate=//p' <<<"$sm_out")"
+      if [[ "${sm_off:-0}" == 0 || -z "$sm_rate" ]]; then
+        fail "no MTP drafts offered during the request (/metrics drafts_offered=0)" \
+             "Strata's MTP layer is off or not loading: check the engine log for the 'strata mtp:' line and that the config passes --spec and --mtp (the data volume's mtp/rt)."
+        return 1
+      fi
+      if awk -v a="$sm_rate" -v m="${STRATA_ACCEPT_MIN:-0.30}" 'BEGIN{exit !(a+0 >= m+0)}'; then
+        pass "draft acceptance ${sm_rate} >= ${STRATA_ACCEPT_MIN:-0.30} (Strata, ${sm_off} drafted)"
+        return 0
+      fi
+      fail "draft acceptance ${sm_rate} < ${STRATA_ACCEPT_MIN:-0.30} (Strata, ${sm_off} drafted)" \
+           "The MTP layer drafts tokens that get rejected: output stays correct, decode collapses. Check the MTP tensors on the data volume match the model (Strata fetches them from Qwen/Qwen3.8-Flash-Next at setup)."
+      return 1 ;;
     exllamav3)
       # ⚠️ A `skip` here is exactly the failure the SGLang branch below documents:
       # a drafter that is dead — or absent — looks identical to a healthy one,

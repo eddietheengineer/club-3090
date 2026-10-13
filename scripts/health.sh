@@ -138,6 +138,7 @@ probe() {
     llamacpp)  engine="llama.cpp" ;;
     sglang)    engine="SGLang" ;;
     exllamav3) engine="ExLlamaV3" ;;
+    strata)    engine="Strata" ;;
     *)         engine="unknown" ;;
   esac
   ok "Serving model: ${model_name}  (engine: ${engine})"
@@ -238,6 +239,32 @@ else: print(f'{s//3600}h{(s%3600)//60:02d}m')
       [[ -n "$tput" ]] && ok "Last gen throughput: ${tput} tokens/s"
       reqs=$(echo "$logs" | command grep -E '(Decode|Prefill) batch' | tail -1 | command grep -oE '#(running|queue)-req: [0-9]+' | tr '\n' ' ' || true)
       [[ -n "$reqs" ]] && dim "Requests at the last batch: ${reqs% }"
+    elif [[ "$engine" == "Strata" ]]; then
+      # Strata logs per request to a file inside the container, not to docker logs, so
+      # its numbers come from GET /metrics (scripts/lib/strata_metrics.py).
+      echo "Strata runtime (newest finished requests, from /metrics):"
+      local sm
+      if sm=$(python3 "${ROOT_DIR}/scripts/lib/strata_metrics.py" recent "$URL" 2>&1); then
+        local s_req s_dec s_acc s_off s_hit s_ver s_kv s_slots
+        s_req=$(sed -n 's/^requests=//p' <<<"$sm");      s_dec=$(sed -n 's/^decode_tok_s=//p' <<<"$sm")
+        s_acc=$(sed -n 's/^accept_rate=//p' <<<"$sm");   s_off=$(sed -n 's/^drafts_offered=//p' <<<"$sm")
+        s_hit=$(sed -n 's/^hit_rate=//p' <<<"$sm");      s_ver=$(sed -n 's/^version=//p' <<<"$sm")
+        s_kv=$(sed -n 's/^kv=//p' <<<"$sm");             s_slots=$(sed -n 's/^expert_slots=//p' <<<"$sm")
+        dim "Engine ${s_ver}, KV ${s_kv}, ${s_slots} expert slots in VRAM"
+        if [[ "$s_req" == 0 ]]; then
+          dim "No finished requests yet (server idle since start)"
+        else
+          [[ -n "$s_dec" ]] && ok "Decode: ${s_dec} tokens/s over the last ${s_req} request(s)"
+          if [[ -n "$s_acc" ]]; then
+            ok "MTP draft acceptance: $(awk -v a="$s_acc" 'BEGIN { printf "%.1f", a * 100 }')% (${s_off} drafted)"
+          else
+            warn "MTP: no drafts offered in the last ${s_req} request(s) (drafter off, or not working)"
+          fi
+          [[ -n "$s_hit" ]] && ok "Expert-cache hit rate: $(awk -v h="$s_hit" 'BEGIN { printf "%.1f", h * 100 }')%"
+        fi
+      else
+        fail "could not read ${URL}/metrics: ${sm}"
+      fi
     elif [[ "$engine" == "ExLlamaV3" || "$engine" == "unknown" ]]; then
       echo "${engine} runtime:"
       dim "runtime details aren't parsed for this engine — see: docker logs --tail ${LOG_LINES} ${container}"

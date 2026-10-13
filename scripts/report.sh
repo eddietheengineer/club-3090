@@ -917,6 +917,8 @@ if have python3 && [[ -f tools/kv-calc.py ]]; then
   # kv-calc is vLLM-memory-model-coupled; skip on the ggml engines (llama.cpp + ik_llama).
   if [[ "$CALIB_ENGINE_KIND" == "llamacpp" ]]; then
     echo "- _kv-calc calibration is vLLM-specific — skipped on the llama.cpp / ik_llama engine (ggml uses a different allocator)._"
+  elif [[ "$CALIB_ENGINE_KIND" == "strata" ]]; then
+    echo "- _kv-calc calibration is vLLM-specific — skipped on Strata (it sizes its own int8 KV and streams it to RAM)._"
   elif ! python3 -c 'import yaml' 2>/dev/null; then
     # Item 1: graceful-degrade when PyYAML is missing
     echo "- _kv-calc calibration skipped — PyYAML not installed (\`pip install pyyaml\`)._"
@@ -1056,7 +1058,7 @@ section "Active container"
 # Engine class — drives which probes run inside the container body. Inferred
 # from container name; user can override with ENGINE_KIND=<engine-family> env var.
 case "${ENGINE_KIND:-}" in
-  vllm|llamacpp|sglang|exllamav3|unknown) ;;  # respect user override (sglang: club-3090#1261)
+  vllm|llamacpp|sglang|exllamav3|strata|unknown) ;;  # respect user override (sglang: club-3090#1261)
   *)
     # Prefix arms live in scripts/lib/engine-kind.sh (club-3090#1282).
     ENGINE_KIND="$(engine_kind_from_container "$CONTAINER")"
@@ -1159,6 +1161,27 @@ else
     subsection "Full boot log (first 200 lines)"
     docker logs "$CONTAINER" 2>&1 | head -200 | redact | details "First 200 lines of docker logs"
 
+  elif [[ "$ENGINE_KIND" == "strata" ]]; then
+    # ---- Strata probe set ----
+    # docker logs holds setup.py's output; the engine itself writes to a log file inside
+    # the container, and its live numbers are in GET /metrics (scripts/lib/strata_metrics.py).
+    subsection "Container engine state (Strata)"
+    {
+      # the endpoint: URL / ENDPOINT when given, else the host port mapped to Strata's 8080
+      _strata_url="${URL:-${ENDPOINT:-}}"
+      if [[ -z "$_strata_url" ]]; then
+        _strata_map="$(docker port "$CONTAINER" 8080/tcp 2>/dev/null | head -1 || true)"
+        _strata_url="http://localhost:${_strata_map##*:}"
+      fi
+      echo '```'
+      python3 "${REPO_ROOT}/scripts/lib/strata_metrics.py" recent "${_strata_url%/}" 2>&1 || true
+      echo '```'
+    } | redact
+    subsection "Setup log (docker logs, first 200 lines)"
+    docker logs "$CONTAINER" 2>&1 | head -200 | redact | details "First 200 lines of docker logs"
+    subsection "Engine log (last 200 lines)"
+    docker exec "$CONTAINER" sh -c 'tail -200 /opt/strata/strata-*.log' 2>&1 | redact | details "Last 200 lines of the engine log inside the container"
+
   else
   # ---- vLLM probe set (default for engine=vllm or unknown) ----
   subsection "Container Python / CUDA versions"
@@ -1228,6 +1251,9 @@ else
     if [[ "$ENGINE_KIND" == "exllamav3" ]]; then
       echo
       echo "**Interconnect verdict:** ℹ driver P2P capability is reported above; ExLlamaV3 layer-split transport does not use NCCL/custom all-reduce, so the shared engagement verdict is not applicable."
+    elif [[ "$ENGINE_KIND" == "strata" ]]; then
+      echo
+      echo "**Interconnect verdict:** ℹ driver P2P capability is reported above; Strata's layer split copies activations between cards itself (no NCCL/custom all-reduce), so the shared engagement verdict is not applicable."
     else
       _p2p_verdict_line="$(p2p_verdict "$(p2p_gpu_count)" "$(p2p_host_capability)" \
         "$(printf '%s\n%s' "$_p2p_class_stream" "$p2p_env" | p2p_classify_engagement)")"

@@ -22,7 +22,7 @@ import httpx
 ENGINE_INTERNAL_PORTS = {"8000", "8080", "30000", "5000"}
 
 # Recognized engine-family container prefixes
-ENGINE_PREFIXES = re.compile(r"^(vllm-|llama-cpp-|ik-llama-|sglang-|beellama-|tabbyapi-|exl3-|exllamav3-)")
+ENGINE_PREFIXES = re.compile(r"^(vllm-|llama-cpp-|ik-llama-|sglang-|beellama-|tabbyapi-|exl3-|exllamav3-|strata-)")
 
 # Port mapping regex: matches 0.0.0.0:8011->8000/tcp, [::]:8011->8000/tcp, 127.0.0.1:8011->8000/tcp
 PORT_MAP_RE = re.compile(
@@ -150,6 +150,10 @@ def _classify_engine_from_container(name: str) -> str:
         return "beellama"
     if name.startswith(("tabbyapi-", "exl3-", "exllamav3-")):
         return "exllamav3"
+    # Strata serves on 8080 and answers /props like llama-server, so its name has to
+    # win over the port map, which reads 8080 as llamacpp.
+    if name.startswith("strata-"):
+        return "strata"
     return "unknown"
 
 

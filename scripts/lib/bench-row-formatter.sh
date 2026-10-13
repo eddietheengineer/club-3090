@@ -368,6 +368,10 @@ def section_name(compose_path: str, served: str, tp: str, container: str) -> str
     # rows "TP=2" — a factual error in the published table, which states
     # "layer-split (autosplit, not TP)" for exactly these rows. Keyed on the
     # engine dir / container, since the compose path still says /dual/.
+    # Strata splits LAYERS across cards too (--gpus), never tensor-parallel.
+    if "/strata/" in path or container.startswith("strata-"):
+        return ("Dual-card (2× RTX 3090, layer-split) — Strata" if "/dual/" in path
+                else "Single-card (1× RTX 3090) — Strata")
     if "exllamav3" in path or "/exl3-" in path or "tabbyapi" in container:
         return ("Dual-card (2× RTX 3090, layer-split) — exl3" if "/dual/" in path
                 else "Single-card (1× RTX 3090) — exl3")

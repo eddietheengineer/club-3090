@@ -92,7 +92,9 @@ out="$(printf '%s\n' \
   "open-webui|0.0.0.0:8080->8080/tcp|ghcr.io/open-webui/open-webui:main" \
   "my-llm|0.0.0.0:8099->8080/tcp|ghcr.io/ggml-org/llama.cpp:server-cuda" \
   "llama-cpp-qwen38|0.0.0.0:8030->8080/tcp|example/custom:1" \
-  "my-tabby|0.0.0.0:8182->5000/tcp|ghcr.io/theroyallab/tabbyapi:latest" | club_engine_port_lines)"
+  "my-tabby|0.0.0.0:8182->5000/tcp|ghcr.io/theroyallab/tabbyapi:latest" \
+  "strata-qwen38-flash-next-iq3s|0.0.0.0:20219->8080/tcp" \
+  "my-strata|0.0.0.0:8150->8080/tcp|ghcr.io/noonghunna/strata-club3090@sha256:0123abcd" | club_engine_port_lines)"
 command grep -q '^tabbyapi-qwen38-flash-next-exl3-405|' <<<"$out" && ok "exl3 container on 5000 admitted" || bad "exl3 container on 5000 NOT admitted"
 command grep -q '^exl3-custom|' <<<"$out" && ok "exl3- prefixed container on 5000 admitted" || bad "exl3- container NOT admitted"
 command grep -q '^vllm-qwen36-27b|' <<<"$out" && ok "vLLM on 8000 still admitted" || bad "vLLM on 8000 dropped"
@@ -104,6 +106,8 @@ command grep -q '^vllm-qwen36-27b|' <<<"$out" && ok "vLLM on 8000 still admitted
 command grep -q '^my-llm|' <<<"$out" && ok "BYO llama.cpp image on 8080 admitted" || bad "BYO llama.cpp image on 8080 NOT admitted"
 command grep -q '^llama-cpp-qwen38|' <<<"$out" && ok "our llama-cpp- container on 8080 admitted, any image" || bad "our llama-cpp- container on 8080 NOT admitted"
 command grep -q '^my-tabby|' <<<"$out" && ok "BYO TabbyAPI image on 5000 admitted" || bad "BYO TabbyAPI image on 5000 NOT admitted"
+command grep -q '^strata-qwen38-flash-next-iq3s|' <<<"$out" && ok "our strata- container on 8080 admitted, any image" || bad "our strata- container on 8080 NOT admitted"
+command grep -q '^my-strata|' <<<"$out" && ok "BYO strata image on 8080 admitted" || bad "BYO strata image on 8080 NOT admitted"
 
 if [[ $rc -eq 0 ]]; then echo "PASS: engine port/prefix sets agree and 5000/8080 admit only evidenced engines"; else echo "FAIL: engine port/prefix drift (see above)"; fi
 exit $rc

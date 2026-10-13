@@ -105,7 +105,7 @@ import sys, io, re
 sys.path.insert(0, ".")
 from scripts.lib.profiles.compose_registry import COMPOSE_REGISTRY
 for slug, e in sorted(COMPOSE_REGISTRY.items()):
-    if not slug.startswith(("vllm/", "sgl/", "exllamav3/")):
+    if not slug.startswith(("vllm/", "sgl/", "exllamav3/", "strata/")):
         continue
     cp = e.get("compose_path")
     if not cp:

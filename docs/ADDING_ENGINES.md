@@ -107,7 +107,7 @@ The file lives at `scripts/lib/profiles/engines/<id>.yml`, loaded by `scripts/li
 
 | Field | Meaning | Read by |
 |---|---|---|
-| `type` | what the engine *behaves like*: `vllm`, `llama.cpp`, `sglang` or `exllamav3`. **Not validated.** | compat (C6 Genesis, C9 drafter match; C12 kv-calc projection runs only for `vllm`); `launch_compat` hardware injection (mem-util and concurrency env exist only for `vllm`/`sglang`); DeepGEMM; the derived-compose generator. `engine-kind.sh` reads it when the engine id has no family prefix; see [Engine kind](#1-engine-kind--scriptslibengine-kindsh). |
+| `type` | what the engine *behaves like*: `vllm`, `llama.cpp`, `sglang`, `exllamav3` or `strata`. **Not validated.** | compat (C6 Genesis, C9 drafter match; C12 kv-calc projection runs only for `vllm`); `launch_compat` hardware injection (mem-util and concurrency env exist only for `vllm`/`sglang`); DeepGEMM; the derived-compose generator. `engine-kind.sh` reads it when the engine id has no family prefix; see [Engine kind](#1-engine-kind--scriptslibengine-kindsh). |
 | `stability` | `stable`, `experimental` or `deprecated` | `launch_compat --stable` |
 | `min_sm` | lowest compute capability | C3 |
 | `image_env`, `install.method`, `install.spec` | the env var the image is injected as; `docker_image` or `pip`; the image ref | the launchers (`resolve_engine_pin`), `registry-emit`, `engine-pin-bump.sh` |
@@ -141,7 +141,7 @@ A derivative or fork that resolves to its base family's kind, and keeps the base
 
 ### 1. Engine kind — `scripts/lib/engine-kind.sh`
 
-This is the one place engine classification lives. Each entry point prints `vllm | llamacpp | sglang | exllamav3 | unknown`. Consumers gather their own evidence and decide only through this file.
+This is the one place engine classification lives. Each entry point prints `vllm | llamacpp | sglang | exllamav3 | strata | unknown`. Consumers gather their own evidence and decide only through this file.
 
 | Entry point | Evidence |
 |---|---|

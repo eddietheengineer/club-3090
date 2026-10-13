@@ -64,7 +64,7 @@ REQUEST_ONLY_ZERO = {"presence_penalty": 0.0, "frequency_penalty": 0.0}
 # what get_param() falls back to when neither the request nor the model sets a key.
 SGLANG_OPENAI_FALLBACK = {"temperature": 1.0, "top_p": 1.0, "top_k": -1, "min_p": 0.0,
                           "repetition_penalty": 1.0}
-ENGINES = ("vllm", "sglang", "llamacpp", "exllamav3", "unknown")
+ENGINES = ("vllm", "sglang", "llamacpp", "exllamav3", "strata", "unknown")
 SMI_FIELDS = "index,uuid,name,power.limit,pcie.link.gen.max,pcie.link.width.current"
 
 
@@ -241,6 +241,8 @@ def build(engine: str, text: str, inspect: dict, smi_csv: str, nvlink_txt: str) 
         defaults, source, meta = None, None, {}
         if engine in ("llamacpp", "exllamav3"):
             notes.append(f"{engine}: sampling is read from the endpoint itself; no engine dump parsed")
+        elif engine == "strata":
+            notes.append("strata: no engine dump parsed, and its endpoint does not expose sampling defaults")
     if engine in ("vllm", "sglang") and not meta.get("tp"):
         notes.append(f"{engine}: startup dump not found in the boot log — engine facts not recorded")
     run_meta: dict = {}

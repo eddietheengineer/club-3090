@@ -2075,6 +2075,8 @@ def _canon_engine_family(label: str) -> str:
         return "beellama"
     if norm.startswith("sglang"):
         return "sglang"
+    if norm.startswith("strata"):
+        return "strata"
     return norm
 
 

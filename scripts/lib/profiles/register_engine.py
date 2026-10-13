@@ -44,8 +44,9 @@ _TYPES = {
     "ik-llama": "llama.cpp", "ik_llama": "llama.cpp",
     "sglang": "sglang",
     "exllamav3": "exllamav3", "exl3": "exllamav3",
+    "strata": "strata",
 }
-ENGINE_TYPES = ("vllm", "llama.cpp", "sglang", "exllamav3")
+ENGINE_TYPES = ("vllm", "llama.cpp", "sglang", "exllamav3", "strata")
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 _IMAGE_ENV_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 

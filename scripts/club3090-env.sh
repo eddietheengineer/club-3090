@@ -30,7 +30,7 @@ log() {
 
 # --- Find the running club-3090 container ---------------------------------
 # Look for containers with names matching our convention (vllm-*, llamacpp-*,
-# sglang-*, beellama-*, ik-llama-*) that are currently running.
+# sglang-*, beellama-*, ik-llama-*, strata-*) that are currently running.
 CONTAINER_ID=""
 CONTAINER_NAME=""
 
@@ -42,7 +42,7 @@ while IFS=' ' read -r cid cname; do
   fi
 done < <(docker ps --filter 'status=running' \
   --format '{{.ID}} {{.Names}}' 2>/dev/null \
-  | command grep -E '(vllm-|llamacpp-|sglang-|beellama-|ik-llama-|llama-cpp-)' \
+  | command grep -E '(vllm-|llamacpp-|sglang-|beellama-|ik-llama-|llama-cpp-|strata-)' \
   | head -1 || true)
 
 if [[ -z "$CONTAINER_ID" ]]; then
