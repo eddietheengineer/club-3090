@@ -49,7 +49,9 @@ def probe(port):
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/v1/models", timeout=2) as r:
             m = (json.load(r).get("data") or [{}])[0]
-        return f"{port}\t{m.get('owned_by') or ''}\t{m.get('id') or '?'}"
+        # "-" for a missing owned_by (Strata has none): tab is IFS whitespace, so `read` would
+        # collapse an empty field and the row would lose a column
+        return f"{port}\t{m.get('owned_by') or '-'}\t{m.get('id') or '?'}"
     except Exception:
         return None
 with cf.ThreadPoolExecutor(max_workers=32) as ex:
