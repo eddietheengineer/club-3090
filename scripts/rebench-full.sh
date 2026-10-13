@@ -676,9 +676,13 @@ try:
     from scripts.lib.profiles.launch_compat import ProfileError, resolve_variant_pin
 
     exports = resolve_variant_pin(load_profiles(), slug)
-    # empty pin == no single injectable image var (#1365) -> compose default below
-    if exports and "VLLM_NIGHTLY_SHA" not in exports:
-        engine_pin = next(iter(exports.values()))
+    # Only the variable the compose's `image:` reads counts (an ik-llama/* compose
+    # reads IK_LLAMA_IMAGE though its engine injects LLAMACPP_IMAGE; a literal image
+    # ignores the injection). Anything else -> the compose default below.
+    _txt = Path(get_registry()[slug]["compose_path"]).read_text(errors="replace")
+    _m = re.search(r'^\s*image:\s*["\x27]?\$\{([A-Z_0-9]+):-', _txt, re.M)
+    if _m and _m.group(1) in exports:
+        engine_pin = exports[_m.group(1)]
 except Exception:
     pass
 if not engine_pin:

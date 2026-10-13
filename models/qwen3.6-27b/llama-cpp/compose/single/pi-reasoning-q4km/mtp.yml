@@ -71,8 +71,9 @@
 services:
   llama-cpp-pi-reasoning:
     # Pinned to b9246 (the validated mainline MTP build; rolling :server-cuda regressed at
-    # b9282, #187). Bump via env once a newer build is validated:
-    #   LLAMACPP_IMAGE=ghcr.io/ggml-org/llama.cpp:server-cuda-bXXXX
+    # b9282, #187). Since 2026-10-13 the launchers inject the llama-cpp-local pin as
+    # LLAMACPP_IMAGE: export it in the shell for a one-off build (a saved value loses
+    # to the pin), or move the pin with engine-pin-bump.sh llama-cpp-local.
     image: ${LLAMACPP_IMAGE:-ghcr.io/ggml-org/llama.cpp@sha256:6ac921528d613deb0fd142c654735e594a446a1c37a069eeab08d8fd974d4bec}
     container_name: "${ESTATE_CONTAINER:-llama-cpp-pi-reasoning}"
     restart: unless-stopped

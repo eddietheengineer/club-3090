@@ -2,27 +2,23 @@ schema_version: 1
 id: llama-cpp-local
 display_name: llama.cpp local CUDA server (MTP-enabled)
 type: llama.cpp
-# #1365: the compose env var this engine's image is injected as.
-# null, and ⚠️ NOT because this profile is ambiguous — it is the MAINLINE engine
-# (ggml-org), used correctly by 15 llamacpp/* slugs that all read LLAMACPP_IMAGE
-# and whose compose defaults match install.spec byte for byte.
+# #1365: the compose env var this engine's image is injected as. The launchers
+# export install.spec as LLAMACPP_IMAGE, so a pin bump here is what every
+# llamacpp/* slug runs, whatever its compose default says.
 #
-# It is null because 15 ik-llama/* slugs ALSO register against this profile and
-# read IK_LLAMA_IMAGE instead. ik_llama is a SEPARATE ENGINE -- its builds take
-# --merge-qkv / --fit / --fit-margin / --cache-ram, none of which exist here, and
-# the two forks disagree on --no-mmap vs --load-mode in opposite directions. Those
-# slugs are registered here only because ik-llama HAS NO ENGINE PROFILE, and it
-# won't get one: ik_llama.cpp is out of the catalog (maintainer, 2026-10-12) and
-# every ik-llama/ slug is deprecated, kept as history.
+# This was null until 2026-10-13, because the 15 ik-llama/* slugs also register
+# against this profile and their composes read IK_LLAMA_IMAGE (ik_llama is a
+# separate engine with no profile of its own, and it's out of the catalog). All
+# 15 are deprecated now, and injecting LLAMACPP_IMAGE doesn't touch them: their
+# composes never read it, so they keep running their own ik image.
 #
-# Until then a single image var cannot be named here, and keying it off the slug
-# prefix would reintroduce exactly the fragility #1365 removed from the launchers.
-# Cost of leaving it: these 30 slugs keep their compose default (identical to
-# install.spec for all 15 mainline ones, so no behaviour is lost), ik slugs are
-# judged against MAINLINE's supported_kv_formats/supported_drafters, and the ik
-# pin logic lives as a bash special case (preflight_ik_llama_image, #633).
-# All 15 ik slugs are deprecated (the last two, the ornith slugs, on 2026-10-12).
-image_env: null
+# What changes: the 5 deprecated llamacpp/* composes that engine-pin-bump.sh
+# skipped (they still default to the older ggml-org digest 6ac92152…) now run
+# this pin when launched with --force, the same as deprecated vLLM composes do
+# under VLLM_IMAGE. A SAVED LLAMACPP_IMAGE (club3090.env) is now ignored in
+# favour of the pin, as for every other engine image; export it in the shell
+# for a one-off build.
+image_env: LLAMACPP_IMAGE
 
 stability: stable
 # The ik-llama slugs also register against this profile but run ikawrakow's own

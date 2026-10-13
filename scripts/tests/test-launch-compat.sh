@@ -114,12 +114,16 @@ out="$(python3 "$HELPER" resolve-engine-pin --engine-id vllm-pip-baseline --form
   echo "ASSERTION FAILED: pip engine must resolve to an EMPTY pin, not raise" >&2; echo "$out" >&2; exit 1; }
 [[ -z "$(printf '%s' "$out" | tr -d '[:space:]')" ]] || {
   echo "ASSERTION FAILED: pip engine emitted an image pin: $out" >&2; exit 1; }
-# same for one engine id whose composes use TWO image vars (llama-cpp-local:
-# LLAMACPP_IMAGE vs IK_LLAMA_IMAGE) -- no single var, so no injection, never a guess.
-out="$(python3 "$HELPER" resolve-engine-pin --engine-id llama-cpp-local --format shell 2>&1)" || {
-  echo "ASSERTION FAILED: llama-cpp-local must resolve to an EMPTY pin, not raise" >&2; echo "$out" >&2; exit 1; }
-[[ -z "$(printf '%s' "$out" | tr -d '[:space:]')" ]] || {
-  echo "ASSERTION FAILED: llama-cpp-local emitted a pin despite two vars: $out" >&2; exit 1; }
+# llama-cpp-local pins as LLAMACPP_IMAGE (null until 2026-10-13, while its live
+# slugs also included ik-llama/* composes reading IK_LLAMA_IMAGE; all deprecated).
+LLAMACPP_SPEC="$(python3 -c "import yaml,sys; print(yaml.safe_load(open(sys.argv[1]))['install']['spec'])" "$ROOT_DIR/scripts/lib/profiles/engines/llama-cpp-local.yml")"
+out="$(python3 "$HELPER" resolve-engine-pin --engine-id llama-cpp-local --format shell 2>&1)"
+assert_contains "$out" "LLAMACPP_IMAGE=${LLAMACPP_SPEC}"
+# ...and both launchers accept it: an unlisted key is `exit 2` on every llamacpp/* launch.
+for f in "$ROOT_DIR/scripts/launch.sh" "$ROOT_DIR/scripts/switch.sh"; do
+  command grep -qE '^\s*[A-Z_0-9|]*\|LLAMACPP_IMAGE\|[A-Z_0-9|]*\)' "$f" \
+    || { echo "ASSERTION FAILED: $f does not allowlist LLAMACPP_IMAGE (every llamacpp/* launch would exit 2)" >&2; exit 1; }
+done
 # a single-image non-vLLM engine DOES pin, from its profile image_env
 out="$(python3 "$HELPER" resolve-engine-pin --engine-id sglang-stable --format shell 2>&1)"
 assert_contains "$out" "SGLANG_IMAGE="
@@ -450,20 +454,20 @@ echo "  ✓ #1365: double invocation is idempotent in both launchers (inject-onc
 #   saved     -> the pin wins, pass 1 says why, pass 2 is silent
 # The override is a value that differs from the pin: one equal to it could not
 # tell "kept" from "re-exported".
-img_harness() { # img_harness <launcher> <slug> [shell|saved] [value]
+img_harness() { # img_harness <launcher> <slug> [shell|saved] [value] [image var, default VLLM_IMAGE]
   local body; body="$(sed -n '/^export_variant_engine_pin() {/,/^}/p' "$1")"
-  LAUNCH_PROFILE="$HELPER" SLUG="$2" MODE="${3:-}" VAL="${4:-}" bash -c '
+  LAUNCH_PROFILE="$HELPER" SLUG="$2" MODE="${3:-}" VAL="${4:-}" IVAR="${5:-VLLM_IMAGE}" bash -c '
     set -uo pipefail
     switch_gpu_profile_spec()   { printf ""; }
     selected_gpu_profile_spec() { printf ""; }
     '"$body"'
     case "$MODE" in
-      shell) export VLLM_IMAGE="$VAL" ;;
-      saved) declare -gA CLUB3090_CONFIG_SOURCE=([VLLM_IMAGE]=club3090.env); export VLLM_IMAGE="$VAL" ;;
+      shell) export "$IVAR=$VAL" ;;
+      saved) declare -gA CLUB3090_CONFIG_SOURCE=(["$IVAR"]=club3090.env); export "$IVAR=$VAL" ;;
     esac
     echo "@@PASS1"; export_variant_engine_pin "$SLUG"
     echo "@@PASS2"; export_variant_engine_pin "$SLUG"
-    echo "@@FINAL VLLM_IMAGE=${VLLM_IMAGE:-<unset>}"
+    echo "@@FINAL $IVAR=${!IVAR:-<unset>}"
   ' 2>&1
 }
 IMG_SLUG="vllm/qwen38-27b-dual-superfast"
@@ -501,4 +505,19 @@ for _L in "${DBL_LAUNCHERS[@]}"; do
     && { echo "ASSERTION FAILED ($_L): pass 2 re-announced the saved image" >&2; printf '%s\n' "$_out" >&2; exit 1; }
 done
 echo "  ✓ #1632: image pins — a shell value wins (announced once, by switch.sh), a saved value does not (said once), no value takes the pin silently"
+# the same rules for llama-cpp-local's LLAMACPP_IMAGE (injected since 2026-10-13)
+LC_SLUG="llamacpp/tess-dual-mtp"
+LC_OVR="ghcr.io/ggml-org/llama.cpp:club3090-test-override"
+for _L in "${DBL_LAUNCHERS[@]}"; do
+  _out="$(img_harness "$_L" "$LC_SLUG" "" "" LLAMACPP_IMAGE)"
+  grep -q "@@FINAL LLAMACPP_IMAGE=${LLAMACPP_SPEC}\$" <<<"$_out" \
+    || { echo "ASSERTION FAILED ($_L): $LC_SLUG did not get LLAMACPP_IMAGE=<pin>" >&2; printf '%s\n' "$_out" >&2; exit 1; }
+  _out="$(img_harness "$_L" "$LC_SLUG" shell "$LC_OVR" LLAMACPP_IMAGE)"
+  grep -q "@@FINAL LLAMACPP_IMAGE=${LC_OVR}\$" <<<"$_out" \
+    || { echo "ASSERTION FAILED ($_L): a shell LLAMACPP_IMAGE was overwritten by the pin" >&2; printf '%s\n' "$_out" >&2; exit 1; }
+  _out="$(img_harness "$_L" "$LC_SLUG" saved "$LC_OVR" LLAMACPP_IMAGE)"
+  grep -q "@@FINAL LLAMACPP_IMAGE=${LLAMACPP_SPEC}\$" <<<"$_out" && grep -q "LLAMACPP_IMAGE: ignoring the saved value from club3090.env" <<<"$_out" \
+    || { echo "ASSERTION FAILED ($_L): a saved LLAMACPP_IMAGE beat the pin, or was dropped silently" >&2; printf '%s\n' "$_out" >&2; exit 1; }
+done
+echo "  ✓ LLAMACPP_IMAGE: llamacpp/* slugs get the llama-cpp-local pin; a shell value wins, a saved one does not"
 echo "test-launch-compat: ok"

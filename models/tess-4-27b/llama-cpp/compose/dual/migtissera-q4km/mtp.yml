@@ -62,8 +62,9 @@
 #
 # Engine pin: validated on `ghcr.io/ggml-org/llama.cpp:server-cuda-b9246` (the
 # shared `llama-cpp-local` pin). draft-mtp spec type (PR #22673, mainline) works
-# on it. Bump via env once a newer build is validated:
-#   LLAMACPP_IMAGE=ghcr.io/ggml-org/llama.cpp:server-cuda-bXXXX
+# on it. The launchers inject the llama-cpp-local pin as LLAMACPP_IMAGE: export
+# it in the shell for a one-off build (a saved value loses to the pin), or move
+# the pin with engine-pin-bump.sh llama-cpp-local.
 #
 # Override defaults via .env or shell:
 #   MODEL_DIR              host dir to mount as /models  (default: ../../../../../../models-cache)
