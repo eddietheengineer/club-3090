@@ -170,9 +170,16 @@ import sys
 old = sys.argv[1].splitlines(); new = open(sys.argv[2], encoding="utf-8").read().splitlines()
 it = iter(new); sys.exit(0 if all(ln in it for ln in old) else 1)
 PY
-command grep -q '== 171, f"registry expects 171 entries' "$T/scripts/tests/test-compose-registry-disk.sh" \
-  && command grep -q '== 174, f"disk expects 174 compose files' "$T/scripts/tests/test-compose-registry-disk.sh" \
-  && ok "disk counts raised by one entry and one compose" || fail "disk counts not raised"
+# The counts are whatever the target's base (HEAD) had, plus one: read from that guard, not
+# written in here, because every slug that lands on master moves them (#1668 did).
+base_guard="$(git show HEAD:scripts/tests/test-compose-registry-disk.sh)"
+base_reg="$(sed -nE 's/.*len\(COMPOSE_REGISTRY\) == ([0-9]+).*/\1/p' <<<"$base_guard")"
+base_disk="$(sed -nE 's/.*len\(disk_paths\) == ([0-9]+).*/\1/p' <<<"$base_guard")"
+[[ -n "$base_reg" && -n "$base_disk" ]] \
+  && command grep -q "== $((base_reg + 1)), f\"registry expects $((base_reg + 1)) entries" "$T/scripts/tests/test-compose-registry-disk.sh" \
+  && command grep -q "== $((base_disk + 1)), f\"disk expects $((base_disk + 1)) compose files" "$T/scripts/tests/test-compose-registry-disk.sh" \
+  && ok "disk counts raised by one entry and one compose (${base_reg}→$((base_reg + 1)), ${base_disk}→$((base_disk + 1)))" \
+  || fail "disk counts not raised (base ${base_reg:-?} / ${base_disk:-?})"
 (cd "$T" && python3 scripts/lib/profiles/migrate_registry_to_yaml.py --check >/dev/null 2>&1) \
   && ok "the target's registry.yaml is canonical" || fail "registry not canonical"
 changed="$(git -C "$T" status --porcelain --untracked-files=all | sort | tr '\n' '|')"
