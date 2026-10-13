@@ -3664,7 +3664,7 @@ entries:
     moe_cache: false
     host_ram_gb: null
     kv_offload: opt-in
-    chat_template: null
+    chat_template: qwen38-reasoning-effort
     tp: 2
     max_ctx: 163840
     max_num_seqs: 1
@@ -3695,7 +3695,7 @@ entries:
     moe_cache: false
     host_ram_gb: null
     kv_offload: null
-    chat_template: null
+    chat_template: qwen38-reasoning-effort
     tp: 4
     max_ctx: 262144
     max_num_seqs: 2
@@ -3726,7 +3726,7 @@ entries:
     moe_cache: false
     host_ram_gb: null
     kv_offload: null
-    chat_template: null
+    chat_template: qwen38-reasoning-effort
     tp: 8
     max_ctx: 262144
     max_num_seqs: 2
@@ -3757,7 +3757,7 @@ entries:
     moe_cache: false
     host_ram_gb: null
     kv_offload: null
-    chat_template: null
+    chat_template: qwen38-reasoning-effort
     tp: 4
     max_ctx: 262144
     max_num_seqs: 2
@@ -3788,7 +3788,7 @@ entries:
     moe_cache: false
     host_ram_gb: null
     kv_offload: null
-    chat_template: null
+    chat_template: qwen38-reasoning-effort
     tp: 8
     max_ctx: 262144
     max_num_seqs: 2
@@ -3819,7 +3819,7 @@ entries:
     moe_cache: false
     host_ram_gb: null
     kv_offload: opt-in
-    chat_template: null
+    chat_template: qwen38-reasoning-effort
     tp: 2
     max_ctx: 262144
     max_num_seqs: 2
@@ -3850,7 +3850,7 @@ entries:
     moe_cache: false
     host_ram_gb: null
     kv_offload: null
-    chat_template: null
+    chat_template: qwen38-reasoning-effort
     tp: 1
     max_ctx: 262144
     max_num_seqs: 2
@@ -3881,7 +3881,7 @@ entries:
     moe_cache: false
     host_ram_gb: null
     kv_offload: null
-    chat_template: null
+    chat_template: qwen38-reasoning-effort
     tp: 4
     max_ctx: 262144
     max_num_seqs: 2
@@ -3912,7 +3912,7 @@ entries:
     moe_cache: false
     host_ram_gb: null
     kv_offload: null
-    chat_template: null
+    chat_template: qwen38-reasoning-effort
     tp: 8
     max_ctx: 262144
     max_num_seqs: 2
@@ -3943,7 +3943,7 @@ entries:
     moe_cache: false
     host_ram_gb: null
     kv_offload: null
-    chat_template: null
+    chat_template: qwen38-reasoning-effort
     tp: 2
     max_ctx: 262144
     max_num_seqs: 1
@@ -3974,7 +3974,7 @@ entries:
     moe_cache: false
     host_ram_gb: null
     kv_offload: null
-    chat_template: null
+    chat_template: qwen38-reasoning-effort
     tp: 4
     max_ctx: 262144
     max_num_seqs: 2
@@ -4005,7 +4005,7 @@ entries:
     moe_cache: false
     host_ram_gb: null
     kv_offload: null
-    chat_template: null
+    chat_template: qwen38-reasoning-effort
     tp: 8
     max_ctx: 262144
     max_num_seqs: 2
@@ -5038,7 +5038,7 @@ entries:
     moe_cache: false
     host_ram_gb: null
     kv_offload: opt-in
-    chat_template: null
+    chat_template: qwen38-reasoning-effort
     tp: 2
     max_ctx: 163840
     max_num_seqs: 1
@@ -5069,7 +5069,7 @@ entries:
     moe_cache: false
     host_ram_gb: null
     kv_offload: null
-    chat_template: null
+    chat_template: qwen38-reasoning-effort
     tp: 4
     max_ctx: 262144
     max_num_seqs: 2
@@ -5100,7 +5100,7 @@ entries:
     moe_cache: false
     host_ram_gb: null
     kv_offload: null
-    chat_template: null
+    chat_template: qwen38-reasoning-effort
     tp: 8
     max_ctx: 262144
     max_num_seqs: 2
@@ -5131,7 +5131,7 @@ entries:
     moe_cache: false
     host_ram_gb: null
     kv_offload: null
-    chat_template: null
+    chat_template: qwen38-reasoning-effort
     tp: 4
     max_ctx: 262144
     max_num_seqs: 2
@@ -5162,7 +5162,7 @@ entries:
     moe_cache: false
     host_ram_gb: null
     kv_offload: null
-    chat_template: null
+    chat_template: qwen38-reasoning-effort
     tp: 8
     max_ctx: 262144
     max_num_seqs: 2
@@ -5193,7 +5193,7 @@ entries:
     moe_cache: false
     host_ram_gb: null
     kv_offload: opt-in
-    chat_template: null
+    chat_template: qwen38-reasoning-effort
     tp: 2
     max_ctx: 262144
     max_num_seqs: 2
@@ -5224,7 +5224,7 @@ entries:
     moe_cache: false
     host_ram_gb: null
     kv_offload: null
-    chat_template: null
+    chat_template: qwen38-reasoning-effort
     tp: 4
     max_ctx: 262144
     max_num_seqs: 2
@@ -5255,7 +5255,7 @@ entries:
     moe_cache: false
     host_ram_gb: null
     kv_offload: null
-    chat_template: null
+    chat_template: qwen38-reasoning-effort
     tp: 8
     max_ctx: 262144
     max_num_seqs: 2
@@ -5286,7 +5286,7 @@ entries:
     moe_cache: false
     host_ram_gb: null
     kv_offload: null
-    chat_template: null
+    chat_template: qwen38-reasoning-effort
     tp: 2
     max_ctx: 262144
     max_num_seqs: 1
@@ -5317,7 +5317,7 @@ entries:
     moe_cache: false
     host_ram_gb: null
     kv_offload: null
-    chat_template: null
+    chat_template: qwen38-reasoning-effort
     tp: 4
     max_ctx: 262144
     max_num_seqs: 2
@@ -5348,7 +5348,7 @@ entries:
     moe_cache: false
     host_ram_gb: null
     kv_offload: null
-    chat_template: null
+    chat_template: qwen38-reasoning-effort
     tp: 8
     max_ctx: 262144
     max_num_seqs: 2
