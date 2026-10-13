@@ -73,7 +73,7 @@ services:
   beellama-carnice-v2-dual:
     image: ${BEELLAMA_IMAGE:-ghcr.io/anbeeld/beellama.cpp@sha256:858e7cfbfb0d5d3d605723a82ace1474698de368b81bc310f4df4dadc6c1b7d2}
     container_name: "${ESTATE_CONTAINER:-beellama-carnice-v2-dual}"
-    restart: unless-stopped
+    restart: ${CLUB3090_RESTART:-unless-stopped}
     ports:
       - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8070}}:8080"
     volumes:

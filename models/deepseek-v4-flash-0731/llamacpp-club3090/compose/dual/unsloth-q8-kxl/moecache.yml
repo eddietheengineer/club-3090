@@ -135,7 +135,7 @@ services:
     # moe-cache pools on both cards. Ledger: /opt/ai/moecache-releases.md.
     image: ${LLAMACPP_CLUB3090_IMAGE:-ghcr.io/noonghunna/llamacpp-club3090@sha256:1c228a52b8193df26a3c7e8b497814739ca06ff34075a2a1ce02989210068210}
     container_name: ${ESTATE_CONTAINER:-llama-cpp-deepseek-flash-q8-moecache}
-    restart: unless-stopped
+    restart: ${CLUB3090_RESTART:-unless-stopped}
     # Reap orphaned children. Without this, a wedged llama-server becomes a
     # <defunct> PID 1 child that docker CANNOT kill ("PID N is zombie and can
     # not be killed. Use the --init option"), and it keeps holding GPU memory

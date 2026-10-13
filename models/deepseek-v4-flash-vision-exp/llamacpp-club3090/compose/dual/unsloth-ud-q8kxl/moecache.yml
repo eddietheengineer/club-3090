@@ -92,7 +92,7 @@ services:
     # records what the IMAGE was validated against — not this compose.
     image: ${LLAMACPP_CLUB3090_IMAGE:-ghcr.io/noonghunna/llamacpp-club3090@sha256:69b833eea9266707cd9853fc8041348a59e2403a1e763822db5c2a46484db72b}
     container_name: ${ESTATE_CONTAINER:-llama-cpp-deepseek-flash-vision-q8-moecache}
-    restart: unless-stopped
+    restart: ${CLUB3090_RESTART:-unless-stopped}
     # Reap orphaned children. Without this, a wedged llama-server becomes a
     # <defunct> PID 1 child that docker CANNOT kill ("PID N is zombie and can
     # not be killed. Use the --init option"), and it keeps holding GPU memory

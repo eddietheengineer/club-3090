@@ -86,7 +86,7 @@ services:
   sglang-qwen36-27b-eagle3:
     image: lmsysorg/sglang:v0.5.12   # pinned: we vendor patch_sglang_eagle3.py
     container_name: "${ESTATE_CONTAINER:-sglang-qwen36-27b-eagle3}"
-    restart: unless-stopped
+    restart: ${CLUB3090_RESTART:-unless-stopped}
     ports:
       - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8040}}:30000"
     ipc: host

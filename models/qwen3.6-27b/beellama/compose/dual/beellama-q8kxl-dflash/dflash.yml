@@ -97,7 +97,7 @@ services:
   beellama-qwen36-27b-dual-dflash:
     image: ${BEELLAMA_IMAGE:-ghcr.io/noonghunna/beellama-cpp:multiarch-v0.3.0-efe856397}
     container_name: "${ESTATE_CONTAINER:-beellama-qwen36-27b-dual-dflash}"
-    restart: unless-stopped
+    restart: ${CLUB3090_RESTART:-unless-stopped}
     ports:
       - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8065}}:8080"
     volumes:
