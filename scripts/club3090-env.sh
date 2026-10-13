@@ -29,47 +29,50 @@ log() {
 }
 
 # --- Find the running club-3090 container ---------------------------------
-# Look for containers with names matching our convention (vllm-*, llamacpp-*,
-# sglang-*, beellama-*, ik-llama-*, strata-*) that are currently running.
-CONTAINER_ID=""
-CONTAINER_NAME=""
+# The engine container is the one publishing an engine-internal port (vLLM 8000,
+# llama.cpp 8080, SGLang 30000, TabbyAPI 5000), found by the shared helper every
+# serving script uses (scripts/lib/club-containers.sh): its container names come
+# from the registry, so an engine added later is covered, and 8080/5000 count only
+# for a container that is ours or runs an engine image, so the stack's own SearXNG
+# (8088->8080) is not mistaken for it. This used its own name-prefix list until
+# 2026-10-13, which had no arm for exllamav3's tabbyapi-* containers.
+# shellcheck source=lib/club-containers.sh
+source "${ROOT_DIR}/scripts/lib/club-containers.sh"
+# shellcheck source=lib/served-model.sh
+source "${ROOT_DIR}/scripts/lib/served-model.sh"
 
-while IFS=' ' read -r cid cname; do
-  if [[ -n "$cid" ]]; then
-    CONTAINER_ID="$cid"
-    CONTAINER_NAME="$cname"
-    break
-  fi
-done < <(docker ps --filter 'status=running' \
-  --format '{{.ID}} {{.Names}}' 2>/dev/null \
-  | command grep -E '(vllm-|llamacpp-|sglang-|beellama-|ik-llama-|llama-cpp-|strata-)' \
-  | head -1 || true)
+ENGINE_LINE=$(docker ps --filter 'status=running' \
+  --format '{{.Names}}|{{.Ports}}|{{.Image}}' 2>/dev/null \
+  | club_engine_port_lines | head -1 || true)
+CONTAINER_NAME="${ENGINE_LINE%%|*}"
 
-if [[ -z "$CONTAINER_ID" ]]; then
+if [[ -z "$CONTAINER_NAME" ]]; then
   log "No club-3090 container running."
   exit 0
 fi
 
-# --- Extract the host port ------------------------------------------------
-# Port binding format from docker ps: "0.0.0.0:8077->8000/tcp"
-PORT_BINDING=$(docker ps --filter "id=${CONTAINER_ID}" \
-  --format '{{.Ports}}' 2>/dev/null)
-
-HOST_PORT=$(echo "$PORT_BINDING" | sed -n 's/^[^:]*:\([0-9]*\)->.*/\1/p' | head -1)
+# --- Extract the host IP and port -----------------------------------------
+# From the mapping onto the engine port, not the first one listed: a container can
+# publish a metrics or UI port too. Format: "0.0.0.0:8077->8000/tcp, [::]:8077->8000/tcp"
+PORT_BINDING="${ENGINE_LINE#*|}"; PORT_BINDING="${PORT_BINDING%%|*}"
+ENGINE_MAP=$(tr ',' '\n' <<<"$PORT_BINDING" | sed 's/^ *//' \
+  | command grep -E -- "->(${CLUB_ENGINE_PORTS_ANY})/tcp" | command grep -v '^\[' | head -1 || true)
+HOST_PORT=$(sed -n 's/^[^:]*:\([0-9]*\)->.*/\1/p' <<<"$ENGINE_MAP")
 
 if [[ -z "$HOST_PORT" ]]; then
   log "Could not parse port from binding: ${PORT_BINDING}"
   exit 0
 fi
 
-# --- Extract the host IP --------------------------------------------------
-HOST_IP=$(echo "$PORT_BINDING" | sed -n 's/^\([0-9.]*\):.*/\1/p' | head -1)
+HOST_IP=$(sed -n 's/^\([0-9.]*\):.*/\1/p' <<<"$ENGINE_MAP")
 if [[ -z "$HOST_IP" || "$HOST_IP" == "0.0.0.0" ]]; then
   HOST_IP="localhost"
 fi
 
 # --- Detect the model name ------------------------------------------------
-# Query the /v1/models endpoint via the host IP:port and pick the most
+# A /v1/model card first: TabbyAPI (exllamav3) answers /v1/models with every
+# folder in its model directory (#1360), so only its card names the LOADED model.
+# The other engines 404 there; for them, query /v1/models and pick the most
 # specific model ID (longest). vLLM registers multiple aliases (e.g.,
 # qwen3.6-27b, qwen3.6-27b-autoround, qwen3.6-27b-nvfp4).
 #
@@ -82,6 +85,10 @@ BASE_URL="http://${HOST_IP}:${HOST_PORT}"
 for i in 1 2 3 4 5; do
   if [[ $i -gt 1 ]]; then
     sleep $((i + 1))
+  fi
+  MODEL_NAME=$(club_model_card_id "$BASE_URL")
+  if [[ -n "$MODEL_NAME" ]]; then
+    break
   fi
   RESPONSE=$(curl -s --max-time 5 "${BASE_URL}/v1/models" 2>/dev/null || true)
   if [[ -n "$RESPONSE" ]]; then
@@ -105,13 +112,13 @@ done
 
 # Fallback: extract model name from container command line
 if [[ -z "$MODEL_NAME" ]]; then
-  MODEL_NAME=$(docker inspect --format '{{.Config.Cmd}}' "$CONTAINER_ID" 2>/dev/null \
+  MODEL_NAME=$(docker inspect --format '{{.Config.Cmd}}' "$CONTAINER_NAME" 2>/dev/null \
     | sed -n 's/.*served-model-name[[:space:]]*\+\([^- ]\+\).*/\1/p' | head -1 || true)
 fi
 
 # Fallback: derive from container name
 if [[ -z "$MODEL_NAME" ]]; then
-  MODEL_NAME=$(echo "$CONTAINER_NAME" | sed 's/^\(vllm\|llamacpp\|sglang\|beellama\|ik-llama\|llama-cpp\)-//' \
+  MODEL_NAME=$(echo "$CONTAINER_NAME" | sed 's/^\(vllm\|llamacpp\|sglang\|beellama\|ik-llama\|llama-cpp\|tabbyapi\|strata\)-//' \
     | sed 's/qwen36/qwen3.6/g' \
     | sed 's/gemma4/gemma-4/g')
 fi

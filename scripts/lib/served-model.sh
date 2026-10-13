@@ -22,15 +22,7 @@ club_served_model_id() {
   [[ -z "$base" ]] && return 0
   command -v curl >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1 || return 0
 
-  # A genuine model card only: some servers answer unknown paths with a web UI
-  # or an unrelated JSON object, and neither may be read as a model id.
-  id="$(curl -sf -m "$t" "${base}/v1/model" 2>/dev/null | python3 -c 'import json,sys
-try:
-    d = json.load(sys.stdin)
-    ok = isinstance(d, dict) and d.get("object") == "model" and isinstance(d.get("id"), str)
-    print(d["id"] if ok else "")
-except Exception:
-    print("")' 2>/dev/null || true)"
+  id="$(club_model_card_id "$base")"
   if [[ -z "$id" ]]; then
     id="$(curl -sf -m "$t" "${base}/v1/models" 2>/dev/null | python3 -c 'import json,sys
 try:
@@ -40,4 +32,25 @@ except Exception:
     print("")' 2>/dev/null || true)"
   fi
   printf '%s' "$id"
+}
+
+# club_model_card_id URL — the id in URL's /v1/model card, or nothing. Only a
+# genuine model card counts: some servers answer unknown paths with a web UI or
+# an unrelated JSON object, and neither may be read as a model id. TabbyAPI
+# answers with the model it has LOADED; vLLM, llama.cpp and SGLang 404. For a
+# caller that wants its own pick from /v1/models when there is no card
+# (club3090-env.sh takes the longest vLLM alias).
+club_model_card_id() {
+  local base="${1%/}" t="${CLUB_MODEL_ID_TIMEOUT_S:-5}"
+  base="${base%/v1/models}"
+  base="${base%/v1}"
+  [[ -z "$base" ]] && return 0
+  command -v curl >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1 || return 0
+  curl -sf -m "$t" "${base}/v1/model" 2>/dev/null | python3 -c 'import json,sys
+try:
+    d = json.load(sys.stdin)
+    ok = isinstance(d, dict) and d.get("object") == "model" and isinstance(d.get("id"), str)
+    print(d["id"] if ok else "", end="")
+except Exception:
+    print("", end="")' 2>/dev/null || true
 }
