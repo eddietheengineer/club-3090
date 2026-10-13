@@ -529,7 +529,8 @@ bounce the PR for:
   - It carries a patch or template that only your local layer has into the bundle.
   - It lists every such change in its plan and in `PR_BODY.md`.
 - **Ports.** Your slug runs on a 202xx port, but curated slugs live on 8010–8199.
-  - The export gives the slug the lowest curated port no curated slug holds.
+  - The export gives the slug the lowest curated port that no curated slug holds and none of the
+    repo's own services (`services/`: Open WebUI 8080, ComfyUI 8188, ...) listens on.
   - It moves both the registry entry and the compose's `${PORT:-NNNN}`.
   - Your local layer keeps its 202xx port, so the slug you run doesn't move.
   - A slug already on a free curated port keeps it.

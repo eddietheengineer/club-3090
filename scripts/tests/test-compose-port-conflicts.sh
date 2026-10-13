@@ -139,3 +139,52 @@ if bad:
     sys.exit(1)
 print(f"OK: all {len(cr.COMPOSE_REGISTRY)} curated slugs are on the curated port band {band}.")
 PY
+
+# Gate 3: no curated slug on a port the repo's own services listen on (Open WebUI 8080,
+# SearXNG 8088, the studio director 8090, ComfyUI 8188, the studio sidecars 8189-8195, ...).
+# A slug there can't run beside them, and `gpu-mode.sh status` reads its port as theirs.
+# #1674 put strata on ComfyUI's and the gallery's ports. The ports are read from services/
+# by export_pr.service_ports, the same reader the export uses to skip them.
+python3 - <<'PY'
+import sys
+from pathlib import Path
+from scripts.lib.profiles import compose_registry as cr
+from scripts.lib.profiles.export_pr import service_ports
+
+# Pre-existing overlaps, tracked for a maintainer call (both slugs predate the gate).
+# Burn these down and DELETE them from here: the gate fails when a listed one is gone.
+ALLOW = {
+    (8080, "vllm/qwen-agentworld-35b-a3b-dual-awq-int4"),   # Open WebUI's port; a Production slug
+    (8090, "llamacpp/qwen38-27b-single-iq4xs"),             # the studio director's port
+}
+
+svc = service_ports(Path("."))
+# Positive control first: the reader still finds one port of each kind it reads (a
+# published compose port, a host-network service's listen port, a host-run server's
+# default), or an empty set would pass every slug below.
+missing = {8188: "ComfyUI's published port", 8190: "the studio orchestrator's host-network port",
+           8195: "the studio Production server's default"}
+missing = {p: what for p, what in missing.items() if p not in svc}
+if missing:
+    print("FAIL: service_ports no longer finds " + "; ".join(f"{p} ({w})" for p, w in missing.items()))
+    sys.exit(1)
+
+hits = {(int(e["default_port"]), s) for s, e in cr.COMPOSE_REGISTRY.items()
+        if str(e.get("default_port") or "").isdigit() and int(e["default_port"]) in svc}
+fail = False
+new = sorted(hits - ALLOW)
+if new:
+    fail = True
+    print("FAIL: curated slugs on a port the repo's own services listen on:")
+    for port, slug in new:
+        print(f"  {slug}: {port}")
+    print("Fix: move the slug to a free curated port (registry default_port and the compose's")
+    print("     ${PORT:-NNNN}); export_pr.py picks one that no slug and no service holds.")
+stale = sorted(ALLOW - hits)
+if stale:
+    fail = True
+    print(f"FAIL: ALLOW lists {stale}, which no longer overlap a service port. Remove them.")
+if fail:
+    sys.exit(1)
+print(f"OK: no curated slug on a service port ({len(svc)} service ports; ALLOW={sorted(p for p, _ in ALLOW)} still valid).")
+PY

@@ -52,7 +52,7 @@ services:
     ulimits:
       memlock: -1            # Strata pins (locks) RAM for the GPU; upstream's docker run uses -1
     ports:
-      - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8188}}:8080"
+      - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8018}}:8080"
     environment:
       CONTEXT: "${CONTEXT:-131072}"
       KV: "${KV:-}"
