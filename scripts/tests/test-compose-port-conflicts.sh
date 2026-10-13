@@ -151,12 +151,10 @@ from pathlib import Path
 from scripts.lib.profiles import compose_registry as cr
 from scripts.lib.profiles.export_pr import service_ports
 
-# Pre-existing overlaps, tracked for a maintainer call (both slugs predate the gate).
-# Burn these down and DELETE them from here: the gate fails when a listed one is gone.
-ALLOW = {
-    (8080, "vllm/qwen-agentworld-35b-a3b-dual-awq-int4"),   # Open WebUI's port; a Production slug
-    (8090, "llamacpp/qwen38-27b-single-iq4xs"),             # the studio director's port
-}
+# Tracked exceptions: re-add one only as a temporary entry for a NEW overlap; the gate
+# fails when a listed one is gone. (Empty: the two older overlaps, agentworld on Open
+# WebUI's 8080 and qwen38-27b-single-iq4xs on the director's 8090, moved to 8021/8022.)
+ALLOW = set()
 
 svc = service_ports(Path("."))
 # Positive control first: the reader still finds one port of each kind it reads (a

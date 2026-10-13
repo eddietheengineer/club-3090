@@ -50,7 +50,7 @@ services:
     user: "0:${DOCKER_GID:-1000}"
     restart: ${CLUB3090_RESTART:-unless-stopped}
     ports:
-      - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8080}}:8000"
+      - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8021}}:8000"
     volumes:
       - ${MODEL_DIR:-../../../../../../models-cache}:/root/.cache/huggingface
       - ${CLUB3090_ENGINE_CACHE_DIR:-../../../cache}/torch_compile:/root/.cache/vllm/torch_compile_cache

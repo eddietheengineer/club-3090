@@ -1837,7 +1837,7 @@ entries:
     requires_nvlink: false
     requires_homogeneous_arch: false
     required_engine_features: []
-    default_port: 8080
+    default_port: 8021
     kvcalc_key: "qwen-agentworld-35b-a3b:dual"
     status: production
     status_note: "Qwen-AgentWorld-35B-A3B language world model, cyankiwi AWQ INT4 compressed-tensors, dual TP=2 at 262K with FP8-E4M3 KV and four serving slots. PRODUCTION gate on 2x3090, stock vLLM v0.25.1: verify-full PASS; verify-stress 8/8 with exact recall through 240,634 tokens (91%); canonical decode 147.12 narrative / 147.24 code TPS, prefill 5,116 @10K / 3,788 @90K; 100-turn soak PASS with 0 errors, 0 silent outputs, 0 MiB growth, p50 147.61 TPS, and 100% retention. The 1,795,289-token KV pool projects 6.85 full-length sequences; C=4 was exercised for six rounds with four simultaneous ~261,529-token prompts: 24/24 completed, 0 errors, 0 silent outputs, 0 MiB growth, 100% retention. FP8 quick quality scored ToolCall 14/15 and InstructFollow 15/15 thinking ON; the matched BF16 baseline full 8-pack scored 125/150 ON vs 101/150 OFF. Checkpoint is language-only (--language-model-only) and has zero mtp.* tensors, so vision and speculation stay off. No DEFAULTS or recommended-model promotion."
@@ -3478,7 +3478,7 @@ entries:
     requires_nvlink: false
     requires_homogeneous_arch: false
     required_engine_features: []
-    default_port: 8090
+    default_port: 8022
     kvcalc_key: SKIP
     status: experimental
     status_note: "Qwen3.8-27B UD-IQ4_XS GGUF + F16 mmproj on a single 3090 (llama-cpp-local, b10236). q4_0/q4_0 KV @262144 + VISION, built-in MTP n=2 (--spec-type draft-mtp). ⭐ MAX-EVERYTHING single-card config (maintainer decision 2026-08-20): the q4_0 KV (BELOW the stack q8 serving floor) is the mechanism that fits full 262K ctx AND the F16 projector on one 24 GB card. For serving-grade q8_0 KV (131K) override KV_TYPE=q8_0 CTX_SIZE=131072 on this compose (q8@131K + vision, decode-free). ✅ VALIDATED 2026-08-20 (single 3090, GPU0, this exact compose): boots + fits 22,290 MiB load / 22,332 MiB peak under image-encode (~2.2 GiB headroom); verify-full PASS (all functional checks; the 2 skips are vLLM-only); image recognition CORRECT (blue-circle + red-7 probe); n_ctx_slot=262144, 'multimodal model' loaded; text decode projector-free (bench parity w/ the q8 text config, 61.7 narr / 72.7 code). CAVEATS: (1) q4_0 KV KLD ~5.75x worse than q8_0, NEVER depth-validated on this DeltaNet hybrid family — a max-ctx/vision exhibit, not serving-grade; (2) vision untested beyond one image probe — a large/high-res image at 262K encodes into far more tokens and could OOM the thin ~2.2 GiB margin (set IMAGE_MIN_TOKENS with budget in mind); (3) 262K NIAH-clean to 240,635 tok (91%) 2026-08-20 (addressability via verify-stress FAST; full-fidelity retrieval NIAH + fine ladder past 240K still unrun). Precedent: qwen3.6-27b's mtp-vision also ran q4_0 KV. Launch --force (incubating; hidden from switch.sh --list). Promote to 🧪/⚠️ only after a q4-config bench + verify-stress NIAH + soak; q4 KV keeps it off ✅ permanently (floor policy)."
