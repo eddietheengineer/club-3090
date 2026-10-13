@@ -766,6 +766,7 @@ check_mtp_acceptance() {
       else
         fail "draft acceptance ${exl_rate} < ${EXL3_ACCEPT_MIN:-0.25} (exl3)" \
              "The MTP head is drafting tokens that get rejected — output stays correct, decode collapses. Check draft_mode is 'mtp', that the quant actually CONTAINS an MTP head (some conversions drop it: grep the GGUF/safetensors index for nextn/mtp tensors), and that draft_num_tokens is a ceiling used with dynamic_draft rather than a fixed depth."
+        return 1   # fail prints; only a non-zero return reaches FAILED and the exit code
       fi
       return 0 ;;
     sglang)
@@ -805,6 +806,7 @@ check_mtp_acceptance() {
       else
         fail "acceptance length ${sgl_al} < ${MTP_ACCEPT_MIN:-2.0} (SGLang)" \
              "A drafter near 1.0 is drafting garbage and being rejected — output stays correct but decode collapses (sglang#39087). Check the drafter checkpoint is UNQUANTIZED and that --speculative-draft-model-quantization is 'unquant'."
+        return 1   # fail prints; only a non-zero return reaches FAILED and the exit code
       fi
       return 0 ;;
   esac
