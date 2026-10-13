@@ -1,150 +1,58 @@
-# Inference engines for Qwen3.6-27B — comparison + quick recipes
+# Inference engines
 
-This repo's main path is **vLLM** because it has the deepest support for Qwen3-Next features (vision, MTP, TurboQuant, full OpenAI API parity). But the model also runs on **llama.cpp** and **SGLang** with different trade-offs. This page compares the three; per-engine pages have setup instructions.
+club-3090 serves every model through one of a few engines. **Which engine a slug runs is set by its registry entry, not by this page.** The slug's prefix names the engine (`vllm/`, `sgl/`, `llamacpp/`, …), and its entry's `engine:` field names the engine profile, `scripts/lib/profiles/engines/<id>.yml`, which pins the image.
 
-> 🔁 **Coming from the README's Quick start?** It already shipped you the vLLM path. Skim this comparison to see what the alternatives look like, then pick a per-engine page if you want to try one.
+This page is the index: what each engine is for here, which profiles it has, and where its page is. It carries no throughput numbers or image pins on purpose, because both drift. Read them from [BENCHMARKS.md](../../BENCHMARKS.md), the card pages and the engine profiles.
 
----
+For a given slug:
 
-## At a glance
-
-| Engine | Status on this stack | Per-stream TPS (1× 3090) | Max ctx (1× 3090) | Vision | Tool calls | Spec-decode | OpenAI API parity |
-|---|---|---|---|---|---|---|---|
-| **[vLLM](VLLM.md)** ⭐ | **Validated, production-grade** (this repo) | 50-53 narr / 66-70 code | 48K default · 75K IDE-agent · **198K vision · 214K text-only** | ✅ | ✅ | ✅ MTP n=3 | ✅ Full |
-| **[llama.cpp](LLAMA_CPP.md)** | Works mainline (MTP merged [PR #22673](https://github.com/ggml-org/llama.cpp/pull/22673), 2026-05-16) | 35-60 (varies by quant + KV type) | **262K** (Q4_K_M + q4_0 KV) | ✅ (via mmproj) | ⚠️ Limited (no auto-tool-choice in server) | ✅ MTP + DFlash both native on mainline (`--spec-type draft-mtp` / `draft-dflash`) | ⚠️ Partial |
-| **[ik_llama.cpp](IK_LLAMA.md)** *advanced quants* | **Shipped — advanced-quant track** | ~50 narr / ~58 code (ties llama.cpp at matched power; edge is **~0.5–0.8 GB leaner VRAM**) | **262K** (IQ4_KS + q4_0 KV) | ✅ (mmproj) | ✅ (template + parser) | ✅ MTP n=2 | ⚠️ Partial (llama.cpp-class) |
-| **[SGLang](../../models/qwen3.6-27b/sglang/README.md)** | **Re-test pending** (May 2026). Historical block partially out-of-date — DFlash + MTP have landed natively on SGLang mainline; Marlin pad-sub-tile-n fix status unknown. See sglang README for re-test plan. | n/a (untested) | n/a | ✅ | ✅ | ✅ DFlash + MTP native upstream (untested here) | ✅ Full |
+```bash
+bash scripts/switch.sh --list                # launchable slugs (--all adds other topologies and incubating, gated and deprecated slugs)
+bash scripts/switch.sh --explain <slug>      # its engine profile, compose, fit verdict and measured rows
+bash scripts/diagnose-profile.sh <slug>      # does it fit this hardware and the catalog
+```
 
 ---
 
-## Pros / cons matrix
+## The engines
 
-### vLLM ⭐
+| Engine | Slug prefix | Engine profiles | Image (pinned in the profile) | What it's for here | Page |
+|---|---|---|---|---|---|
+| **vLLM** | `vllm/` | `vllm-stable`; per-model `vllm-gemma-stable` and `vllm-gemma4-unified`; `vllm-lmcache` (KV offload through LMCache) | a release tag of the stock `vllm/vllm-openai`; any patches are volume-mounted into it, never baked in. `vllm-lmcache` pins `lmcache/vllm-openai` by digest | The widest catalog: Qwen3.8-27B, Qwen3.6, Gemma 4, Tess, Nemotron and more, from one card to multi-card tensor parallel, with MTP speculative decoding and vision. Most `defaults:` rows point here. | [VLLM.md](VLLM.md) |
+| **SGLang** | `sgl/` | `sglang-stable` | a release tag of `lmsysorg/sglang` | Qwen3.8-27B and ThinkingCap-Qwen3.8-27B, from one card to eight (tensor parallel). Every slug is 🧪 Experimental. | [SGLANG.md](SGLANG.md) |
+| **llama.cpp** (mainline) | `llamacpp/` | `llama-cpp-local` | a digest of ggml-org's official image | GGUF models that fit in VRAM, with mainline's MTP. Holds the MiMo single-card default and the Deckard and Tess dual-card defaults. | [LLAMA_CPP.md](LLAMA_CPP.md) |
+| **llama.cpp club-3090** (MoE expert cache) | `llamacpp-club3090/` | one per release: `llamacpp-club3090-v1.5`, `llamacpp-club3090-v1.6` | a digest of `ghcr.io/noonghunna/llamacpp-club3090` | MoE models bigger than VRAM: experts live in CPU RAM behind a GPU expert cache ([@leloch](https://github.com/leloch/llama.cpp)'s work, not yet upstream). GLM-5.3-Flash, Qwen3.8-Flash-Next, DeepSeek-V4-Flash, Inkling. Every slug is 🧪 Experimental. | [LLAMACPP_CLUB3090.md](LLAMACPP_CLUB3090.md) |
+| **ExLlamaV3 + TabbyAPI** | `exllamav3/` | `exllamav3` | a digest of `ghcr.io/noonghunna/tabbyapi-club3090`, which we build | exl3 quants of Qwen3.8-Flash-Next on two cards, with the MoE experts computed on the CPU. 🐣 Incubating. | [EXLLAMAV3.md](EXLLAMAV3.md) |
+| **PrismML llama.cpp** | `llama-cpp-prism/` | `llama-cpp-prism` | a digest of `ghcr.io/noonghunna/llamacpp-prism`, a wrapper we build around PrismML's release | Ternary (PQ2_0) quants of Qwen3.8-27B on one card. 🧪 / 🐣. | the engine profile's `notes:` |
 
-**Pros:**
-- Deepest Qwen3-Next feature support upstream
-- TurboQuant 3-bit KV cache (lets us reach 198K + vision or 214K text-only on a single 3090; 262K dual-card)
-- MTP speculative decoding works out of the box
-- Genesis patch ecosystem (Sandermage's tree fixes many compatibility edges)
-- Full OpenAI API parity (chat, vision, tools, streaming, reasoning, structured output)
-- Active development — bugs we hit get triaged within days
+The two images we build ourselves are exceptions to the image-provenance rule: a derivative is otherwise pinned to an image its own maintainer publishes ([ADDING_ENGINES.md](../ADDING_ENGINES.md), "CONTRACT — image provenance"). [AGENTS.md](../../AGENTS.md) → "Engine image pinning" says which engines pin a tag and which a digest, and why.
 
-**Cons:**
-- Heavyweight — Docker image is ~9 GB
-- Longer cold-start (~2 min for compile + cudagraph capture)
-- Sensitive to upstream API drift across nightly versions (we pin to a specific nightly SHA — `7a1eb8ac` = `0.20.1rc1.dev16` since 2026-05-01 — to avoid this)
-- Frontier features sometimes ship with bugs we have to patch around (the whole reason this repo exists)
-
-**When to pick:** Production / serious local work / anything that needs the full feature set.
+**Defaults.** `<engine>/default` reads the `defaults:` map in `scripts/lib/profiles/registry.yaml`. `<model>/default` walks `engine_preference:` there and takes the first engine with a functional `defaults:` row for that model and topology. Today that's llama.cpp, then vLLM, on one card, and vLLM, then llama.cpp, on two or more. Only vLLM and llama.cpp hold defaults today; slugs on the other engines are always picked by name.
 
 ---
 
-### llama.cpp
+## No longer in the catalog
 
-**Pros:**
-- Lightweight — single binary, ~50 MB
-- Fastest cold-start (~30 sec)
-- Lowest VRAM overhead (no inference framework taxes)
-- GGUF support for many quant formats (Q4_K_M, Q5_K_S, IQ4_XS, etc.)
-- Works on AMD + Intel + Apple Silicon (vLLM is NVIDIA-only)
-- Active community, lots of distros / wrappers (Ollama, LM Studio, LocalAI, etc.)
-
-**Cons:**
-- Qwen3-Next family support is a moving target — needs the right binary build
-- Server feature parity behind vLLM (no auto-tool-choice in upstream `server`; need wrapper)
-- DFlash spec-decode requires a fork ([Luce's llama-cpp-dflash](https://github.com/Luce-Org/lucebox-hub))
-- Concurrent serving is single-threaded by default (the server forks per request — sluggish under concurrent load)
-- No TurboQuant equivalent → max usable context is much lower (~64K with Q4_K_M on 24 GB)
-
-**When to pick:** Quick experiments, embedded use, non-NVIDIA hardware, when you want simplicity over feature completeness.
+- **ik_llama.cpp** is out of the catalog. Every `ik-llama/` slug is 🗑️ Deprecated; they ran under the `llama-cpp-local` profile, and there is no ik-llama engine profile. [IK_LLAMA.md](IK_LLAMA.md) stays as a reference.
+- **beellama.cpp** (`beellama-local`) was retired on 2026-07-27 (Anbeeld #98, won't fix). Its slugs are 🗑️ Deprecated and launch only by name with `--force`.
+- **Engine profiles with no live slug**, still in `scripts/lib/profiles/engines/`:
+  - the four `vllm-nightly-*` profiles;
+  - `vllm-pip-baseline` and `vllm-stable-next`;
+  - `vllm-diffusion-gemma`;
+  - the first two moe-cache releases, `llamacpp-club3090` and `llamacpp-club3090-v1.1`.
 
 ---
 
-### SGLang
+## Choosing
 
-**Pros:**
-- Designed for high-throughput serving — RadixAttention prefix sharing, structured-output-aware scheduling
-- Often beats vLLM by 10-30% on multi-tenant throughput when both work
-- First-class OpenAI API
-- Good support for batched structured output (constraint decoding)
-
-**Cons:**
-- **Last attempt (early 2026): blocked by Marlin pad-sub-tile-n bug** (same kernel-line issue as our [vllm#40361](https://github.com/vllm-project/vllm/pull/40361)). Whether SGLang has picked up the fix on current main is **unverified** — needs re-test. Bug is INT4-specific; FP16/bf16 weights work fine.
-- EAGLE spec-decode was separately blocked by the DeltaNet/GDN hybrid layer not supporting KV rollback. Status on current SGLang main: also unverified, but DFlash and MTP support has landed natively (per z-lab + LMSYS) so spec-decode on Qwen3-Next is at least *intended* to work.
-- TurboQuant 3-bit KV is WIP on SGLang ([Issue #21618](https://github.com/sgl-project/sglang/issues/21618)) — not yet merged.
-- Smaller community than vLLM; fewer eyes on Qwen3-Next bugs.
-
-**When to pick:** if a contributor with current SGLang main re-runs the boot test on Qwen3.6-27B-INT4 + TP=2 and it works. See the [re-test plan in the per-engine page](../../models/qwen3.6-27b/sglang/README.md). For an FP16/bf16 weight variant, it likely works today.
-
-**Re-test plan (pending):**
-1. Pull latest SGLang container/main → smoke-boot at TP=2 + AutoRound INT4 + no spec-decode + fp8/q4 KV (NOT TurboQuant — WIP upstream)
-2. If boot clean: validate verify-stress 7/7
-3. Add DFlash spec-decode (preferred over MTP — higher acceptance rate, z-lab maintains the SGLang integration; Qwen3.6-27B draft at [`z-lab/Qwen3.6-27B-DFlash`](https://huggingface.co/z-lab/Qwen3.6-27B-DFlash))
-4. If competitive vs vLLM `dual-dflash.yml` (78-82 narr / 125-127 code TPS) → ship as a polished compose
-
-Full plan in [models/qwen3.6-27b/sglang/README.md](../../models/qwen3.6-27b/sglang/README.md#re-test-plan).
+- **For a model:** start from the card pages: [SINGLE_CARD.md](../SINGLE_CARD.md), [DUAL_CARD.md](../DUAL_CARD.md) and [MULTI_CARD.md](../MULTI_CARD.md). Their tables are generated from the registry and list every slug with its status and max context; ⭐ marks the model's default.
+- **For engine trade-offs in general:** [INFERENCE_ENGINES.md](../INFERENCE_ENGINES.md) compares the upstream projects feature by feature.
+- **For what a flag does:** [ENGINE_FLAGS.md](../ENGINE_FLAGS.md) lists every flag our composes pass.
+- **For quantization:** [QUANTIZATION.md](../QUANTIZATION.md) covers the formats and which engine runs which. Qwen3.6-27B on vLLM uses AutoRound because it keeps the MTP head in BF16, which is what lets MTP load; see [models/qwen3.6-27b/README.md](../../models/qwen3.6-27b/README.md).
+- **For upstream bugs that gate a slug:** [UPSTREAM.md](../UPSTREAM.md).
 
 ---
 
-## How to choose
+## Adding an engine
 
-| Your priority | Pick | Why |
-|---|---|---|
-| **Full feature set, MTP spec-decode, OpenAI API parity** | vLLM + Lorbus AutoRound | This repo's path. 51-70 TPS depending on workload, all features, prefill-safe at 48K default. |
-| **Maximum context (262K) on one 3090** | llama.cpp + UD-Q3_K_XL or Q4_K_M + q4_0 KV | Smaller quants leave 8-10 GB headroom for KV at 262K. ~35-45 TPS sustained. |
-| **Leanest VRAM / best quality-per-bit GGUF on one 3090** | ik_llama + IQ4_KS + MTP | Fork-exclusive IQK imatrix quant, 262K ctx. Ties llama.cpp on TPS + quality at matched power; its edge is a ~0.5–0.8 GB leaner footprint (best when VRAM-tight). Two-stage ngram+MTP for code workloads. See [IK_LLAMA.md](IK_LLAMA.md). |
-| **Best concurrent throughput on dual 3090** | vLLM TP=2 + Turbo (TQ3) | 4 streams at full 262K, ~200 TPS aggregate. See [`dual-turbo.yml`](../models/qwen3.6-27b/vllm/compose/dual/autoround-int4/turbo.yml) in this repo. |
-| **Non-NVIDIA hardware (AMD / Intel / Apple)** | llama.cpp | Only engine with cross-platform support. |
-| **Lightest setup, fastest cold start** | llama.cpp | Single binary, ~30s cold start. Good for embedded use, quick experiments. |
-| **High-throughput multi-tenant serving** | SGLang (re-test pending — DFlash + MTP native upstream as of May 2026; Marlin INT4 fix verification needed) | RadixAttention prefix sharing wins at scale. Re-test plan in [sglang/README.md](../../models/qwen3.6-27b/sglang/README.md). |
-
----
-
-## Quant choice (orthogonal to engine choice)
-
-The model itself comes in several quant formats. Engine-quant compatibility (full primer: **[QUANTIZATION.md](../QUANTIZATION.md)**):
-
-| Quant | Disk size | Engine fit | Notes |
-|---|---|---|---|
-| **AutoRound int4** ([Lorbus](https://huggingface.co/Lorbus/Qwen3.6-27B-int4-AutoRound)) | ~18-19 GB | vLLM ✅ · llama.cpp ❌ · SGLang (when unblocked) | This repo's choice. W4A16, group_size=128, BF16 mtp.fc head. **Required** for vLLM's MTP spec-decode. |
-| GPTQ int4 | ~16.5-17 GB | vLLM ✅ · llama.cpp ❌ · SGLang ✅ | Mature, broadly supported. Slightly smaller disk than AutoRound. |
-| AWQ int4 | ~16-17 GB | vLLM ✅ · llama.cpp ❌ · SGLang ✅ | Strong baseline, compatible with Marlin kernels. |
-| GGUF Q4_K_M | ~16.8 GB | llama.cpp ✅ · vLLM ⚠️ experimental · SGLang ❌ | The default GGUF mid-range quant. Strong quality, broad ecosystem (Ollama, LM Studio, etc). |
-| GGUF UD-Q3_K_XL ([Unsloth](https://huggingface.co/unsloth/Qwen3.6-27B-GGUF)) | **~14.5 GB** | llama.cpp ✅ | Smaller than 4-bit options. Quality cost is small on Qwen3.6 (quantization-friendly), buys substantial KV cache room. |
-| GGUF Q3_K_M | ~13.6 GB | llama.cpp ✅ | More aggressive 3-bit; quality cost real but acceptable for many workloads. |
-| **GGUF IQ4_KS (imatrix)** ⭐ ([ubergarm](https://huggingface.co/ubergarm/Qwen3.6-27B-GGUF)) | **~15.1 GB** | **[ik_llama.cpp](IK_LLAMA.md) only** · llama.cpp ❌ · vLLM ❌ | Best quality-per-bit GGUF (imatrix + kernels co-designed for IQK grids). Smaller than Q4_K_M → **262K single-card**. Fork-exclusive — see [QUANTIZATION.md](../QUANTIZATION.md). |
-
-### AutoRound vs GPTQ vs AWQ (within vLLM)
-
-All three are 4-bit weight-only quantization for vLLM. Differences:
-
-| Aspect | AutoRound | GPTQ | AWQ |
-|---|---|---|---|
-| **Method** | Signed gradient descent jointly optimizing rounding + scaling | Layer-wise Hessian-based error minimization | Activation-aware salience scaling, then RTN |
-| **Calibration set** | Small (~128-512 samples) | Larger (~1024-2048) | Small-medium |
-| **Quantization time** | Minutes to ~1-2 hours for 27B | Slower for same model | Fast |
-| **Accuracy at 4-bit** | Typically slightly best on hard reasoning (MMLU/GPQA/Math style) | Strong baseline; 0.5-2% behind AutoRound on average | Comparable to GPTQ; depends on tuning |
-| **Ultra-low bits (3, 2)** | Strongest at <4 bit | Degrades faster below 4 bit | Middle of the pack |
-| **Marlin kernel support** | ✅ (via the kernel-line fix in our [vllm#40361](https://github.com/vllm-project/vllm/pull/40361)) | ✅ (mature) | ✅ |
-| **Ecosystem** | Newer, growing fast (Intel-maintained) | Most mature, broadest tool support | Strong vLLM/SGLang support |
-
-**Why we picked AutoRound for this repo:** Lorbus's AutoRound quant ships `mtp.fc.weight` as BF16 (preserved at higher precision), which lets vLLM's `Qwen3_5MTP` loader actually load the head and run multi-token prediction at high acceptance rates (~80% per-position-1, AL ~3.5). GPTQ-quantized variants of the MTP head silently fail to load → 0% draft acceptance. So AutoRound isn't just "slightly better quality" here — it's the only path to working MTP spec-decode in vLLM today.
-
-If MTP isn't a priority for your workload, GPTQ or AWQ are equally valid.
-
----
-
-## Per-engine pages
-
-- **[VLLM.md](VLLM.md)** — current setup (what this repo ships). Brief recap + tuning levers.
-- **[LLAMA_CPP.md](LLAMA_CPP.md)** — quick GGUF recipe, vision via mmproj, Luce DFlash fork pointer for spec-decode, gotchas around server feature parity.
-- **[SGLANG.md](SGLANG.md)** — current blocked state, what would unblock, when to revisit. TBD recipe placeholder until either Marlin pad lands upstream or DeltaNet rollback lands.
-- **[IK_LLAMA.md](IK_LLAMA.md)** ⭐ — the advanced-quant engine: fork-exclusive IQK imatrix quants (`IQ4_KS`), 262K single-card, MTP + two-stage ngram+MTP, `-khad` / `-vhad` / `--merge-qkv`, `--parallel-tool-calls`. Pairs with [QUANTIZATION.md](../QUANTIZATION.md).
-
----
-
-## See also
-
-- [docs/INTERNALS.md](../INTERNALS.md) — why this repo picked vLLM specifically (the 9-probe forensics + upstream tracker)
-- [docs/SINGLE_CARD.md](../SINGLE_CARD.md) and [docs/DUAL_CARD.md](../DUAL_CARD.md) — workload-specific configs by hardware count
-- [LEARNINGS.md (parent stack)](https://github.com/noonghunna/qwen36-27b-single-3090/blob/master/docs/INTERNALS.md) — why vLLM, why these patches
+[ADDING_ENGINES.md](../ADDING_ENGINES.md) covers the whole process: proposal first, lineage, image provenance, the engine profile, and everything in the tooling that has to recognise it. A new engine adds a row to the table above and a page in this directory; the engine PR template asks for both.
