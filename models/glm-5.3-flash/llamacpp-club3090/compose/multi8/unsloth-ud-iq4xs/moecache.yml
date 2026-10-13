@@ -2,7 +2,7 @@
 # Profile (at-a-glance):
 #   Model:     GLM-5.3-Flash (320.76B MoE, arch `glm5next`, unsloth UD-IQ4_XS —
 #              146.1 GiB across 5 shards)
-#   Engine:    llamacpp-club3090 v1.5-rc0 (fork: leloch's MoE expert cache v2 + our
+#   Engine:    llamacpp-club3090 v1.6-rc0 (fork: leloch's MoE expert cache v2 + our
 #              L1/L3/E ports + vendored ggml-org/llama.cpp#27754 for `glm5next`)
 #   Topology:  8× CUDA (layer-split -ts 1,1,1,1,1,1,1,1)
 #   Drafter:   DFlash2 Q4_K_M external (0.70 GB) — CUDA1, depth n=3
