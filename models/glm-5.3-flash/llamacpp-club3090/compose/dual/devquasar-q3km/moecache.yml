@@ -7,7 +7,7 @@
 #              ⚠️ QUALITY UNMEASURED. No 8-pack has been run on this model at ANY quant.
 #   Bench:     MEASURED 2026-09-10 (dual): narrative 23.53 (CV 8.0%) / code 27.50 / prefill@10K 310.7,
 #              5,829 pool slots, marginal hit 43.9/45.8%.
-#   Engine:    llamacpp-club3090 v1.5-rc0 (fork: leloch's MoE expert cache v2 + our
+#   Engine:    llamacpp-club3090 v1.6-rc0 (fork: leloch's MoE expert cache v2 + our
 #              L1/L3/E ports + vendored ggml-org/llama.cpp#27754 for `glm5next`)
 #   Topology:  Dual 3090 PCIe (layer-split -ts 1,1, no NVLink)
 #   Drafter:   ✅ DFlash2 Q4_K_M external (0.70 GB) — ON GPU1, depth n=3
