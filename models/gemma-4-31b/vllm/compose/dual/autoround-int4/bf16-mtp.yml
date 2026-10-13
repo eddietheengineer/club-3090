@@ -135,6 +135,7 @@ services:
       - /bin/bash
       - -c
       - |
+        umask 0002
         # vLLM PR #42006 (Gemma 4 streaming multi-tool-call fix) — apply before import.
         bash /etc/club3090/pr42006/install.sh
         # NVLink auto-detection (sets NCCL env vars, _NVLINK_ENABLED).

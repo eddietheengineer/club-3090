@@ -153,6 +153,7 @@ services:
       - bash
       - -c
       - |
+        umask 0002
         set -e
         source /etc/club3090/detect_nvlink.sh
         bash /etc/club3090/w4a8/install.sh

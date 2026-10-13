@@ -106,6 +106,7 @@ services:
       - /bin/bash
       - -c
       - |
+        umask 0002
         # Overlay-free on the pinned stock vLLM image — just NVLink autodetect + serve.
         source /etc/club3090/detect_nvlink.sh
         # -- Drafter toggle: the same contract on every club-3090 compose --------

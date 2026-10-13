@@ -113,6 +113,7 @@ services:
       - /bin/bash
       - -c
       - |
+        umask 0002
         # VLLM_ENFORCE_EAGER=1 in .env disables CUDA graphs — use on
         # hardware where graph capture causes OOM or instability (e.g. WSL2).
         exec vllm serve ${VLLM_ENFORCE_EAGER:+--enforce-eager} "$@"

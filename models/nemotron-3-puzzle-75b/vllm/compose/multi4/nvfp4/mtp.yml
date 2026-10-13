@@ -137,6 +137,7 @@ services:
       - bash
       - -c
       - |
+        umask 0002
         # NVLink auto-detection (sets NCCL env + _NVLINK_ENABLED). On PCIe-only rigs
         # (the common 4×3090 case) custom all-reduce is disabled — NVLink-assumed
         # allreduce paths break on PCIe.

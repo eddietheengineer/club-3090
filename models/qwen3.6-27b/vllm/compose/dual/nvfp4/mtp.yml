@@ -252,6 +252,7 @@ services:
       - bash
       - -c
       - |
+        umask 0002
         # VLLM_ENFORCE_EAGER=1 in compose/.env disables CUDA graphs — the
         # Cliff 2 mitigation if you see mid-generation hangs at >50K depth
         # (unverified on Blackwell — report either way).

@@ -198,6 +198,7 @@ services:
       - bash
       - -c
       - |
+        umask 0002
         # VLLM_ENFORCE_EAGER=1 in compose/.env disables CUDA graphs — use on
         # hardware where Cliff 2 GDN activation spikes occur at runtime
         # (~50-65K active context tokens). Costs ~20-30% TPS in exchange for

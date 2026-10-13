@@ -194,6 +194,7 @@ services:
       - bash
       - -c
       - |
+        umask 0002
         # SPEC=off drops the built-in MTP drafter (--speculative-config) — the
         # tight-system-RAM mitigation (#617: on a 28 GB laptop 5090 the extra
         # MTP draft-model load OOM'd during boot; the MTP-off 35B booted fine on

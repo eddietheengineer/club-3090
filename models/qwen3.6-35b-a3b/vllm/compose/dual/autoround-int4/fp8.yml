@@ -118,6 +118,7 @@ services:
       - bash
       - -c
       - |
+        umask 0002
         # NVLink auto-detect: detect_nvlink.sh sets the NCCL env + _NVLINK_ENABLED;
         # vLLM custom all-reduce is ON for NVLink/P2P, OFF (--disable-custom-all-reduce)
         # for PCIe. $$ escapes $ so Compose v5.1+ passes the bash through verbatim — an

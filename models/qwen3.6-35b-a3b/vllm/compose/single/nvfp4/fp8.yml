@@ -145,6 +145,15 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    # The image's own entrypoint is `vllm serve`; this wrapper only adds the umask, so
+    # compile-cache files come out group-writable (catalog_rules.py `cache-umask`).
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        umask 0002
+        exec vllm serve "$$@"
+      - --
     command:
       # =====================================================================
       # ⚠️ DO NOT ADD --compilation-config. The default is deliberate.
