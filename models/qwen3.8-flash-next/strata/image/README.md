@@ -101,5 +101,5 @@ A published image is not a pin. To move the strata engine profile to a new relea
   user's saved setting may still name has to stay pullable.
 - **When `portable.py` refuses**, read upstream's new Dockerfile, move the edits to the new text, and run
   the build by hand once before letting CI publish.
-- **When the flag check fails**, `strata-entrypoint.sh` in the compose recipe needs the new spelling first;
+- **When the flag check fails**, `../launcher/strata-entrypoint.sh` (both composes mount it) needs the new spelling first;
   update both together.

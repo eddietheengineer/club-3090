@@ -1,0 +1,4 @@
+# Strata's data volume (packs, MTP layer, config) when a compose is run by hand with
+# CLUB3090_DATA_DIR unset. The launchers use ~/.local/share/club-3090/strata-data instead.
+*
+!.gitignore
