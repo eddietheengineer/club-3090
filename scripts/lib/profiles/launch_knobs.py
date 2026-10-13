@@ -90,6 +90,15 @@ MOUNTED_READERS = (
             "THINKING_BUDGETS": None,
         },
     },
+    {
+        # the bucko-vllm composes' own default-thinking-budget patch (patches.yml
+        # bucko-default-thinking-budget): reads the floor the compose declares
+        "invoke": "python3 /etc/club3090/thinking-budget/apply.py",
+        "file": "models/qwen3.8-flash-next/bucko-vllm/patches/default-thinking-budget/apply.py",
+        "knobs": {
+            "CLUB3090_DEFAULT_THINKING_TOKEN_BUDGET": None,
+        },
+    },
 )
 
 
