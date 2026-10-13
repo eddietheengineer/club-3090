@@ -9,7 +9,7 @@ engine, so this image is an exception to the image-provenance contract
 |---|---|
 | [`build.sh`](build.sh) | Resolves a release, builds it, checks the image, pushes with `--push`. CI and a maintainer run the same script. |
 | [`portable.py`](portable.py) | The one change to upstream's Dockerfile (below). |
-| [`build_opts.py`](build_opts.py) | Opt-in build speedups for a rig: `--jobs`, `--ccache` (below). Never used by CI. |
+| [`build_opts.py`](build_opts.py) | Opt-in build speedups: `--jobs` (CI passes `--jobs 4`) and `--ccache` (rigs only) (below). |
 | [`../../../../.github/workflows/strata-image.yml`](../../../../.github/workflows/strata-image.yml) | Runs `build.sh --push` daily and on demand, then attests the image's provenance. |
 
 ## What we change, and why
@@ -83,8 +83,8 @@ is already published, giving it a new digest. `CUDA_ARCHITECTURES`, `BUILD_VISIO
 
 ### Faster builds on a rig
 
-Two opt-in flags, applied by [`build_opts.py`](build_opts.py) after `portable.py`. CI passes neither,
-so the published recipe is unchanged. Neither changes what is compiled.
+Two opt-in flags, applied by [`build_opts.py`](build_opts.py) after `portable.py`. Neither changes what
+is compiled. CI passes `--jobs 4` (its runners have 4 vCPUs, and `setup.py` would use 2), never `--ccache`.
 
 - **`--jobs N`** compiles with N jobs. `setup.py` passes `-j` (half the CPU threads) on the command
   line, where `CMAKE_BUILD_PARALLEL_LEVEL` can't override it, so the build step rewrites that

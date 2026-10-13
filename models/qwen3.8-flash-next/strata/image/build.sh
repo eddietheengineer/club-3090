@@ -12,7 +12,7 @@
 #   bash models/qwen3.8-flash-next/strata/image/build.sh --tag v0.1.43.1 --push
 #   bash models/qwen3.8-flash-next/strata/image/build.sh --tag v0.1.43.1 --verify <image>   # checks only
 #
-# Faster builds on a rig, opt-in (build_opts.py; CI uses neither, so the published recipe is unchanged):
+# Faster builds, opt-in (build_opts.py; neither changes what is compiled). CI passes --jobs 4, never --ccache:
 #   --jobs N   compile with N jobs instead of setup.py's half the CPU threads (any build, --push too)
 #   --ccache   reuse compiled objects from earlier builds through a BuildKit cache mount; the image
 #              then carries the ccache package, so it can't be pushed
