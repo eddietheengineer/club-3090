@@ -210,14 +210,15 @@ This is the "free 30 GB of disk" moment.
 
 - Pinned by digest to `ghcr.io/noonghunna/strata-club3090`, which our CI builds from each upstream release
   (`.github/workflows/strata-image.yml`, recipe in `models/qwen3.8-flash-next/strata/image/`). A published
-  image is not a pin: boot both `strata/` slugs on the new digest, run `verify-full`, then
+  image is not a pin: boot one `strata/` slug of each model family on the new digest (an ISTA slug and a Swift
+  one: a release can break one family's setup and not the other's), run `verify-full` on each, then
   `scripts/engine-pin-bump.sh strata ghcr.io/noonghunna/strata-club3090@sha256:<digest>` and update
   `lineage.source_ref` to the image's `club3090.upstream.revision` label.
 - The volatile parts are upstream's Dockerfile build step (the image build's `portable.py` refuses when its
   anchors move) and the `setup.py` flags `launcher/strata-entrypoint.sh` passes (the image build fails when one
   disappears). Both stop the build rather than publish a broken image.
-- The data volume carries Strata's pack and MTP layer between versions; a release that changes the pack
-  format re-prepares it at the first start (`REINSTALL=1` forces it).
+- The data volume carries one pack per model family and the shared MTP layer between versions; a release that
+  changes the pack format re-prepares a family's pack at that family's first start (`REINSTALL=1` forces it).
 
 ### vllm-hyperqwen
 

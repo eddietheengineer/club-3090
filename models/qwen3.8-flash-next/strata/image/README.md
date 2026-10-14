@@ -124,8 +124,9 @@ the schedule.
 A published image is not a pin. To move the strata engine profile to a new release:
 
 1. Take the digest from the run's summary (or `docker buildx imagetools inspect ghcr.io/noonghunna/strata-club3090:<tag>`).
-2. Boot a strata slug on the rig with that digest, then run `verify-full`. On the first start, the engine
-   log should say the engine is reused (`engine already built for this PC`), with no cmake run.
+2. Boot one strata slug of each model family on the rig with that digest (an ISTA slug and a Swift one: a
+   release can break one family's setup and not the other's), then run `verify-full` on each. On the first
+   start, the engine log should say the engine is reused (`engine already built for this PC`), with no cmake run.
 3. Bump with `scripts/engine-pin-bump.sh strata ghcr.io/noonghunna/strata-club3090@sha256:<digest>` and open a PR.
 
 ## Maintainer notes
