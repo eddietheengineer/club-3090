@@ -11,15 +11,22 @@ lineage:
   base: "llama.cpp"
   base_version: null
   source: "https://github.com/PrismML-Eng/llama.cpp"
-  source_ref: "6684606ac1bfcf8e31465369d9365df03b3af904"
+  source_ref: "d00e252587db851cb38ec70006e89a0cb189bebb"
   chain: []
-  delta: "PrismML's fork with ternary (PQ2_0) kernels, release prism-b10770-6684606. Our image wraps their release tarball unmodified (predates the maintainer-published-image rule)"
+  delta: "PrismML's fork with ternary (PQ2_0) kernels, release prism-b10776-d00e252. Our image wraps their release tarball unmodified (predates the maintainer-published-image rule)"
 install:
   method: docker_image
   # Digest-pinned, not tag-pinned: tags move, digests do not (#940 precedent).
   # Built by WRAPPING upstream's own release tarball — NOT from source. Recipe:
   # models/qwen3.8-27b/llama-cpp-prism/image/Dockerfile (checked in 2026-09-24;
   # the b10685 image's recipe existed only in its layers).
+  #   2026-10-14  prism-b10776-d00e252  `llama-prism-b10776-d00e252-bin-linux-cuda-12.8-x64.tar.gz`
+  #               sha256 b6cfbe1b…e640417c (= the release asset's published digest).
+  #               Image tag b10776-d00e252, registry digest sha256:e4ad4998…0250da3.
+  #               SASS sm_86/89/120a (cuobjdump). Ships PrismML #355, which fixes #189's
+  #               short-query FA path: on b10770 it corrupted 3-4-row batches with q8_0 K/V,
+  #               and the MTP slug at SPEC_N=2 repeated itself within ~50 characters (measured
+  #               2026-10-14; clean on this build). Both slugs boot on it, verify-full passes.
   #   2026-10-10  prism-b10770-6684606  `llama-prism-b10770-6684606-bin-linux-cuda-12.8-x64.tar.gz`
   #               sha256 98410e52…1d5651 (= the release asset's published digest).
   #               Image tag b10770-6684606, registry digest sha256:8dbbd2a6…cddf90ef.
@@ -50,7 +57,7 @@ install:
   # ⚠️ `libgomp1` is INSTALLED BY THE IMAGE and is REQUIRED. The CUDA runtime
   # base does not carry it, and without it EVERY binary in the tarball fails at
   # exec with `libgomp.so.1: cannot open shared object file`. Found by booting.
-  spec: ghcr.io/noonghunna/llamacpp-prism@sha256:8dbbd2a6a78193ada3c1e73aa674bb9db3c63425e01aab3c19c633c3cddf90ef
+  spec: ghcr.io/noonghunna/llamacpp-prism@sha256:e4ad4998ce120070b7b88389f708102b76755817da87a324c620058570250da3
 
 # ---------------------------------------------------------------------------
 # WHY A SEPARATE ENGINE RATHER THAN A FLAG ON AN EXISTING ONE
@@ -67,9 +74,10 @@ install:
 # matching activation transform emits plausible nonsense rather than an error.
 # ⇒ Never point a Bonsai slug at llama-cpp-local / llamacpp-club3090 / ik-llama.
 #
-# ⭐ Its base is mainline **b10754** (b10735 until 2026-10-06, b10685 until 2026-09-24), ~80 builds off
-# llamacpp-club3090-v1.6's b10675 — so the ternary kernels and our moe-cache deltas sit on nearly the
-# same substrate and are plausibly combinable later. Not attempted, and not
+# ⭐ Its mainline merge base is ggml-org `5ea87ddad` (2026-08-25) for both b10770 and b10776 (GitHub
+# compare API, 2026-10-14). The bNNNNN in a prism tag counts the fork's own builds, so it is NOT a
+# mainline build number: this line used to read the tag as mainline b10754 / b10735 / b10685. Whether
+# the ternary kernels and our moe-cache deltas combine is untested. Not attempted, and not
 # needed for Bonsai: that model is DENSE (qwen35-dense, 64 blocks, no experts)
 # and fits one 3090 whole, so there is nothing for an expert cache to do.
 # ---------------------------------------------------------------------------
@@ -117,7 +125,7 @@ supported_kv_formats:
                           # q4_0 etc. remain UNBOOTED here; add them only from a
                           # boot, never from upstream's docs.
 
-supported_drafters: [mtp_gguf]   # bundled MTP head (prism-mtp-bundled); stock since b10735 (#205). Boot-tested 2026-10-06 on b10754.
+supported_drafters: [mtp_gguf]   # bundled MTP head (prism-mtp-bundled); stock since b10735 (#205). Boot-tested 2026-10-06 on b10754 and 2026-10-14 on b10776.
   # ⛔ EMPTY, AND FOR THE BONSAI PACKS IT IS NOT EVEN AVAILABLE — VERIFIED IN THE
   # GGUF, not assumed:
   #     qwen35.block_count = 64 · blk indices 0..63 · nextn/mtp tensors = 0

@@ -5,7 +5,7 @@
 #              per 128, stored in a blockwise Hadamard-rotated basis folded in
 #              offline. Architecture UNCHANGED from Qwen3.8-27B; the GGUF
 #              declares `general.architecture = qwen35`, 64 blocks, 851 tensors.
-#   Engine:    llama.cpp PrismML ternary fork, release prism-b10754-2459f68 — the STOCK
+#   Engine:    llama.cpp PrismML ternary fork, release prism-b10776-d00e252 — the STOCK
 #              llama-cpp-prism image, same as the pq2 sibling (2026-10-06: #205/#216 ship
 #              upstream, #189 dropped; this slug was llama-cpp-prism-mtp/… on a source build)
 #   Topology:  Single 3090 — the whole 27B fits one card with room to spare.
@@ -103,7 +103,7 @@ services:
     # Digest-pinned, not tag-pinned: tags move, digests do not (#940 precedent).
     # The engine profile (engines/llama-cpp-prism.yml) is authoritative.
     # Image = upstream's linux-cuda-12.8 release tarball + libgomp1, nothing else.
-    image: ${LLAMACPP_PRISM_IMAGE:-ghcr.io/noonghunna/llamacpp-prism@sha256:8dbbd2a6a78193ada3c1e73aa674bb9db3c63425e01aab3c19c633c3cddf90ef}
+    image: ${LLAMACPP_PRISM_IMAGE:-ghcr.io/noonghunna/llamacpp-prism@sha256:e4ad4998ce120070b7b88389f708102b76755817da87a324c620058570250da3}
     container_name: "${ESTATE_CONTAINER:-llama-cpp-prism-qwen38-27b-ternary-mtp}"
     restart: ${CLUB3090_RESTART:-unless-stopped}
     # Reap orphaned children — a wedged server otherwise becomes a <defunct>
@@ -258,6 +258,11 @@ services:
         # nothing. n=4 favours code/structured work. Set SPEC_N=2 for prose-heavy use.
         # (PrismML #189, a FA fallback for Q<=4 with quantized V, was vendored until
         # 2026-10-06 and dropped: never fired at n=4, cost ~14% at n=2 per its review.)
+        # ⚠️⚠️ #189 then MERGED upstream (2026-10-08) and shipped in prism-b10770, pinned
+        # 2026-10-10 to 10-14. There it CORRUPTED 3-4-row verify batches with q8_0 K/V: at
+        # SPEC_N=2 greedy output repeated itself within ~50 characters; at n=4 it looked
+        # clean (2 prompts, 2026-10-14). PrismML #355 fixes it and is in b10776. The sweep
+        # above was measured 2026-09-19 on the retired source build, not re-run since.
         _spec_n="$${SPEC_N:-4}"
         case "$${SPEC:-}" in off|OFF|Off|false|no|0) _spec_n=0 ;; esac
         case "$$_spec_n" in ""|*[!0-9]*)
