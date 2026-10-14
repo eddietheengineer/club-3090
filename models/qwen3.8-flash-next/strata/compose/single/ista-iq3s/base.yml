@@ -15,7 +15,8 @@
 #   Status:    🐣 Incubating
 #   Caveats:   Not gate-passing yet: IQ3_S quality unmeasured (8-pack pending). One request at a time.
 #              The first start needs the network (setup.py installs Python packages and range-reads
-#              ~5 GB of MTP tensors from Qwen/Qwen3.8-Flash-Next) and ~60 GB of free host RAM. Host
+#              ~5 GB of MTP tensors from Qwen/Qwen3.8-Flash-Next) and ~86 GB of free host RAM when the
+#              model disk is rotational (setup then keeps the n-gram table in RAM; less on an SSD). Host
 #              needs NVIDIA driver >= 580 (CUDA 13) and an AVX2 CPU; x86-64 only. Strata reasons by
 #              default and takes no server-side effort default (the vLLM Flash-Next slugs default to
 #              low); our tooling has no thinking-budget support for it yet. No launch knobs (SPEC_N,
@@ -24,11 +25,13 @@
 #              MTP pack ~2 min), longer than switch.sh's 10-minute wait: give it READY_TIMEOUT=1800
 #              (or re-run switch.sh once it times out; the container keeps going). Later starts: ~30 s.
 #              Measured 2026-10-13 on 0.1.43.1: 106.1 / 121.5 decode, 1,920 / 2,359 prefill (BENCHMARKS.md, Qwen3.8-Flash-Next / Strata).
-# CPU-Offload-Host-RAM-GB: 60
-#   ⤷ MEASURED 2026-10-06: MemAvailable fell ~58.4 GB while serving. Strata page-locks every
-#     expert in host RAM whatever the card count, so this is also the worst case.
-#     Registry `host_ram_gb` is the NOMINAL figure and must stay <= this.
-#   Best for:  Flash-Next on ONE 3090 + ~64 GB RAM
+# CPU-Offload-Host-RAM-GB: 86
+#   ⤷ RE-MEASURED 2026-10-14 (0.1.44.1, this rig's rotational model disk): MemAvailable fell 84 GB
+#     at ready on one card: every expert page-locked plus the 28.8 GB n-gram table, which setup
+#     keeps in RAM on a rotational disk (--ple-io ram). The 2026-10-06 figure (~58.4 GB, 0.1.33)
+#     predates that. Strata page-locks every expert in host RAM whatever the card count.
+#     Registry `host_ram_gb` (84) is the NOMINAL figure and must stay <= this.
+#   Best for:  Flash-Next on ONE 3090 + ~96 GB RAM (less with the model on an SSD)
 # ---------------------------------------------------------------------------
 # Strata (github.com/Niko1221/Strata) is its own engine for this model: see docs/engines/STRATA.md.
 # Sibling: ../../dual/ista-iq3s/base.yml (two cards, same data volume).

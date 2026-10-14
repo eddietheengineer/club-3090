@@ -76,7 +76,8 @@ detected at boot, so you don't choose a compose for it.
 |  | `bucko-vllm/qwen3.8-flash-next-swift15-dual` | 🐣 incubating | 262144 | [dual/ukisai-swift15-autoround-int4/base.yml](../models/qwen3.8-flash-next/bucko-vllm/compose/dual/ukisai-swift15-autoround-int4/base.yml) | — | host RAM ≥ 170 GB |
 |  | `exllamav3/qwen38-flash-next-dual-exl3-305-cpumoe` | 🐣 incubating | 204800 | [dual/exl3-3.05bpw/cpumoe.yml](../models/qwen3.8-flash-next/exllamav3/compose/dual/exl3-3.05bpw/cpumoe.yml) | — | host RAM ≥ 96 GB |
 |  | `exllamav3/qwen38-flash-next-dual-exl3-405-cpumoe` | 🐣 incubating | 204800 | [dual/exl3-4.05bpw/cpumoe.yml](../models/qwen3.8-flash-next/exllamav3/compose/dual/exl3-4.05bpw/cpumoe.yml) | — | host RAM ≥ 118 GB |
-|  | `strata/qwen3.8-flash-next-iq3s-dual` | 🐣 incubating | 131072 | [dual/ista-iq3s/base.yml](../models/qwen3.8-flash-next/strata/compose/dual/ista-iq3s/base.yml) | — | host RAM ≥ 60 GB |
+|  | `strata/qwen3.8-flash-next-iq3s-dual` | 🐣 incubating | 131072 | [dual/ista-iq3s/base.yml](../models/qwen3.8-flash-next/strata/compose/dual/ista-iq3s/base.yml) | — | host RAM ≥ 84 GB |
+|  | `strata/qwen3.8-flash-next-swift15-abliterated-iq3s-dual` | 🐣 incubating | 131072 | [dual/sc117-swift15-abliterated-iq3s/base.yml](../models/qwen3.8-flash-next/strata/compose/dual/sc117-swift15-abliterated-iq3s/base.yml) | — | host RAM ≥ 84 GB |
 | **Tess 4 27B** | `llamacpp/tess-dual-mtp` | ✅ production | 262144 | [dual/migtissera-q4km/mtp.yml](../models/tess-4-27b/llama-cpp/compose/dual/migtissera-q4km/mtp.yml) | [#662](https://github.com/noonghunna/club-3090/discussions/662) |  |
 |  | `vllm/tess-dual-w4a16` ⭐ | ⚠️ caveats | 262144 | [dual/leaderboard-w4a16/fp8-mtp.yml](../models/tess-4-27b/vllm/compose/dual/leaderboard-w4a16/fp8-mtp.yml) | [#662](https://github.com/noonghunna/club-3090/discussions/662) |  |
 |  | `vllm/tess-dual-nvfp4` | 🧪 experimental | 131072 | [dual/nvfp4/fp8.yml](../models/tess-4-27b/vllm/compose/dual/nvfp4/fp8.yml) | [#662](https://github.com/noonghunna/club-3090/discussions/662) | needs sm 9.0+ (not a 3090) |
@@ -91,7 +92,7 @@ detected at boot, so you don't choose a compose for it.
 |  | `vllm/thinkingcap38-27b-dual-ultrafast` | 🧪 experimental | 262144 | [dual/autoround-int4/dflash2.yml](../models/thinkingcap-qwen3.8-27b/vllm/compose/dual/autoround-int4/dflash2.yml) | [#1418](https://github.com/noonghunna/club-3090/discussions/1418) |  |
 |  | `vllm/thinkingcap38-27b-dual-ultramax` | 🧪 experimental | 262144 | [dual/fp8/dflash2.yml](../models/thinkingcap-qwen3.8-27b/vllm/compose/dual/fp8/dflash2.yml) | [#1418](https://github.com/noonghunna/club-3090/discussions/1418) |  |
 
-58 slugs. ⭐ = the model's default for this topology (`bash scripts/switch.sh <model>/default`). Generated from the registry by `tools/docs/slug_tables.py`; don't edit by hand.
+59 slugs. ⭐ = the model's default for this topology (`bash scripts/switch.sh <model>/default`). Generated from the registry by `tools/docs/slug_tables.py`; don't edit by hand.
 <!-- END GENERATED: slug-table dual -->
 
 ## Launch
