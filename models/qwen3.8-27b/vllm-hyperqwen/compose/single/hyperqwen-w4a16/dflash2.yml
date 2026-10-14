@@ -1,0 +1,133 @@
+# ===========================================================================
+# Profile (at-a-glance):
+#   Model:     Qwen3.8-27B — W4A16 (dbirks compressed-tensors export), prepared by HyperQwen at
+#              the first start: int8 lm_head / embeddings / MTP module, a calibrated draft
+#              vocabulary, and the single-user "fast" variant it serves
+#   Engine:    HyperQwen (syv-ai): vLLM 0.31.0 + syv-ai's patch series, syv-ai's own image
+#              ghcr.io/syv-ai/hyperqwen (commit 95ee3b64)
+#   Topology:  Single card (TP=1)
+#   Drafter:   DFlash2 — syvai/Qwen3.8-27B-DFlash2-W4A16 block drafter, 7 tokens per verify
+#              (SPEC_N sets it; SPEC_N=0 turns speculation off)
+#   KV:        bf16
+#   Vision:    no (language model only)
+#   Max ctx:   65536
+#   Genesis:   none
+#   Status:    🐣 Incubating
+#   Caveats:   New engine; quality not validated here (no 8-pack, verify-stress or soak).
+#              HyperQwen serves its own hardened copy of the checkpoint's chat template, not
+#              ours: a system message after the first raises an error, and tool-schema keys are
+#              not sorted. Default effort is low, as on the other Qwen3.8 slugs (the template
+#              maps minimal -> low and high/max -> xhigh, as ours does), but there is no
+#              thinking-budget cap (THINKING_BUDGET_* and ENABLE_THINKING are not wired).
+#              The FIRST start prepares the model (~1 GB more download, CPU requantization,
+#              torch.compile): give it READY_TIMEOUT=1800. Later starts skip the preparation.
+#              Re-running setup.sh re-downloads the shards prepare rewrote; the next start
+#              prepares them again.
+#              Measured 2026-10-14 on one 3090 at the stock 370 W: 131.4 / 230.1 decode, 1,190
+#              prefill @10K, 23.3 GB peak (BENCHMARKS.md, Qwen3.8-27B). First start 368 s with the
+#              image already pulled (prepare + compile); later starts 88 s.
+#   Best for:  the fastest single-user decode on one 24 GB card (HyperQwen's setup B)
+# ---------------------------------------------------------------------------
+#
+# HyperQwen (github.com/syv-ai/HyperQwen, Apache-2.0) is syv-ai's vLLM derivative for this
+# model on one card. Its image runs three stages at every start: docker/prepare.sh (idempotent:
+# the download, the in-place requantization of the heads and the fast variant the first time,
+# seconds after that), its own verify.sh --no-server, then single-user/start_qwen.sh. This
+# compose is upstream's setup B (SPEC=dflash2 PREFIX_CACHE=1, CTX=fast: 64K), with our
+# conventions on top: port 8000 inside, the launcher's GPU choice, group-writable files, and
+# our launch knobs mapped onto HyperQwen's own names.
+#
+# Credit: the first port of HyperQwen to this catalog, and its validation on a 3090, is
+# community PR #1634 by VykosX.
+#
+#   bash scripts/setup.sh vllm/qwen38-27b-single-hyperqwen     # the base + the DFlash2 drafter
+#   READY_TIMEOUT=1800 bash scripts/switch.sh --force vllm/qwen38-27b-single-hyperqwen
+#
+# Knobs (HyperQwen's own names; their defaults are upstream's setup B):
+#   SPEC_N=<n>        tokens per DFlash2 verify block (DFLASH_TOKENS, default 7); 0 = no speculation
+#   REASONING_EFFORT  server-default effort for requests that send none: low (default), medium, xhigh
+#   DFLASH_TOKENS=15  upstream's setup C, for answers that quote the prompt (fewer slots, 56K)
+#   GPU_UTIL          memory fraction (the launcher's GPU_MEMORY_UTILIZATION feeds it)
+#   EXTRA_ARGS        appended to vLLM's command line by HyperQwen's launcher
+services:
+  vllm-hyperqwen-qwen38-27b-single:
+    image: ${VLLM_IMAGE:-ghcr.io/syv-ai/hyperqwen@sha256:e99df7e6dc73208971ae0d1f1063deb100c997308248f253174176cf0514cb9e}
+    container_name: "${ESTATE_CONTAINER:-vllm-hyperqwen-qwen38-27b-single}"
+    user: "0:${DOCKER_GID:-1000}"
+    restart: ${CLUB3090_RESTART:-unless-stopped}
+    shm_size: "16gb"
+    ipc: host
+    stop_grace_period: 30s
+    ports:
+      - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8023}}:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      # HyperQwen's model directory, its own: setup.sh downloads the base W4A16 into
+      # Qwen3.8-27B-W4A16-AutoRound/, and prepare rewrites that copy IN PLACE and builds
+      # Qwen3.8-27B-W4A16-AutoRound-fast/ next to it. No other slug reads this directory.
+      - ${MODEL_DIR:-../../../../../../models-cache}/qwen3.8-27b-hyperqwen:/app/models
+      # The DFlash2 drafter, shared with the vLLM DFlash2 slugs. Read-only; its presence is
+      # what makes prepare skip fetching its own copy.
+      - ${MODEL_DIR:-../../../../../../models-cache}/qwen3.8-27b-dflash2-w4a16:/app/models/Qwen3.8-27B-DFlash2-W4A16:ro
+      # HOME=/cache in the image: the torch.compile, Triton and FlashInfer JIT caches.
+      - ${CLUB3090_ENGINE_CACHE_DIR:-../../../cache}/home:/cache
+    environment:
+      - HOME=/cache
+      # Internal port 8000, vLLM's standard, so our tools find the server; HyperQwen's default is 18020.
+      - PORT=8000
+      - BIND_HOST=0.0.0.0
+      # Upstream's setup B.
+      - SPEC=${SPEC:-dflash2}
+      - PREFIX_CACHE=${PREFIX_CACHE:-1}
+      - CTX=${CTX:-fast}
+      - DFLASH_TOKENS=${DFLASH_TOKENS:-7}
+      - GPU_UTIL=${GPU_UTIL:-${GPU_MEMORY_UTILIZATION:-0.93}}
+      # Our launch knobs, mapped onto HyperQwen's names by the entrypoint below.
+      - SPEC_N
+      - REASONING_EFFORT
+      - EXTRA_ARGS=${EXTRA_ARGS:-}
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
+      - CUDA_VISIBLE_DEVICES
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+      - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-${OFFLINE:-0}}
+    entrypoint:
+      - bash
+      - -c
+      - |
+        umask 0002
+        set -e
+        # SPEC_N (our knob) -> DFLASH_TOKENS / SPEC=off (HyperQwen's). Unset keeps setup B.
+        if [ -n "$${SPEC_N:-}" ]; then
+          case "$$SPEC_N" in
+            *[!0-9]*) echo "[spec] SPEC_N='$$SPEC_N' is not a non-negative integer." >&2
+                      echo "[spec] Fix: SPEC_N=<n> sets the DFlash2 verify block; SPEC_N=0 disables." >&2
+                      exit 1 ;;
+          esac
+          if [ "$$SPEC_N" -eq 0 ]; then
+            export SPEC=off
+            echo "[spec] speculation OFF (SPEC_N=0)" >&2
+          else
+            export DFLASH_TOKENS="$$SPEC_N"
+            echo "[spec] DFlash2 ON, $$SPEC_N tokens per verify (SPEC_N)" >&2
+          fi
+        fi
+        # REASONING_EFFORT -> the template's default effort, which is xhigh without this.
+        # The boot takes the three efforts the template acts on (it maps minimal/high/max).
+        _reff="${REASONING_EFFORT:-low}"
+        case "$$_reff" in low|medium|xhigh) : ;; *) echo "[reasoning] REASONING_EFFORT='$$_reff' must be low|medium|xhigh" >&2; exit 1 ;; esac
+        export EXTRA_ARGS="--default-chat-template-kwargs {\"reasoning_effort\":\"$$_reff\"} $${EXTRA_ARGS}"
+        echo "[reasoning] default reasoning_effort=$$_reff (a request's own effort wins)" >&2
+        exec bash docker/entrypoint.sh single
+    healthcheck:
+      # The container's own hostname, not loopback, so a bad bind address can't look healthy.
+      test: ["CMD-SHELL", "curl -sf \"http://$${HOSTNAME}:8000/health\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 1800s

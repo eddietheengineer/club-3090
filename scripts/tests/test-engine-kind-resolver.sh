@@ -46,6 +46,7 @@ else
     "engine_kind_from_container strata-qwen38-flash-next-iq3s:strata" \
     "engine_kind_from_image lmsysorg/sglang:v0.5.19:sglang" \
     "engine_kind_from_image vllm/vllm-openai:v0.29.0:vllm" \
+    "engine_kind_from_image ghcr.io/syv-ai/hyperqwen@sha256:0123abcd:vllm" \
     "engine_kind_from_image ghcr.io/ggml-org/llama.cpp:llamacpp" \
     "engine_kind_from_image ghcr.io/noonghunna/strata-club3090@sha256:0123abcd:strata" \
     "engine_kind_from_image ghcr.io/noonghunna/llamacpp-club3090@sha256:0123abcd:llamacpp" \

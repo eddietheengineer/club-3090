@@ -439,6 +439,12 @@ the remaining candidates are allocator fragmentation or cudagraph state after re
 **5.000**, the hard ceiling for `SPEC_N=4` — while throughput moves ~1% (102.29 / 132.52). It distorts the
 acceptance signal and buys nothing.
 
+### Single-card (1× RTX 3090) — vLLM derivatives
+
+| Compose | Rig | KV | Max ctx | Narr / Code TPS | PP tok/s | Peak VRAM | Date | Notes |
+| --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
+| `vllm-hyperqwen/compose/single/hyperqwen-w4a16/dflash2.yml` (`vllm/qwen38-27b-single-hyperqwen`, HyperQwen setup B, DFlash2 n=7) | @noonghunna (1× 3090 PCIe Gen4 x16, stock 370 W) | bf16 | 65536 | **131.43 / 230.10** decode (CV 3.6% / 4.3%); **129.93 / 223.20** wall | 1190 @10K (90K exceeds the served 64K) | 23,292 MiB | 2026-10-14 | 🐣 syv-ai's image `ghcr.io/syv-ai/hyperqwen@sha256:e99df7e6…` (vLLM 0.31.0 + their patch series). `bench.sh`, one boot: the second start, as the first runs HyperQwen's prepare. TTFT 87 ms. DFlash2 mean acceptance length 4.21. Weights 15.02 GiB loaded; KV pool pinned by HyperQwen at 5.2 GiB = 68,605 tokens. At the stock 370 W, not the 230 W cap of some rows above. For comparison, not measured here: upstream reports 127 tok/s single stream at 250 W, and community PR #1634 (VykosX) measured 131.6 / 228.5 on its own build. |
+
 ### Single-card (1× RTX 3090) — llama.cpp
 
 | Compose | Rig | KV | Max ctx | Narr / Code TPS | PP tok/s | Peak VRAM | Date | Notes |

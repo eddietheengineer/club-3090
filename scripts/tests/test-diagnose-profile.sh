@@ -112,7 +112,12 @@ PY
     # under 30 GiB it runs its lean tier (W4A8, no MTP, no vision tower, 81920 context), which
     # served a 79,813-token prompt and passed verify-full + verify-stress on one 3090 (2026-10-02).
     # kv-calc cannot model a boot-time tier choice. Full-tier target: 32 GB+ (a 64 GB CMP 170HX).
-    vllm/qwen38-27b-single-nvfp4|vllm/qwen38-27b-single-fast)
+    #
+    # vllm/qwen38-27b-single-hyperqwen: kv-calc sizes the weights as the 19 GB AutoRound download and
+    # leaves 0.27 GB for KV (~100% of budget). HyperQwen's prepare step serves its int8-head "fast"
+    # variant without the vision tower: 15.02 GiB loaded and a pinned 5.2 GiB KV pool (68,605 tokens,
+    # 1.05x at 65,536) on one 3090, verify-full passing (2026-10-14). kv-calc cannot model prepare.
+    vllm/qwen38-27b-single-nvfp4|vllm/qwen38-27b-single-fast|vllm/qwen38-27b-single-hyperqwen)
       if [[ "$rc" -eq 0 ]]; then
         echo "ASSERTION FAILED: $compose triaged GREEN on 1x-rtx-3090 — it is" >&2
         echo "  registered as expected-YELLOW (does not fit 24 GB). If the slug or" >&2

@@ -1,0 +1,45 @@
+schema_version: 1
+id: vllm-hyperqwen
+display_name: HyperQwen (syv-ai's vLLM 0.31.0 + patch series for Qwen3.8-27B on one 24 GB card)
+type: vllm
+# The compose env var this engine's image is injected as. Shared with the other vLLM
+# profiles, as vllm-lmcache does: each launch injects its own engine's pin, so no
+# launcher allowlist arm is needed.
+image_env: VLLM_IMAGE
+stability: experimental
+min_sm: 8.6
+lineage:
+  relation: derivative
+  base: vllm
+  base_version: "0.31.0"
+  source: https://github.com/syv-ai/HyperQwen
+  source_ref: 95ee3b64b0df7014ee2626529524d6b99c3dcdd1
+  chain: []
+  delta: "syv-ai's patch series on vLLM 0.31.0 (PATCHES.md) plus its own launchers (single-user/, batch/) and a first-start model preparation (prepare/: int8 lm_head / embeddings / MTP, a calibrated draft vocabulary, the single-user fast variant). Shipped as syv-ai's own CI image"
+install:
+  method: docker_image
+  # syv-ai's official image, built on every main push by their .github/workflows/docker-image.yml
+  # and tagged ghcr.io/syv-ai/hyperqwen:sha-<7>. This is :sha-95ee3b6 (commit 95ee3b64, 2026-10-11),
+  # the OCI index digest; it pulls without credentials. syv-ai publishes no versioned releases,
+  # so a bump moves to a newer :sha-<7> digest after a rig boot and verify-full.
+  spec: ghcr.io/syv-ai/hyperqwen@sha256:e99df7e6dc73208971ae0d1f1063deb100c997308248f253174176cf0514cb9e
+supported_model_families:
+  - qwen35-dense          # Qwen3.8-27B. HyperQwen is written and measured for this checkpoint
+supported_weight_formats:
+  - compressed-tensors    # dbirks/Qwen3.8-27B-W4A16-AutoRound (a compressed-tensors pack-quantized export)
+supported_kv_formats:
+  - bf16                  # the single-user default (CTX=fast). KVarN 4/2-bit (CTX=huge) not catalogued yet
+supported_drafters:
+  - dflash                # syvai/Qwen3.8-27B-DFlash2-W4A16, SPEC=dflash2 (the single-user default here)
+notes: >
+  HyperQwen (github.com/syv-ai/HyperQwen, Apache-2.0) by syv-ai: a vLLM derivative for Qwen3.8-27B
+  on one 24 GB card. It is a patch series on a pinned vLLM (0.31.0 at this pin), its own
+  launchers with their own env names (SPEC, CTX, DFLASH_TOKENS, GPU_UTIL, EXTRA_ARGS), and a
+  model-preparation step that runs at every container start (idempotent: minutes the first time,
+  seconds after). The image entrypoint runs prepare, then its own verify.sh --no-server, then
+  the launcher. Upstream's setups: single (B: DFlash2 64K, C: DFLASH_TOKENS=15 quoting,
+  D: SPEC=mtp CTX=long 150K, E: CTX=huge KVarN 240K), batch, and TP=2 via EXTRA_ARGS. The first
+  curated slug is setup B on one card; community PR #1634 by VykosX did the first port and
+  validation. Serves --served-model-name qwen3.8-27b with --reasoning-parser
+  qwen3 and its own tool-call parser; the chat template is the checkpoint's, hardened by
+  prepare/harden_chat_template.py.
