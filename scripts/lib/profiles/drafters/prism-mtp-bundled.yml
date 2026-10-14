@@ -30,7 +30,7 @@ status: experimental
 # ⚠️ NEEDS a prism release with PR #205 (b10735 or later). Without it
 # llama_verify_hadamard_graph refuses the graph: the MTP path reads the
 # Hadamard-folded token_embd without the inverse transform. The stock
-# `llama-cpp-prism` engine carries it (pinned b10754); the source-built
+# `llama-cpp-prism` engine carries it (since b10735); the source-built
 # `llama-cpp-prism-mtp` engine that vendored it was retired 2026-10-06.
 speculative_config_template: null   # N/A — llama.cpp engine, not vLLM
 local_model_path: null
