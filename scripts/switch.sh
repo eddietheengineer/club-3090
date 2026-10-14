@@ -164,6 +164,8 @@ declare -A VARIANT_CONTAINER=()
 # shellcheck source=lib/registry-emit.sh
 source "${ROOT_DIR}/scripts/lib/registry-emit.sh"
 derive_switch_variant_tables "${ROOT_DIR}"
+# shellcheck source=lib/engine-kind.sh
+source "${ROOT_DIR}/scripts/lib/engine-kind.sh"
 # shellcheck source=lib/compose-meta.sh
 source "${ROOT_DIR}/scripts/lib/compose-meta.sh"
 
@@ -1422,7 +1424,9 @@ check_variant() {
     source "${ROOT_DIR}/scripts/preflight.sh"
     preflight_repo_drift "${ROOT_DIR}" || true
     preflight_compose_deps "${full_dir}/${file}" || exit 1
-    if [[ "$eng" == "vllm" ]]; then
+    # The engine KIND, not the slug prefix ($eng): a vLLM derivative with its own prefix
+    # (vllm-hyperqwen/, bucko-vllm/) gets the vLLM preflights too.
+    if [[ "$(engine_kind_from_slug "$v")" == "vllm" ]]; then
       preflight_compose_hardware "${full_dir}/${file}" "$v" "${FORCE:-0}" || exit 1
     fi
     preflight_offload_split_mode "${full_dir}/${file}" || exit 1
@@ -1445,7 +1449,7 @@ up_variant() {
   if [[ -f "${ROOT_DIR}/scripts/preflight.sh" ]]; then
     # shellcheck source=preflight.sh
     source "${ROOT_DIR}/scripts/preflight.sh"
-    if [[ "$eng" == "vllm" ]]; then
+    if [[ "$(engine_kind_from_slug "$v")" == "vllm" ]]; then   # the kind, not the slug prefix
       # Free-VRAM gate: fail fast (not a 600s restart-loop) when the GPUs don't have
       # room for this config's gpu_memory_utilization — e.g. a desktop/other scene
       # still holding VRAM after a switch (club-3090 #535). Runs AFTER down_running(),
