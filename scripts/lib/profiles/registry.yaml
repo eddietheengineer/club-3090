@@ -6339,7 +6339,7 @@ entries:
     act8_capable: false
     offload: engine
     moe_cache: false
-    host_ram_gb: 60
+    host_ram_gb: 84
     kv_offload: null
     chat_template: native
     tp: 2
@@ -6353,7 +6353,7 @@ entries:
     default_port: 8018
     kvcalc_key: SKIP
     status: incubating
-    status_note: "Two 3090s, Strata layer split (auto K=24): 18,768 experts resident (76%), decode hit ~99.7%. 122.5 / 153.9 decode, 2,228 / 3,364 prefill @10K/@90K on 0.1.43.1 (BENCHMARKS.md, Qwen3.8-Flash-Next / Strata, 2026-10-13; 0.1.33 measured 93.6 / 125.4). First start ~14 min (MTP fetch); later starts ~30 s. Engine: strata-club3090, club-3090's image of upstream Strata 0.1.44.1 (models/qwen3.8-flash-next/strata/image/; pinned 2026-10-14 after a boot + verify-full, not re-benched); the numbers above are from the 0.1.33 local build unless dated later. Field values from the running engine: kv_format q8_0 is the nearest catalog token for Strata's int8 KV (32K cells resident in VRAM, the rest streamed to RAM via --kv-resident 32768); offload 'residency' = every expert page-locked in host RAM + a profile-filled, adaptively swapped VRAM expert cache; MTP is Strata's own draft layer (--spec 4, min-p 0.5). host_ram_gb 60 MEASURED on the dual arm 2026-10-06 (MemAvailable 218 -> 163.6 GiB while serving ≈ 58.4 GB). One request at a time; no vLLM-style KV offload. ⚠️ Strata's /health reports loaded:true before the engine fills its cache; the engine log line 'ready: http' is the real gate. ⚠️ IQ3_S quality unmeasured (8-pack pending)."
+    status_note: "Two 3090s, Strata layer split (auto K=24): 18,768 experts resident (76%), decode hit ~99.7%. 122.5 / 153.9 decode, 2,228 / 3,364 prefill @10K/@90K on 0.1.43.1 (BENCHMARKS.md, Qwen3.8-Flash-Next / Strata, 2026-10-13; 0.1.33 measured 93.6 / 125.4). First start ~14 min (MTP fetch); later starts ~30 s. Engine: strata-club3090, club-3090's image of upstream Strata 0.1.44.1 (models/qwen3.8-flash-next/strata/image/; pinned 2026-10-14 after a boot + verify-full, not re-benched); the numbers above are from the 0.1.33 local build unless dated later. Field values from the running engine: kv_format q8_0 is the nearest catalog token for Strata's int8 KV (32K cells resident in VRAM, the rest streamed to RAM via --kv-resident 32768); offload 'residency' = every expert page-locked in host RAM + a profile-filled, adaptively swapped VRAM expert cache; MTP is Strata's own draft layer (--spec 4, min-p 0.5). host_ram_gb 84 RE-MEASURED 2026-10-14 on 0.1.44.1 (MemAvailable at ready, one card: experts page-locked plus the 28.8 GB n-gram table, which setup keeps in RAM on this rig's rotational model disk); the 2026-10-06 figure, 58.4 GB on 0.1.33, predates that. One request at a time; no vLLM-style KV offload. ⚠️ Strata's /health reports loaded:true before the engine fills its cache; the engine log line 'ready: http' is the real gate. ⚠️ IQ3_S quality unmeasured (8-pack pending)."
     weights_companions: []
     gateway: false
     serve_aliases: []
@@ -6370,7 +6370,7 @@ entries:
     act8_capable: false
     offload: engine
     moe_cache: false
-    host_ram_gb: 60
+    host_ram_gb: 84
     kv_offload: null
     chat_template: native
     tp: 1
@@ -6384,7 +6384,69 @@ entries:
     default_port: 8019
     kvcalc_key: SKIP
     status: incubating
-    status_note: "One 3090 (GPU0), same install as the dual slug: 8,746 experts resident, decode hit ~90-93%. 106.1 / 121.5 decode, 1,920 / 2,359 prefill @10K/@90K on 0.1.43.1 (BENCHMARKS.md, Qwen3.8-Flash-Next / Strata, 2026-10-13; 0.1.33 measured 78.5 / 93.2). Engine: strata-club3090, club-3090's image of upstream Strata 0.1.44.1 (models/qwen3.8-flash-next/strata/image/; pinned 2026-10-14 after a boot + verify-full, not re-benched); the numbers above are from the 0.1.33 local build unless dated later. Field values from the running engine: kv_format q8_0 is the nearest catalog token for Strata's int8 KV (32K cells resident in VRAM, the rest streamed to RAM via --kv-resident 32768); offload 'residency' = every expert page-locked in host RAM + a profile-filled, adaptively swapped VRAM expert cache; MTP is Strata's own draft layer (--spec 4, min-p 0.5). host_ram_gb 60 MEASURED on the dual arm 2026-10-06 (MemAvailable 218 -> 163.6 GiB while serving ≈ 58.4 GB). One request at a time; no vLLM-style KV offload. ⚠️ Strata's /health reports loaded:true before the engine fills its cache; the engine log line 'ready: http' is the real gate. ⚠️ IQ3_S quality unmeasured (8-pack pending)."
+    status_note: "One 3090 (GPU0), same install as the dual slug: 8,746 experts resident, decode hit ~90-93%. 106.1 / 121.5 decode, 1,920 / 2,359 prefill @10K/@90K on 0.1.43.1 (BENCHMARKS.md, Qwen3.8-Flash-Next / Strata, 2026-10-13; 0.1.33 measured 78.5 / 93.2). Engine: strata-club3090, club-3090's image of upstream Strata 0.1.44.1 (models/qwen3.8-flash-next/strata/image/; pinned 2026-10-14 after a boot + verify-full, not re-benched); the numbers above are from the 0.1.33 local build unless dated later. Field values from the running engine: kv_format q8_0 is the nearest catalog token for Strata's int8 KV (32K cells resident in VRAM, the rest streamed to RAM via --kv-resident 32768); offload 'residency' = every expert page-locked in host RAM + a profile-filled, adaptively swapped VRAM expert cache; MTP is Strata's own draft layer (--spec 4, min-p 0.5). host_ram_gb 84 RE-MEASURED 2026-10-14 on 0.1.44.1 (MemAvailable at ready, one card: experts page-locked plus the 28.8 GB n-gram table, which setup keeps in RAM on this rig's rotational model disk); the 2026-10-06 figure, 58.4 GB on 0.1.33, predates that. One request at a time; no vLLM-style KV offload. ⚠️ Strata's /health reports loaded:true before the engine fills its cache; the engine log line 'ready: http' is the real gate. ⚠️ IQ3_S quality unmeasured (8-pack pending)."
+    weights_companions: []
+    gateway: false
+    serve_aliases: []
+  strata/qwen3.8-flash-next-swift15-abliterated-iq3s-dual:
+    origin: core
+    model: qwen3.8-flash-next
+    weights_variant: sc117-swift15-abliterated-iq3s
+    workload: long-ctx-single
+    engine: strata
+    drafter: null
+    spec_method: mtp
+    kv_format: q8_0
+    act_format: 16bit
+    act8_capable: false
+    offload: engine
+    moe_cache: false
+    host_ram_gb: 84
+    kv_offload: null
+    chat_template: native
+    tp: 2
+    max_ctx: 131072
+    max_num_seqs: 1
+    mem_util: null
+    compose_path: models/qwen3.8-flash-next/strata/compose/dual/sc117-swift15-abliterated-iq3s/base.yml
+    requires_nvlink: false
+    requires_homogeneous_arch: false
+    required_engine_features: []
+    default_port: 8024
+    kvcalc_key: SKIP
+    status: incubating
+    status_note: "Two 3090s, Strata layer split. SC117's abliterated GSQ-RCO IQ3_S of Swift 1.5 (UkisAI's fine-tune of Qwen3.8-Flash-Next; 144 residual-writer tensors transplanted from orcarouter's abliterated release), served as Strata's swift family from the same image and data volume as the ISTA slugs: its own links folder, config (strata-swift-iq3_s) and pack; the MTP draft layer is Strata's own from Qwen/Qwen3.8-Flash-Next, shared. ⚠️ Abliterated: its README says it has no reliable built-in guardrails. Swift Open License 1.0 (commercial use free below US$1M annual revenue). kv_format q8_0 = Strata's int8 KV. host_ram_gb 84 MEASURED 2026-10-14 (MemAvailable at ready, one card; experts 46.8 GiB page-locked + the 28.8 GB n-gram table, kept in RAM on this rig's rotational model disk). Measured 2026-10-14 on 0.1.44.1, 370 / 420 W: 125.7 / 161.7 decode, 1,962 / 3,735 prefill @10K/@90K, MTP acceptance 65.9%, 19,060 experts in VRAM across both cards (BENCHMARKS.md, Qwen3.8-Flash-Next / Strata). One request at a time. ⚠️ Quality unmeasured (8-pack pending)."
+    weights_companions: []
+    gateway: false
+    serve_aliases: []
+  strata/qwen3.8-flash-next-swift15-abliterated-iq3s-single:
+    origin: core
+    model: qwen3.8-flash-next
+    weights_variant: sc117-swift15-abliterated-iq3s
+    workload: long-ctx-single
+    engine: strata
+    drafter: null
+    spec_method: mtp
+    kv_format: q8_0
+    act_format: 16bit
+    act8_capable: false
+    offload: engine
+    moe_cache: false
+    host_ram_gb: 84
+    kv_offload: null
+    chat_template: native
+    tp: 1
+    max_ctx: 131072
+    max_num_seqs: 1
+    mem_util: null
+    compose_path: models/qwen3.8-flash-next/strata/compose/single/sc117-swift15-abliterated-iq3s/base.yml
+    requires_nvlink: false
+    requires_homogeneous_arch: false
+    required_engine_features: []
+    default_port: 8025
+    kvcalc_key: SKIP
+    status: incubating
+    status_note: "One 3090 (GPU0), same install as the dual slug. SC117's abliterated GSQ-RCO IQ3_S of Swift 1.5 (UkisAI's fine-tune of Qwen3.8-Flash-Next; 144 residual-writer tensors transplanted from orcarouter's abliterated release), served as Strata's swift family from the same image and data volume as the ISTA slugs: its own links folder, config (strata-swift-iq3_s) and pack; the MTP draft layer is Strata's own from Qwen/Qwen3.8-Flash-Next, shared. ⚠️ Abliterated: its README says it has no reliable built-in guardrails. Swift Open License 1.0 (commercial use free below US$1M annual revenue). kv_format q8_0 = Strata's int8 KV. host_ram_gb 84 MEASURED 2026-10-14 (MemAvailable at ready, one card; experts 46.8 GiB page-locked + the 28.8 GB n-gram table, kept in RAM on this rig's rotational model disk). Measured 2026-10-14 on 0.1.44.1, 370 W: 93.9 / 105.8 decode, 1,952 / 2,302 prefill @10K/@90K, MTP acceptance 65.7%, 8,882 experts in VRAM (BENCHMARKS.md, Qwen3.8-Flash-Next / Strata). One request at a time. ⚠️ Quality unmeasured (8-pack pending)."
     weights_companions: []
     gateway: false
     serve_aliases: []

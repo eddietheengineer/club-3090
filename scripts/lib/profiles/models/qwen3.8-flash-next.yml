@@ -440,6 +440,21 @@ weights:
     kind: main
     verify_glob: IQ3_S/*.gguf
     manual_note: 'Two shards under IQ3_S/ (54.8 GB experts + 28.8 GB n-gram/PLE table), both sha256-verified against the HF LFS oids 2026-10-06. ⚠️ Shard 1 (54.8 GB) is over huggingface_hub 1.25.1''s 50 GB client-side single-file limit: fetch it with a resumable HTTP range download and check its SHA-256 (Strata''s setup checks both shards on the first start). Strata''s MTP draft layer is NOT in this artifact: Strata''s setup range-reads ~5 GB of MTP tensors from Qwen/Qwen3.8-Flash-Next into its data volume (mtp/) on the first start.'
+  sc117-swift15-abliterated-iq3s:
+    path: qwen3.8-flash-next-swift15-abliterated-gsq-rco-gguf/IQ3_S
+    local_subdir: qwen3.8-flash-next-swift15-abliterated-gsq-rco-gguf/IQ3_S
+    files:
+      - Swift-Qwen3.8-Flash-Next-GSQ-RCO-abliterated-IQ3_S-00001-of-00002.gguf
+      - Swift-Qwen3.8-Flash-Next-GSQ-RCO-abliterated-IQ3_S-00002-of-00002.gguf
+    size_gb: 83.55
+    format: gguf
+    status: community-experimental
+    hf_repo: SC117/Swift-1.5-Qwen3.8-Flash-Next-GSQ-RCO-abliterated-GGUF
+    revision: 2b89cf3f7f2d9cb84275439e2c0cda83db15d32f
+    engine: strata
+    kind: main
+    verify_glob: '*.gguf'
+    manual_note: 'SC117''s abliterated edition of UkisAI''s Swift 1.5 GSQ-RCO IQ3_S: 144 residual-writer tensors (ssm_out, attn_output, ffn_down_shexp, ffn_down_exps) transplanted from orcarouter''s abliterated release, the other 1080 byte-identical to Swift''s. Two shards at the repo root (44.85 GB + 38.70 GB, LFS sha256 638fbd42a01c7b39… / 091a4f6a53697a12…), pinned to the revision of 2026-10-08; the rest of the repo (other tiers, mmproj, mtp-*, strata/rt) is not fetched. Swift keeps the 28.8 GB per-layer embedding table in shard 1, not shard 2 as ISTA does. Abliterated: its README states it has no reliable built-in guardrails. Swift Open License 1.0 (commercial use free below US$1M annual revenue) on top of the Qwen licence. Strata serves it as its swift family; the MTP draft layer is Strata''s own (from Qwen/Qwen3.8-Flash-Next), shared with the ISTA slugs.'
 
 default_weight_variant: unsloth-ud-q4kxl
 

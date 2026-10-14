@@ -9,6 +9,11 @@
 #   STRATA_START_GPUS    the cards to start on, as the container sees them: "0,1" (the dual
 #                        compose's default, a layer split) or one number (single card)
 #
+# Its one argument is setup.py's --family, fixed by the compose (not a setting, so a saved value
+# can never point a slug at the other model's files): qwen (ISTA-DASLab's GSQ-RCO of the
+# original, the default when absent) or swift (a Swift 1.5 GSQ-RCO, here SC117's abliterated
+# one). Each family gets its own links folder, config and pack on /data; the MTP layer is shared.
+#
 # Everything Strata writes (packs, the MTP layer, the config) goes to /data.
 set -eu
 umask 0002                   # group-writable, so the launcher's user can clear /data
@@ -16,17 +21,29 @@ cd /opt/strata
 
 DATA=/data
 SRC=/gguf                    # our IQ3_S folder, mounted READ-ONLY
-LINKS="$DATA/gguf-links-iq3s"
-FAMILY=qwen
+FAMILY="${1:-qwen}"
 MODEL=IQ3_S
-tag="iq3_s"                  # setup.py: fam["tag"] ("" for the original) + model, lower-cased
+# tag: setup.py's fam["tag"] ("" for the original) + model, lower-cased; want: the shard name
+# setup.py expects for the family (fam["file"]). The qwen links folder keeps its first name:
+# the config setup wrote on the first start points at it.
+case "$FAMILY" in
+  qwen)  tag="iq3_s";       want="Qwen3.8-Flash-Next-GSQ-RCO-$MODEL";       LINKS="$DATA/gguf-links-iq3s" ;;
+  swift) tag="swift-iq3_s"; want="Swift-Qwen3.8-Flash-Next-GSQ-RCO-$MODEL"; LINKS="$DATA/gguf-links-swift-iq3s" ;;
+  *) echo "[strata-recipe] the family argument must be qwen or swift, not '$FAMILY'" >&2; exit 1 ;;
+esac
 cfg="$DATA/config/strata-$tag.json"
 mkdir -p "$DATA/config" "$LINKS"
 
 # ⚠️ setup.py SHA-256-checks the shards and DELETES one that mismatches: point it at
-# SYMLINKS on the data volume so the read-only model tree is never written.
-for f in "$SRC"/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-0000?-of-00002.gguf; do
-  ln -sfn "$f" "$LINKS/$(basename "$f")"
+# SYMLINKS on the data volume so the read-only model tree is never written. Each link takes
+# the name setup.py expects, whatever the file is called here (SC117's carry "-abliterated").
+for i in 1 2; do
+  set -- "$SRC"/*-"$MODEL"-0000$i-of-00002.gguf
+  if [ "$#" -ne 1 ] || [ ! -e "$1" ]; then
+    echo "[strata-recipe] want exactly one $MODEL shard $i of 2 in $SRC, found: $*" >&2
+    exit 1
+  fi
+  ln -sfn "$1" "$LINKS/$want-0000$i-of-00002.gguf"
 done
 
 if [ "${REINSTALL:-0}" = "1" ] || [ ! -f "$cfg" ]; then
