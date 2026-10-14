@@ -270,6 +270,24 @@ weights:
     verify_glob: "*mmproj*.gguf"
     manual_note: "Vision tower for the Bonsai ternary packs, shipped SEPARATELY from the language model and loaded only when an image arrives — text-only serving never pays for it. Verified from the header: `general.architecture = clip`, `clip.projector_type = qwen3vl_merger`, 334 tensors. ⚠️ Same caveat as the Flash-Next projector: qwen3vl_merger maps to PROJECTOR_TYPE_QWEN3VL, i.e. vision works by REUSING the Qwen3VL path, so a change there affects this model. ⛔ DOWNLOADED BUT NEVER LOADED — vision is entirely unvalidated on this engine. A BF16 reference projector (0.93 GB) also exists upstream and was not taken."
 
+  # HyperQwen's base (vllm-hyperqwen engine). HyperQwen's model directory is its OWN:
+  # at the first start its prepare step rewrites these shards IN PLACE (int8 lm_head,
+  # embeddings and MTP module; a draft vocabulary) and assembles the single-user "fast"
+  # variant beside it from syv-ai's syvai/qwen3.8-27b-3090-fast-variant (~1 GB). So no
+  # other slug may point at this subdir, and a re-run of setup.sh re-downloads the shards
+  # prepare rewrote (prepare then redoes them at the next start).
+  hyperqwen-w4a16:
+    path: qwen3.8-27b-hyperqwen/Qwen3.8-27B-W4A16-AutoRound
+    local_subdir: qwen3.8-27b-hyperqwen/Qwen3.8-27B-W4A16-AutoRound
+    size_gb: 19.47
+    format: compressed-tensors
+    status: experimental
+    hf_repo: dbirks/Qwen3.8-27B-W4A16-AutoRound
+    revision: 1f05c441c4e64ae0549de44fa9ea5a6d43610314
+    engine: vllm-hyperqwen
+    kind: main
+    verify_glob: "*.safetensors"
+    manual_note: "The W4A16 export HyperQwen's prepare step is written for (docker/prepare.sh HF_REPO): a compressed-tensors pack-quantized re-export that keeps '-AutoRound' in its name. Pinned to the revision of 2026-10-14. Served only through vllm-hyperqwen, which prepares it in place at the first start."
 default_weight_variant: unsloth-iq4xs
 # Validated drafters for this model (each names a drafters/<id>.yml we ship):
 #   - qwen-mtp-builtin      — embedded nextn head (blk.64.nextn.* in the unsloth

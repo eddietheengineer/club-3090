@@ -126,7 +126,7 @@ engine_kind_from_image() {
     *tabbyapi*|*exllamav3*)             echo "exllamav3" ;;
     *llama.cpp*|*llama-cpp*|*llamacpp*) echo "llamacpp" ;;
     *sglang*|*lmsysorg*)                echo "sglang" ;;
-    *vllm*)                             echo "vllm" ;;
+    *vllm*|*hyperqwen*)                 echo "vllm" ;;   # syv-ai/hyperqwen: a vLLM derivative whose image name omits "vllm"
     *)                                  echo "unknown" ;;
   esac
   return 0

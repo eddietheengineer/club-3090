@@ -219,6 +219,21 @@ This is the "free 30 GB of disk" moment.
 - The data volume carries Strata's pack and MTP layer between versions; a release that changes the pack
   format re-prepares it at the first start (`REINSTALL=1` forces it).
 
+### vllm-hyperqwen
+
+- Pinned by digest to syv-ai's official `ghcr.io/syv-ai/hyperqwen`, which their CI builds on every push to
+  main (`:sha-<7>`; there are no versioned releases). A new image is not a pin: boot
+  `vllm/qwen38-27b-single-hyperqwen` on the new digest, run `verify-full`, then
+  `scripts/engine-pin-bump.sh vllm-hyperqwen ghcr.io/syv-ai/hyperqwen@sha256:<digest>`, and update
+  `lineage.source_ref` (the commit behind `:sha-<7>`) and `base_version` (`vllm.__version__` in the image).
+- The volatile parts are HyperQwen's own interfaces, which the compose leans on: its launcher's env names
+  (`SPEC`, `CTX`, `DFLASH_TOKENS`, `GPU_UTIL`, `EXTRA_ARGS`, `PORT`, `BIND_HOST`), the image's
+  `docker/entrypoint.sh`, the model-directory layout prepare expects (`Qwen3.8-27B-W4A16-AutoRound`, its
+  `-fast` sibling, `Qwen3.8-27B-DFlash2-W4A16`) with its `HF_REPO`, and the efforts its template accepts
+  (`low|medium|xhigh`). Read the commits between the two pins for any of those.
+- Prepare runs at every start and is idempotent: a new image that adds a preparation step applies it in
+  place, in the model directory, at the first start after the bump.
+
 ### Luce DFlash / xtransformers / future engines
 
 - When adding a new engine, add an "Engine-specific notes" subsection here

@@ -717,6 +717,51 @@
     {
      "match": {
       "engine": [
+       "vllm"
+      ],
+      "model": [
+       "qwen3.8-27b"
+      ],
+      "compose_contains": "ghcr.io/syv-ai/hyperqwen"
+     },
+     "enforced": "boot",
+     "values": [
+      "low",
+      "medium",
+      "xhigh"
+     ],
+     "default": "low",
+     "every_consumer_contains": [
+      "case \"$$_reff\" in low|medium|xhigh) : ;;"
+     ],
+     "source": {
+      "file": "models/qwen3.8-27b/vllm-hyperqwen/compose/single/hyperqwen-w4a16/dflash2.yml",
+      "what": "`case \"$$_reff\" in low|medium|xhigh) : ;; *) exit 1`, then passed as --default-chat-template-kwargs {\"reasoning_effort\": ...} through HyperQwen's EXTRA_ARGS. HyperQwen serves its own hardened copy of the checkpoint's template (default xhigh; it maps minimal -> low and high/max -> xhigh). Stricter than the template, as the SGLang slugs are: the boot takes only the three efforts it acts on"
+     },
+     "checks": [
+      {
+       "kind": "shell",
+       "compose": "models/qwen3.8-27b/vllm-hyperqwen/compose/single/hyperqwen-w4a16/dflash2.yml",
+       "from": "^\\s*_reff=\"\\$\\{REASONING_EFFORT",
+       "to": "^\\s*case \"\\$\\$_reff\" in",
+       "accept": [
+        "low",
+        "medium",
+        "xhigh"
+       ],
+       "reject": [
+        "high",
+        "max",
+        "minimal",
+        "none",
+        "LOW"
+       ]
+      }
+     ]
+    },
+    {
+     "match": {
+      "engine": [
        "llamacpp"
       ],
       "model": [
