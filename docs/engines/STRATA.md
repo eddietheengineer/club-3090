@@ -19,7 +19,7 @@ Its profile declares `type: strata` and `lineage.relation: new`, and the tooling
 
 Strata publishes Windows zips and a Dockerfile, but no Linux image and no Linux engine. So club-3090 builds `ghcr.io/noonghunna/strata-club3090` for each release, an image-provenance exception recorded in [ADDING_ENGINES.md](../ADDING_ENGINES.md).
 - **Build:** upstream's Dockerfile at the release commit, with one change. ggml's CPU code and the image encoder are built for an AVX2 baseline (`STRATA_PORTABLE=ON`) instead of the build machine's CPU, so the image runs on other CPUs.
-- **Archs:** upstream's `75;80;86;89;120` (RTX 20–50 and the A-series), plus the image encoder. H100 (sm_90) isn't built; `setup.py` compiles the engine for it at each fresh container's first start, which is untested. The `v0.1.43.1` image pinned today happens to carry sm_90 as well; the next build won't.
+- **Archs:** upstream's `75;80;86;89;120` (RTX 20–50 and the A-series), plus the image encoder. H100 (sm_90) isn't built; `setup.py` compiles the engine for it at each fresh container's first start, which is untested. The `v0.1.43.1` image pinned on 2026-10-13 carried sm_90 as well; the pinned `v0.1.44.1` doesn't.
 - **Recipe, checks, CI workflow and pin flow:** [models/qwen3.8-flash-next/strata/image/](../../models/qwen3.8-flash-next/strata/image/README.md).
 
 The profile pins a digest, and the launchers inject it as `STRATA_IMAGE`. Export `STRATA_IMAGE` in the shell to try another build for one launch; a saved value loses to the pin.

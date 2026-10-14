@@ -3,7 +3,7 @@
 #   Model:     Qwen3.8-Flash-Next — ISTA-DASLab GSQ-RCO IQ3_S (2 shards: 54.8 GB experts +
 #              28.8 GB n-gram table), Strata's best-quality native format. Strata's setup
 #              SHA-256-checks both shards on the first start.
-#   Engine:    Strata 0.1.43.1 — ghcr.io/noonghunna/strata-club3090, built by club-3090 from
+#   Engine:    Strata 0.1.44.1 — ghcr.io/noonghunna/strata-club3090, built by club-3090 from
 #              upstream's Dockerfile at the release commit (models/qwen3.8-flash-next/strata/image/)
 #   Topology:  Single 3090 (GPU0; ESTATE_GPUS picks another), Strata `--gpu 0`. Shares the data
 #              volume (install, pack, MTP layer, config) with the dual slug; only the start flag differs.
@@ -40,7 +40,7 @@
 #   cache; the `ready: http` line in docker logs is the real gate.
 services:
   strata:
-    image: ${STRATA_IMAGE:-ghcr.io/noonghunna/strata-club3090@sha256:7f8643c8aaf5455fddb01bff1e11a230d1e2105fdcaf160b6e68fbe2e46a3e7c}
+    image: ${STRATA_IMAGE:-ghcr.io/noonghunna/strata-club3090@sha256:fb97d83bdae01034102c4983273b68766eb057efac961273cf243300dc6afa1c}
     container_name: ${ESTATE_CONTAINER:-strata-qwen38-flash-next-iq3s-single}
     restart: ${CLUB3090_RESTART:-unless-stopped}
     # root, with the launcher's group: what Strata writes to the data volume stays

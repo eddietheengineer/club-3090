@@ -9,15 +9,15 @@ lineage:
   base: null
   base_version: null
   source: "https://github.com/Niko1221/Strata"
-  source_ref: "a0116b2782a5b82622358c04a06496485d12b2d6"
+  source_ref: "296b59d2f73c8f04a805df29c2fa97655adace78"
   chain: []
   delta: "Independent C++/CUDA engine for Qwen3.8-Flash-Next with its own Python server; uses ggml's CPU backend and llama.cpp's mtmd/gguf-py as libraries. Our image builds upstream's Dockerfile at the release commit with ggml's CPU code on an AVX2 baseline (STRATA_PORTABLE=ON), an image-provenance exception (docs/ADDING_ENGINES.md)"
 image_env: STRATA_IMAGE
 install:
   method: docker_image
-  # v0.1.43.1 (upstream a0116b27), CI run 38380409808: archs 75;80;86;89;90;120 + the image encoder.
-  # This one build carries sm_90; build.sh's default no longer does (dropped 2026-10-13).
-  spec: ghcr.io/noonghunna/strata-club3090@sha256:7f8643c8aaf5455fddb01bff1e11a230d1e2105fdcaf160b6e68fbe2e46a3e7c
+  # v0.1.44.1 (upstream 296b59d2), CI run 38508265456: archs 75;80;86;89;120 + the image encoder.
+  # Pinned 2026-10-14; the v0.1.43.1 pin it replaced (7f8643c8, 2026-10-13) also carried sm_90.
+  spec: ghcr.io/noonghunna/strata-club3090@sha256:fb97d83bdae01034102c4983273b68766eb057efac961273cf243300dc6afa1c
 supported_model_families:
   - qwen4exp              # Qwen3.8-Flash-Next family: Strata is written for this model only
 supported_weight_formats:

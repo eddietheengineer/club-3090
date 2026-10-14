@@ -2,7 +2,7 @@
 # Guard: the strata-club3090 image recipe's edits to upstream's Dockerfile
 # (models/qwen3.8-flash-next/strata/image/: portable.py, always; build_opts.py, opt-in).
 #
-# Runs against upstream's own Dockerfile from the v0.1.43.1 release (the pinned engine),
+# Runs against upstream's own Dockerfile from the v0.1.44.1 release (the pinned engine),
 # copied verbatim to fixtures/strata-image/ (Strata is MIT). The build step's Python is run
 # for real against fixtures/strata-image/fake-setup.py, which builds nothing but calls run()
 # the way setup.py does, so no network, docker or GPU is needed:
@@ -32,7 +32,7 @@ trap 'rm -rf "$work"' EXIT
 # A Dockerfile with portable.py applied, plus build_opts.py with the given options.
 recipe() {  # <out> [build_opts args...]
   local out="$1"; shift
-  cp "$FIX/Dockerfile-v0.1.43.1" "$out"
+  cp "$FIX/Dockerfile-v0.1.44.1" "$out"
   python3 "$IMG/portable.py" "$out" || return 1
   [[ $# -eq 0 ]] || python3 "$IMG/build_opts.py" "$out" "$@"
 }
@@ -69,7 +69,7 @@ if recipe "$work/Dockerfile.portable"; then
     && command grep -q '/opt/club3090/strata-cpu-flags.txt' "$work/Dockerfile.portable" \
     && ok "portable build + CPU-flag evidence" || bad "portable.py ran but its edits aren't there"
 else
-  bad "portable.py refused upstream's v0.1.43.1 Dockerfile"
+  bad "portable.py refused upstream's v0.1.44.1 Dockerfile"
 fi
 
 echo "== 2. build_opts.py --jobs 37 --ccache applies on top"
@@ -85,7 +85,7 @@ t = open(sys.argv[1], encoding="utf-8").read()
 compile(t.split("<<'PYEOF'\n", 1)[1].split("\nPYEOF\n", 1)[0], "build-step", "exec")
 PY
 else
-  bad "build_opts.py refused upstream's v0.1.43.1 Dockerfile"
+  bad "build_opts.py refused upstream's v0.1.44.1 Dockerfile"
 fi
 
 echo "== 3. --jobs"
@@ -144,7 +144,7 @@ else
 fi
 
 echo "== 5. anchors must appear exactly once"
-cp "$FIX/Dockerfile-v0.1.43.1" "$work/Dockerfile.dup"
+cp "$FIX/Dockerfile-v0.1.44.1" "$work/Dockerfile.dup"
 python3 "$IMG/portable.py" "$work/Dockerfile.dup" >/dev/null
 printf "\nRUN .venv/bin/python - <<'PYEOF'\nprint()\nPYEOF\n" >> "$work/Dockerfile.dup"
 cp "$work/Dockerfile.dup" "$work/Dockerfile.dup.orig"

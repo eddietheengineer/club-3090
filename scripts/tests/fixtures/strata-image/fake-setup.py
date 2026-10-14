@@ -1,6 +1,6 @@
 """A stand-in for Strata's setup.py with just what the Dockerfile's build step calls.
 
-cmake_build calls the module-global run() the way the real one does (setup.py v0.1.43.1), so a
+cmake_build calls the module-global run() the way the real one does (setup.py v0.1.44.1), so a
 wrapper that replaces setup.run is exercised exactly as in a real build. Each run() call is logged
 to $FAKE_RUN_LOG; FAKE_NO_J=1 leaves -j out of the build command, as a setup.py that stopped
 passing it would.
@@ -10,6 +10,7 @@ from pathlib import Path
 
 ROOT = Path.cwd()
 EXE, VEXE = "strata", "strata-vision"
+KQ_LIB = "libstrata_kq.so"          # v0.1.44: the K-quant prompt library, copied only if built
 ENGINE_SOURCES, VISION_SOURCES = ("src",), ("tools/vision",)
 
 
@@ -44,7 +45,7 @@ def cmake_build(src, bdir, target, defs, vcvars, bat_name):
 
 
 def source_version():
-    return "0.1.43.1"
+    return "0.1.44.1"
 
 
 def source_hash(paths):

@@ -47,7 +47,7 @@ hasn't been tested. Other cards:
 
 | Card | Arch | |
 |---|---|---|
-| H100 | `90` | not built: compiles at each fresh container's first start (the `v0.1.43.1` image pinned on 2026-10-13 still carries it) |
+| H100 | `90` | not built: compiles at each fresh container's first start (the `v0.1.43.1` image pinned 2026-10-13 to 2026-10-14 carried it; the pinned `v0.1.44.1` doesn't) |
 | B200 / GB200 | `100` | not built (no club hardware class): compiles at each fresh container's first start |
 | DGX Spark (GB10) | `121` | **can't run**: ARM CPU, while the image is x86-64 and Strata's CPU kernels are x86 SIMD |
 | P100 / V100 | `60` / `70` | not built: CUDA 13 dropped them; upstream's experimental CUDA 12 build isn't in this image |

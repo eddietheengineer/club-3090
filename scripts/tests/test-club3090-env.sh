@@ -80,7 +80,7 @@ command grep -qx 'export ANTHROPIC_BASE_URL="http://localhost:8122"' <<<"$out" \
   && ok "the engine port's mapping (8122), not the first one (9100)" || bad "URL: $out $(cat "$work/err")"
 
 echo "== 5. bound to 127.0.0.1"
-out="$(FAKE_PS='strata-qwen38-flash-next-iq3s|127.0.0.1:8018->8080/tcp|ghcr.io/noonghunna/strata-club3090@sha256:7f8643c8aaf5455fddb01bff1e11a230d1e2105fdcaf160b6e68fbe2e46a3e7c' \
+out="$(FAKE_PS='strata-qwen38-flash-next-iq3s|127.0.0.1:8018->8080/tcp|ghcr.io/noonghunna/strata-club3090@sha256:fb97d83bdae01034102c4983273b68766eb057efac961273cf243300dc6afa1c' \
        FAKE_CARD='' FAKE_MODELS='{"data":[{"id":"qwen3.8-flash-next-iq3_s"}]}' run_env)"
 command grep -qx 'export ANTHROPIC_BASE_URL="http://127.0.0.1:8018"' <<<"$out" \
   && ok "URL keeps the bound address" || bad "URL: $out $(cat "$work/err")"
