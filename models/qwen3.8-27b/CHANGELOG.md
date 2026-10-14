@@ -2,6 +2,24 @@
 
 Dated history for Qwen3.8-27B configs in this repo. Append-only — add a new entry, don't rewrite past ones.
 
+## 2026-10-14 — HyperQwen: a new engine and one single-card slug (🐣)
+
+New engine `vllm-hyperqwen`: syv-ai's [HyperQwen](https://github.com/syv-ai/HyperQwen), a
+vLLM 0.31.0 derivative with its own patch series, run from syv-ai's own image
+(`ghcr.io/syv-ai/hyperqwen`, commit `95ee3b64`, pinned by digest). Its slug,
+**`vllm-hyperqwen/qwen38-27b-single-ultrafast`** (port 8023), is upstream's setup B on one
+card: the dbirks W4A16 export, which HyperQwen prepares in place at the first start, with
+the syvai DFlash2 W4A16 drafter at 7 tokens per verify, bf16 KV and a 64K window. Measured on
+one 3090 at the stock 370 W: **131.4 / 230.1 decode**, 1,190 prefill @10K, 23.3 GB peak.
+`CTX=long` gives a 128K window on int8 KV at the same decode (128.7 / 230.9) with slower
+prefill (1,017 @10K, 403 @90K). There is no fp8 KV: HyperQwen offers none for DFlash2 on
+sm_86. The first start takes ~6 min (prepare + compile; give it `READY_TIMEOUT=1800`), later
+ones ~90 s. Default effort is low, as on the other Qwen3.8 slugs; HyperQwen serves its own
+hardened template, and thinking budgets aren't wired. Credit: community PR #1634 (VykosX)
+proposed it. The slug was first registered as `vllm/qwen38-27b-single-hyperqwen` (#1687)
+and renamed the same day (#1689); with it, `switch.sh`'s hardware and free-VRAM preflights
+now follow the slug's engine kind, not its prefix. Engine page: `docs/engines/HYPERQWEN.md`.
+
 ## 2026-10-09 — reasoning budget chosen by effort (vLLM + SGLang)
 
 Every vLLM and SGLang Qwen3.8 compose now caps reasoning with a budget picked from the

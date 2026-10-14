@@ -1,6 +1,6 @@
 # HyperQwen — syv-ai's vLLM build for Qwen3.8-27B on one 24 GB card
 
-**Engine id:** `vllm-hyperqwen` · **Slug prefix:** `vllm/` · **Status of its slugs:** 🐣 Incubating · **Requires:** NVIDIA compute capability 8.6+ (measured on sm_86), one 24 GB card, the network on the first start
+**Engine id:** `vllm-hyperqwen` · **Slug prefix:** `vllm-hyperqwen/` · **Status of its slugs:** 🐣 Incubating · **Requires:** NVIDIA compute capability 8.6+ (measured on sm_86), one 24 GB card, the network on the first start
 
 ## What it is
 

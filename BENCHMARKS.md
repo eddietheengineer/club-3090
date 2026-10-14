@@ -729,6 +729,15 @@ Expert-offloaded MoE on the [`llamacpp-club3090`](docs/engines/LLAMACPP_CLUB3090
 
 ⚠️ **Owed before Strata's slugs move off 🐣:** 8-pack quality (both reasoning modes), verify-stress, soak-continuous.
 
+**On the [`bucko-vllm`](docs/engines/BUCKO_VLLM.md) engine (🐣)** — DominikBucko's vLLM derivative v0.5.0 (official image, pinned by digest), TP=2 with expert parallelism, its own static-hot + LRU expert cache in VRAM over the experts pinned in host RAM, MTP3 through a compact INT4 draft (albucino's, on both slugs), bf16 KV. Canonical bench (3 warm + 5 measured, `bench.sh`), one fresh boot per row, 370 / 420 W. Both rows were measured while the slugs were still in the local layer, on the composes #1668 moved to core (only the ports changed since).
+
+| Compose | Rig | KV | Max ctx | Narr / Code TPS | PP tok/s | Peak VRAM | Date | Notes |
+| --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
+| `bucko-vllm/compose/dual/ukisai-swift15-autoround-int4/base.yml` — UkisAI Swift-1.5 W4A16 (BF16 PLE) | @noonghunna (2× 3090, PCIe x16 + x8) | bf16 | 262144 | **85.35 / 90.16** (CV 4.5% / 4.3%) | **1,634** @10K · 2,102 @90K (n=1) | 22.4 GB/GPU | 2026-10-06 | decode @90K depth **81.9** (n=1); MTP AL 2.92; TTFT 553 / 575 ms; host RAM ~169 GB; swap reset after the checkpoint load. +7.4% / +8.5% decode over the albucino row on identical settings |
+| `bucko-vllm/compose/dual/albucino-autoround-int4-fp8ple/base.yml` — albucino W4A16 + FP8 PLE | @noonghunna (2× 3090, PCIe x16 + x8) | bf16 | 262144 | 79.5 / 83.1 | 1,623 @10K · 2,063 @90K (n=1) | 24.1 GB/GPU | 2026-10-06 | decode @90K depth 65.9 (n=1); MTP AL 2.84; host RAM ~119 GB. The earlier local build `4e74b439` measured 79.0 / 83.9 |
+
+⚠️ **Owed before bucko's slugs move off 🐣:** 8-pack quality on the albucino slug (Swift-1.5's xhigh 8-pack, 2026-10-07: 126/150 pass@1), verify-stress, soak-continuous.
+
 ---
 
 ## GLM-5.3-Flash (320B MoE via CPU expert offload — 🐣 incubating)
