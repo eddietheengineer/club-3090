@@ -223,7 +223,7 @@ This is the "free 30 GB of disk" moment.
 
 - Pinned by digest to syv-ai's official `ghcr.io/syv-ai/hyperqwen`, which their CI builds on every push to
   main (`:sha-<7>`; there are no versioned releases). A new image is not a pin: boot
-  `vllm/qwen38-27b-single-hyperqwen` on the new digest, run `verify-full`, then
+  `vllm-hyperqwen/qwen38-27b-single-ultrafast` on the new digest, run `verify-full`, then
   `scripts/engine-pin-bump.sh vllm-hyperqwen ghcr.io/syv-ai/hyperqwen@sha256:<digest>`, and update
   `lineage.source_ref` (the commit behind `:sha-<7>`) and `base_version` (`vllm.__version__` in the image).
 - The volatile parts are HyperQwen's own interfaces, which the compose leans on: its launcher's env names

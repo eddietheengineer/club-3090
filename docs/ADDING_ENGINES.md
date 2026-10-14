@@ -70,13 +70,13 @@ Rules that follow from the class:
 
 ## CONTRACT — naming
 
-Several of our tools identify an engine's family by **prefix**. The engine-kind resolver falls back to the profile's `type` when an engine *id* has no family prefix, so checks that classify by id or slug still work: the gateway emitter, launch-knob coverage, launch settings and `spec-sweep`. Container discovery, the classification that serving scripts do from container names and image refs, and the switch.sh preflights still key on prefixes. A derivative or fork that takes the family's prefix inherits all of that family's handling; one that doesn't inherits only the id-based part.
+Several of our tools identify an engine's family by **prefix**. The engine-kind resolver falls back to the profile's `type` when an engine *id* has no family prefix, so checks that classify by id or slug still work: the gateway emitter, launch-knob coverage, launch settings, `spec-sweep` and, since 2026-10-14, switch.sh's vLLM preflights. Container discovery and the classification that serving scripts do from container names and image refs still key on prefixes. A derivative or fork that takes the family's prefix inherits all of that family's handling; one that doesn't inherits only the id-based part.
 
 | Thing | Rule | Precedent |
 |---|---|---|
 | Engine id | `<family>-<name>` for a derivative or fork. `scripts/lib/engine-kind.sh` matches ids by prefix (`vllm*`, `sglang*`/`sgl-*`, `exllamav3*`/`exl3*`, `llama-cpp*`/`llamacpp*`/`ik-llama*`/`beellama*`), and falls back to the profile's `type` for any other id | `vllm-lmcache`, `llamacpp-club3090-v1.6` |
 | Profile filename | equals the id: `engines/<id>.yml`. Several tools open a profile by filename (c3, `generate_compose.py`, `list-image-pins.sh`, `test-engine-label-matches-compose`), so a misnamed profile is silently skipped by all of them; the `profile-filename` catalog rule refuses one | every core profile (the last exception, `llama-cpp-mainline.yml` → `llama-cpp-local.yml`, was renamed 2026-10-12) |
-| Slug prefix | a vLLM derivative keeps `vllm/`, because switch.sh runs its hardware and GPU-fit preflights only for `vllm/` slugs. A fork may take its own prefix | `vllm/…` on `vllm-lmcache`; `llamacpp-club3090/…`, `llama-cpp-prism/…` |
+| Slug prefix | a derivative or fork may keep its family's prefix or take its engine id. switch.sh's hardware and GPU-fit preflights follow the slug's engine kind (`engine_kind_from_slug`), not its prefix (since 2026-10-14; before that they ran only for `vllm/` slugs) | `vllm/…` on `vllm-lmcache`; `vllm-hyperqwen/…`, `bucko-vllm/…`; `llamacpp-club3090/…`, `llama-cpp-prism/…` |
 | Compose directory | `models/<model>/<engine-dir>/compose/…`, one directory per engine profile family | `vllm-lmcache/`, `llamacpp-club3090/`, `llama-cpp-prism/` |
 | `container_name` | starts with the family's container prefix (`vllm-`, `sglang-`, `llama-cpp-`, `tabbyapi-`, …), so discovery and the kind resolver recognise it | — |
 | Internal port | the family's standard port: vLLM 8000, SGLang 30000, llama.cpp 8080, TabbyAPI 5000 (see [Discovery](#2-discovery--container-name-and-internal-port)) | — |
@@ -224,7 +224,7 @@ Our standard knobs are catalogued in `scripts/lib/profiles/launch-knobs.json`, o
 
 ### 7. Launchers and c3
 
-- **switch.sh's hardware and GPU-fit preflights** run only for `vllm/` slugs.
+- **switch.sh's hardware and GPU-fit preflights** run for every slug whose engine resolves to the vllm kind (`engine_kind_from_slug`), whatever its prefix.
 - **c3** has its own family logic (`tools/tui-core/.../detect.py`, `club3090_cockpit/data.py` `_canon_engine_family`), which decides the Bring funnel and BENCHMARKS matching. It isn't covered by `scripts/tests`; run c3's own suite.
 
 ## CONTRACT — composes on a new engine

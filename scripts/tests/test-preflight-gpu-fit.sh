@@ -69,5 +69,16 @@ if preflight_compose_gpu_fit "$single" 0 >/dev/null 2>&1; then pass "single-card
     echo "  ok:   (nvidia-smi present on host — skip-case not exercised)"
   fi )
 
+# switch.sh runs this gate, and preflight_compose_hardware, for every slug whose ENGINE KIND is
+# vllm (2026-10-14). It used to compare the slug prefix to `vllm`, so a vLLM derivative with its
+# own prefix (vllm-hyperqwen/, bucko-vllm/) silently skipped the free-VRAM check.
+for fn in preflight_compose_hardware preflight_compose_gpu_fit; do
+  guard="$(command grep -B6 "^ *${fn} \"\${full_dir}" "$ROOT_DIR/scripts/switch.sh" | command grep -E '^ *if \[\[' | tail -1)"
+  case "$guard" in
+    *engine_kind_from_slug*) pass "switch.sh gates $fn on the slug's engine kind" ;;
+    *) fail "switch.sh gates $fn on '${guard:-<nothing>}', not engine_kind_from_slug" ;;
+  esac
+done
+
 rm -f "$tp2" "$single"
 if [ "$FAILS" -eq 0 ]; then echo "PASS test-preflight-gpu-fit"; exit 0; else echo "FAIL test-preflight-gpu-fit ($FAILS)"; exit 1; fi

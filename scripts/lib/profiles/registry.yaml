@@ -4546,7 +4546,7 @@ entries:
         presence_penalty: 0.0
         repetition_penalty: 1.0
     sampler_default_mode: thinking
-  vllm/qwen38-27b-single-hyperqwen:
+  vllm-hyperqwen/qwen38-27b-single-ultrafast:
     origin: core
     model: qwen3.8-27b
     weights_variant: hyperqwen-w4a16

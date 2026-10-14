@@ -28,6 +28,9 @@
 #              image already pulled (prepare + compile); later starts 88 s.
 #   Best for:  the fastest single-user decode on one 24 GB card (HyperQwen's setup B)
 # ---------------------------------------------------------------------------
+# Requires-min-vram-gb: 24
+# Requires-min-gpu-count: 1
+# Tensor-parallel: 1
 #
 # HyperQwen (github.com/syv-ai/HyperQwen, Apache-2.0) is syv-ai's vLLM derivative for this
 # model on one card. Its image runs three stages at every start: docker/prepare.sh (idempotent:
@@ -40,13 +43,18 @@
 # Credit: the first port of HyperQwen to this catalog, and its validation on a 3090, is
 # community PR #1634 by VykosX.
 #
-#   bash scripts/setup.sh vllm/qwen38-27b-single-hyperqwen     # the base + the DFlash2 drafter
-#   READY_TIMEOUT=1800 bash scripts/switch.sh --force vllm/qwen38-27b-single-hyperqwen
+#   bash scripts/setup.sh vllm-hyperqwen/qwen38-27b-single-ultrafast     # the base + the DFlash2 drafter
+#   READY_TIMEOUT=1800 bash scripts/switch.sh --force vllm-hyperqwen/qwen38-27b-single-ultrafast
 #
 # Knobs (HyperQwen's own names; their defaults are upstream's setup B):
 #   SPEC_N=<n>        tokens per DFlash2 verify block (DFLASH_TOKENS, default 7); 0 = no speculation
 #   REASONING_EFFORT  server-default effort for requests that send none: low (default), medium, xhigh
 #   DFLASH_TOKENS=15  upstream's setup C, for answers that quote the prompt (fewer slots, 56K)
+#   CTX=long          8-bit KV (int8 per-token-head, Triton) at 128K instead of bf16 at 64K. MEASURED
+#                     2026-10-14, same rig and 370 W, own boot: decode 128.7 / 230.9 (same within
+#                     noise), prefill 1,017 @10K (-15%) and 403 @90K. HyperQwen has no fp8 KV for
+#                     DFlash2 on sm_86 (FLASH_ATTN refuses fp8 there; our ultrafast tiers get fp8
+#                     from our FlashAttention fp8-KV plugin, which this image doesn't carry).
 #   GPU_UTIL          memory fraction (the launcher's GPU_MEMORY_UTILIZATION feeds it)
 #   EXTRA_ARGS        appended to vLLM's command line by HyperQwen's launcher
 services:
