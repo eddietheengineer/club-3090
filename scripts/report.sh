@@ -109,6 +109,8 @@ cd "$REPO_ROOT"
 # Canonical engine classification (club-3090#1282) — single source of truth.
 # shellcheck source=lib/engine-kind.sh
 source "$REPO_ROOT/scripts/lib/engine-kind.sh"
+# llamacpp_spec_args / llamacpp_draft_rate: the llama.cpp drafter, as verify-full's step 9 reads it
+source "$REPO_ROOT/scripts/lib/llamacpp-spec.sh"
 # shellcheck source=lib/club-containers.sh
 source "$REPO_ROOT/scripts/lib/club-containers.sh"
 source "$REPO_ROOT/scripts/lib/gpu-select.sh"
@@ -1147,8 +1149,29 @@ else
         echo
       fi
 
-      # llama.cpp doesn't have Genesis / vLLM SpecDecoding metrics. Skip
-      # those grep patterns. Capture warnings/errors only.
+      # Speculative decoding: the drafter on llama-server's command line and what it
+      # accepted since start (scripts/lib/llamacpp-spec.sh). llama.cpp has no vLLM
+      # SpecDecoding block; it prints a "draft acceptance = …" line per request.
+      spec_cfg="$(llamacpp_spec_args "$CONTAINER")"
+      spec_lines="$(docker logs "$CONTAINER" 2>&1 | command grep -E 'draft acceptance = ' || true)"
+      echo "**Speculative decoding:**"
+      if [[ -z "$spec_cfg" && -z "$spec_lines" ]]; then
+        echo "- no drafter on llama-server's command line"
+      else
+        echo "- drafter: \`${spec_cfg:-none found on the llama-server command line}\`"
+        if [[ -n "$spec_lines" ]]; then
+          read -r spec_rate spec_acc spec_gen spec_n <<<"$(printf '%s\n' "$spec_lines" | llamacpp_draft_rate)"
+          echo "- draft acceptance since start: ${spec_acc}/${spec_gen} (${spec_rate}) over ${spec_n} request(s). Last 3:"
+          echo '```'
+          printf '%s\n' "$spec_lines" | tail -3
+          echo '```'
+        else
+          echo "- no drafts since start (no requests yet, or the drafter is not drafting: verify-full step 9 tells which)"
+        fi
+      fi
+      echo
+
+      # Genesis is vLLM-only. Capture warnings/errors only.
       boot_errors=$(docker logs "$CONTAINER" 2>&1 | command grep -iE '^(warn|error|fatal|abort)|panic|core dumped' | tail -5)
       if [[ -n "$boot_errors" ]]; then
         echo "**Recent warnings/errors (last 5):**"

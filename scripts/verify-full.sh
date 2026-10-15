@@ -83,6 +83,8 @@ ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # the rules live in ONE place and every consumer delegates to them.
 # shellcheck source=lib/engine-kind.sh
 source "${ROOT_DIR}/scripts/lib/engine-kind.sh"
+# llamacpp_spec_args / llamacpp_draft_rate: step 9 on llama.cpp (shared with health.sh, report.sh)
+source "${ROOT_DIR}/scripts/lib/llamacpp-spec.sh"
 if [[ -f "${ROOT_DIR}/scripts/preflight.sh" ]]; then
   # shellcheck source=preflight.sh
   source "${ROOT_DIR}/scripts/preflight.sh"
@@ -679,29 +681,6 @@ run_check "output_quality" check_output_quality
 #     profiles see AL 3.4-3.8 with n=3. MTP_ACCEPT_MIN permits a profile-specific
 #     measured floor when a shallower drafter is independently throughput-positive.
 # --------------------------------------------------------------------
-# llama.cpp: is a drafter configured? Read llama-server's own command line (docker top runs
-# ps on the host, so the image needs no tools), not the startup log, whose wording differs
-# between builds ("speculative decoding context initialized", "speculative decoding enabled:
-# draft-mtp", or neither). Only the llama-server process counts: a compose's wrapper shell
-# carries its whole script, comments included, as its argument. Prints the drafting flags
-# found, or nothing.
-llamacpp_spec_args() {
-  docker top "$1" -eo pid,args 2>/dev/null \
-    | awk 'NR > 1 && $2 ~ /(^|\/)llama-server$/ { $1 = ""; print; exit }' \
-    | command grep -oE -- '(--spec-type[ =][^ ]+|--spec-draft-model[ =][^ ]+|--model-draft[ =][^ ]+|(^| )-md [^ ]+)' \
-    | command grep -vE -- '--spec-type[ =]none$' | sed 's/^ //' | tr '\n' ' ' | sed 's/ *$//' || true
-}
-
-# llama.cpp: sum the per-request draft lines on stdin. llama-server prints one per request in
-# its timing block whenever it drafted (mainline, PrismML and our moe-cache fork, which adds
-# ", mean len = N"):
-#     draft acceptance = 0.95833 (  184 accepted /   192 generated)
-# Prints "<rate> <accepted> <generated>", or nothing when no line drafted anything.
-llamacpp_draft_rate() {
-  command grep -oE 'draft acceptance = [0-9.]+ \( *[0-9]+ accepted / *[0-9]+ generated\)' \
-    | awk '{ gsub(/[()]/, " "); a += $5; g += $8 } END { if (g > 0) printf "%.3f %d %d\n", a / g, a, g }' || true
-}
-
 check_mtp_acceptance() {
   echo "[9/10] MTP acceptance length threshold ..."
   # Spec-decode metrics extraction is engine-specific:
@@ -747,7 +726,7 @@ check_mtp_acceptance() {
         skip "no drafter configured (no --spec-type / -md / --model-draft on llama-server's command line)"
         return 0
       fi
-      read -r lc_rate lc_acc lc_gen <<<"$lc_out"
+      read -r lc_rate lc_acc lc_gen _ <<<"$lc_out"
       lc_min="${LLAMACPP_ACCEPT_MIN:-0.30}"
       if ! [[ "$lc_min" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
         fail "invalid LLAMACPP_ACCEPT_MIN=${lc_min}" "Set a non-negative numeric threshold."

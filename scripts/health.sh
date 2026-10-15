@@ -58,6 +58,9 @@ if [[ -f "${ROOT_DIR}/scripts/lib/registry-lookup.sh" ]]; then
   REGISTRY_LOOKUP_ROOT="${ROOT_DIR}"
   _DEFAULT_ENDPOINT_PORT="$(registry_lookup_default_port qwen3.6-27b 2>/dev/null || true)"
 fi
+# llamacpp_spec_args / llamacpp_draft_rate: the llama.cpp drafter, as verify-full's step 9 reads it
+# shellcheck source=lib/llamacpp-spec.sh
+source "${ROOT_DIR}/scripts/lib/llamacpp-spec.sh"
 URL="${URL:-http://localhost:${_DEFAULT_ENDPOINT_PORT:-8020}}"
 CONTAINER="${CONTAINER:-}"
 LOG_LINES="${LOG_LINES:-200}"
@@ -281,12 +284,27 @@ else: print(f'{s//3600}h{(s%3600)//60:02d}m')
       else
         dim "No slot activity in last ${LOG_LINES} lines (server may be idle)"
       fi
-      # Decode throughput
+      # Decode throughput. The bare `eval time` line is DECODE; `prompt eval time` is
+      # PREFILL, and a match on the substring listed an 86K-token prefill at 809 tok/s
+      # here as a decode rate.
       local llcpp_tps
-      llcpp_tps=$(echo "$logs" | command grep -oE 'eval time =[^,]*\(.*tokens per second\)' | tail -3 || true)
+      llcpp_tps=$(echo "$logs" | command grep -v 'prompt eval time' | command grep -oE 'eval time =[^,]*\(.*tokens per second\)' | tail -3 || true)
       if [[ -n "$llcpp_tps" ]]; then
         echo "  Recent decode rates:"
         echo "$llcpp_tps" | tail -3 | sed 's/^/      /'
+      fi
+      # Drafter: configured on llama-server's command line, and what it accepted in
+      # these log lines (scripts/lib/llamacpp-spec.sh, as verify-full's step 9 reads it)
+      local lc_cfg lc_out lc_rate lc_acc lc_gen lc_n
+      lc_cfg="$(llamacpp_spec_args "$container")"
+      lc_out="$(echo "$logs" | llamacpp_draft_rate)"
+      if [[ -n "$lc_out" ]]; then
+        read -r lc_rate lc_acc lc_gen lc_n <<<"$lc_out"
+        ok "Draft acceptance: $(awk -v a="$lc_rate" 'BEGIN { printf "%.1f", a * 100 }')% (${lc_acc}/${lc_gen} over the last ${lc_n} drafting request(s))${lc_cfg:+  [${lc_cfg}]}"
+      elif [[ -n "$lc_cfg" ]]; then
+        warn "Drafter configured (${lc_cfg}) but no drafts in the last ${LOG_LINES} log lines (idle since start, or not drafting: verify-full step 9 tells which)"
+      else
+        dim "Spec-decode: no drafter on llama-server's command line"
       fi
     fi
 
