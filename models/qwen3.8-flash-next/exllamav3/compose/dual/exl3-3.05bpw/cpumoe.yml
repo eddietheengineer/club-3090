@@ -1,7 +1,8 @@
 # ===========================================================================
 # Profile (at-a-glance):
 #   Model:     Qwen3.8-Flash-Next (arch `qwen4exp`, turboderp EXL3 3.05bpw —
-#              80 GB across 7 shards + a 31 GB n-gram table). Trellis/mul1
+#              85.0 GB: 52.3 GB in 7 shards + a 32.6 GB n-gram table, decimal,
+#              from the HF branch; the old "80 GB" was a `du` total in GiB). Trellis/mul1
 #              codebook quant, weight-only: bits 3.05 · head_bits 5 · mtp_bits 3
 #              (read from quantization_config.json, not a card).
 #              ⚠️ The HF branch is `3.05bpw_h5_ng5` — the 4.05 sibling is
@@ -68,8 +69,8 @@
 #   • Calibration anchor reproduced by `scripts/tests/test-cpu-moe-split-fit.sh`:
 #     144 @ 2x24 GB free 24,123 MiB/card, exl3 1.5.0, ctx 204800, Q4
 # CPU-Offload-Host-RAM-GB: 96
-#   ⤷ 80 GB of weights, of which ~25% of experts are CPU-resident and computed
-#     there, plus the 31 GB n-gram table held in RAM (`ngram_ram: true`).
+#   ⤷ 52.3 GB of model shards, of which ~25% of experts are CPU-resident and
+#     computed there, plus the 32.6 GB n-gram table held in RAM (`ngram_ram: true`).
 #     Registry `host_ram_gb` is the NOMINAL figure and must stay <= this.
 #   Best for:  long-prompt and agentic serving where PREFILL and TTFT dominate —
 #              1566 tok/s @10K and ~310 ms TTFT, vs ~565 and ~546 ms for the
@@ -114,7 +115,7 @@
 #       log format, so verify-full's spec-dec check SKIPS and reads as
 #       "no drafter" — a false clean that already produced one wrong
 #       report. Read `draft N/M accepted` off the server's own stdout.
-#     • ⚠️ The 31 GB n-gram/PLE table is DISK-STREAMED by upstream default
+#     • ⚠️ The 32.6 GB n-gram/PLE table is DISK-STREAMED by upstream default
 #       and is never in VRAM. `--ngram-ram true` opts into holding it in
 #       system RAM, which is what the host_ram_gb figure above assumes.
 #       Drop it on a RAM-constrained box and accept the latency.
@@ -345,7 +346,7 @@ services:
       # taken at the OLD split/ctx pairing, so they describe 128, not the shipped 144.
       - '--cpu-moe-split-experts'
       - '${MOE_SPLIT:-144}'
-      # 31 GB n-gram/PLE table into system RAM. Upstream default is to stream it
+      # 32.6 GB n-gram/PLE table into system RAM. Upstream default is to stream it
       # from disk; it is NEVER in VRAM either way.
       - '--ngram-ram'
       - '${NGRAM_RAM:-true}'
@@ -386,5 +387,5 @@ services:
       interval: 30s
       timeout: 10s
       retries: 40
-      # Load is slow: 80 GB of weights plus a 31 GB table into RAM.
+      # Load is slow: 52.3 GB of shards plus a 32.6 GB table into RAM.
       start_period: 900s

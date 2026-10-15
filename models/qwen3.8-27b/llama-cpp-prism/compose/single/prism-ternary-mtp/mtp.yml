@@ -19,13 +19,15 @@
 #              target's token_embd/output is what makes MTP profitable here — a
 #              separate -md sidecar duplicates the vocabulary (~92% of its bytes)
 #              and turns even 40% acceptance into a net loss (upstream #205).
-#              MEASURED 1.84x at n=4 — see the SPEC block below.
+#              MEASURED 1.84x at n=4 (greedy /completion, 2026-09-19, on the
+#              retired source-built engine; not re-measured on the stock pin)
+#              — see the SPEC block below.
 #   KV:        q8_0 (KV_TYPE). ⭐ MEASURED at 262144: q8_0 uses 17,108 MiB vs
 #              f16's 23,806 — 6.5 GB saved for a 0.2% decode difference (45.71
 #              vs 45.80 tok/s, i.e. noise). q8_0 is this stack's serving floor.
 #   Vision:    ✅ available — separate mmproj (Q8_0, 0.63 GB), loaded only for
 #              image input so text-only serving never pays for it.
-#              ⛔ DOWNLOADED BUT NEVER LOADED — vision is UNVALIDATED here.
+#              ✅ verify-full vision 4/4 on ground truth (2026-10-15, b10776 pin).
 #   Max ctx:   262144 — the model's FULL declared context, MEASURED on ONE card.
 #              The whole ladder boots: 32768/65536/98304/131072/196608/262144.
 #   Genesis:   N/A — llama.cpp engine
@@ -194,8 +196,9 @@ services:
         ROW=(--reasoning "$$_r" --temp "$$_t" --top-p "$$_p" --presence-penalty "$$_pp"
              --top-k "$${TOP_K:-20}" --min-p "$$_mp")
         # -- Reasoning knobs: all six --reasoning-* flags reachable ------------------
-        # ⭐ BUDGET DEFAULTS TO 8192 HERE (maintainer call 2026-09-19), unlike the
-        # llama-cpp siblings which keep llama.cpp's own -1. Semantics confirmed from
+        # ⭐ BUDGET DEFAULTS TO 32768 (8192 from 2026-09-19, 32768 since 2026-10-10, the
+        # same default as the llama-cpp siblings, which had kept llama.cpp's own -1
+        # until then). Semantics confirmed from
         # BOTH binaries' --help: "-1 unrestricted, 0 immediate end, N>0 token budget".
         # ⚠️⚠️ Exhaustion force-closes the thinking block. The MESSAGE below is what
         # makes that visible — upstream defaults it to EMPTY, which is why a truncated
@@ -340,7 +343,7 @@ services:
       # Vision. The projector is a SEPARATE artifact here (not embedded), and
       # upstream keeps it off the hot path: it is loaded only when an image
       # arrives, so text-only serving costs nothing for it.
-      # ⛔ NEVER LOADED ON THIS RIG — vision is entirely unvalidated.
+      # ✅ Validated: verify-full's vision check passes 4/4 on ground truth (2026-10-15).
       - '--mmproj'
       - '${MMPROJ:-/models/qwen3.8-27b-gguf/prism-ternary/Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf}'
       - '-mmdev'

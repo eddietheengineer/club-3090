@@ -210,7 +210,7 @@ a 3.0 / 7.8 GiB imbalance and needed a manual `--gpu-split`. Check your cards af
 first boot.
 
 **5. The n-gram table is disk-streamed by default.**
-Qwen's 31 GB PLE / n-gram table is **never in VRAM** on any setting. Upstream streams it
+Qwen's PLE / n-gram table (32.6 GB at 3.05bpw, 39.0 GB at 4.05bpw) is **never in VRAM** on any setting. Upstream streams it
 from disk; `--ngram-ram true` (what the composes ship) holds it in system RAM instead.
 On a RAM-constrained box, drop it and accept the latency.
 

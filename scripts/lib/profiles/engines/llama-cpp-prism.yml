@@ -126,17 +126,18 @@ supported_kv_formats:
                           # boot, never from upstream's docs.
 
 supported_drafters: [mtp_gguf]   # bundled MTP head (prism-mtp-bundled); stock since b10735 (#205). Boot-tested 2026-10-06 on b10754 and 2026-10-14 on b10776.
-  # ⛔ EMPTY, AND FOR THE BONSAI PACKS IT IS NOT EVEN AVAILABLE — VERIFIED IN THE
-  # GGUF, not assumed:
+  # ⚠️ prism-ml's own Bonsai packs carry NO MTP head — VERIFIED IN THE GGUF, not
+  # assumed:
   #     qwen35.block_count = 64 · blk indices 0..63 · nextn/mtp tensors = 0
   # ⚠️⚠️ THIS DIFFERS FROM THE SAME MODEL'S OTHER GGUFs. The unsloth Qwen3.8-27B
   # packs carry a BUILT-IN MTP head at `blk.64.nextn.*` (see
   # models/qwen3.8-27b/llama-cpp/compose/single/.../q4kv-vision.yml), and
   # prism-ml's ternary conversion DROPPED it. "Qwen3.8-27B has MTP" is therefore
   # true of the model and FALSE of this artifact — do not carry the assumption
-  # across. Every throughput figure on this engine is UN-DRAFTED.
-  # ⭐ The remaining spec-dec option is an EXTERNAL draft model; upstream's card
-  # points at Bonsai-demo for that. Untried here.
+  # across. The head this field enables comes from ProCreations' re-bundled file
+  # (weights variant prism-ternary-mtp, slug …-ternary-mtp), which put
+  # blk.64.nextn.* back; throughput on the plain -pq2 slug is UN-DRAFTED.
+  # An EXTERNAL draft model (upstream's card points at Bonsai-demo) is untried here.
   # ⚠️ This field holds spec_method VALUES, not drafter ids — adding one without
   # a measured boot is how the sibling llamacpp profile got it wrong three
   # revisions running.
@@ -170,9 +171,12 @@ notes: >
   tokens on f16 (65 KiB/token, which solves to 16 full-attention layers x 8 KV
   heads x 128 head_dim x 2 bytes — matching the card's "~25% full attention"
   over 64 blocks).
-  ⛔ NOT RUN: bench.sh, verify-full, verify-stress, soak, the quality 8-pack,
-  any concurrency, and vision (the mmproj is downloaded and wired but was never
-  loaded).
+  Since cataloguing: bench.sh on both slugs (earlier builds, not the b10776
+  pin), verify-full on every pin bump, with vision 4/4 on ground truth
+  (re-checked on both slugs 2026-10-15), and one thinking-leg 8-pack on the MTP
+  slug (2026-09-19, an earlier build).
+  ⛔ STILL NOT RUN: verify-stress, soak, any concurrency, and an instruct-leg
+  8-pack.
   ⚠️ PACK CHOICE IS OPEN. Upstream ships PTQ1_0 (5.95 GB) as well, and the two
   INVERT by architecture: PQ2_0 wins decode on H100/A100/Blackwell, PTQ1_0 wins
   on Ada and the L4. The 3090 is Ampere-with-GDDR6X and appears in neither row,
