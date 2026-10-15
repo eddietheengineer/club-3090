@@ -1,0 +1,79 @@
+# ===========================================================================
+# Profile (at-a-glance):
+#   Model:     GLM-5.3-Flash — Project Maya's Maya-L (`Maya-L`, 156.3 GB in 4 shards): IQ3_S gate/up
+#              experts, IQ4_XS down (Q5_K in the most sensitive layers), Q6_K attention; upstream: 99.2% of
+#              FP8's zero-shot accuracy. Made by Project Maya from Z.ai's FP8 release
+#              (peasantsmith/GLM-5.3-Flash-Maya-GGUF @f16ee4ba).
+#   Engine:    Project Maya (a Strata fork for GLM-5.3-Flash) — ghcr.io/noonghunna/strata-maya-club3090,
+#              built by club-3090 at the release commit (models/glm-5.3-flash/strata-maya/image/)
+#   Topology:  4× 24 GB, Maya layer split over four cards (--layer-split auto)
+#   Drafter:   MTP: the model's own NextN block (Maya's default on 2+ GPUs; the split's head group drafts)
+#   KV:        fp16 latent cache, 32K positions in VRAM, the rest streamed from pinned RAM (--kv-streaming on)
+#   Vision:    no (the image is text only)
+#   Max ctx:   131072
+#   Genesis:   N/A — Genesis is Qwen3-Next-specific
+#   Status:    🐣 Incubating
+#   Caveats:   Not gate-passing yet: quality unmeasured here (8-pack pending), one request at a time. Thinking:
+#              GLM-5.3's template thinks by default; Maya's server closes the thinking block when a request
+#              sends enable_thinking false or reasoning_effort none (unlike the llama.cpp GLM slugs, where
+#              thinking can't be turned off). Server defaults for requests that name none: effort max (as the
+#              other GLM-5.3-Flash slugs), temperature 1.0 / top_p 0.95, Maya's own 32K reasoning budget. No
+#              launch knobs for effort or budgets. The FIRST start SHA-256-checks the shards against Maya's
+#              own table and builds Maya's pack on the data volume (minutes, once); later starts ~30 s. Maya
+#              sizes its RAM tier from free memory: drop the page cache first on a box that just read big
+#              files. Host needs NVIDIA driver >= 580 (CUDA 13) and an AVX2 CPU; x86-64 only.
+#              NEVER BOOTED on the reference rig (2 GPUs): multi4 is community-validated by design;
+#              its numbers come from community reports (numbers-from-your-rig).
+# CPU-Offload-Host-RAM-GB: 131
+#   ⤷ NOT MEASURED (never booted here): the dual slug's 129 GB is the upper bound, as
+#     four cards keep more experts in VRAM and size the RAM tier smaller.
+#     Maya sizes its RAM tier from FREE memory at start, so this is what it took on a 224 GB host
+#     with every expert fitting; a smaller host keeps fewer experts in RAM and reads the rest from
+#     the model files while it answers (slower, not measured). Registry `host_ram_gb` is the
+#     NOMINAL figure and must stay <= this.
+#   Best for:  GLM-5.3-Flash on 24 GB cards with lots of host RAM (L: the most accurate Maya quant, the
+#              slowest)
+# ---------------------------------------------------------------------------
+# Project Maya (github.com/mw00/project-maya) is its own engine for this model: see docs/engines/STRATA_MAYA.md.
+# Siblings: ../../single/maya-l/base.yml (single), ../../dual/maya-l/base.yml (dual); the other quants sit
+# beside this folder.
+#   bash scripts/switch.sh --force strata-maya/glm53-flash-multi4-maya-l
+# The launcher (../../../launcher/) links the shards into the data volume, checks their SHA-256 once, builds
+# Maya's pack there and starts Maya's server. By hand: SETUP_ONLY=1 docker compose -f base.yml run --rm
+# strata-maya, then up -d. Tuning (optional): Maya's `maya.sh --calibrate` result for this PC goes in
+# MAYA_PCIE_SHARE / MAYA_CPU_LANE (the engine's STRATA_GLM_PCIE_SHARE / STRATA_GLM_CPU_LANE).
+services:
+  strata-maya:
+    image: ${STRATA_MAYA_IMAGE:-ghcr.io/noonghunna/strata-maya-club3090@sha256:c66808309785b6a4b258b7807a0cbfd352c5f950a354abbfe24f4e9e903d95ef}
+    container_name: ${ESTATE_CONTAINER:-strata-maya-glm53-flash-multi4-maya-l}
+    restart: ${CLUB3090_RESTART:-unless-stopped}
+    # root, with the launcher's group: what Maya writes to the data volume stays removable by the user
+    # (the entrypoint sets umask 0002)
+    user: "0:${DOCKER_GID:-1000}"
+    entrypoint: ["/bin/sh", "/opt/club3090/maya-entrypoint.sh", "maya-l"]
+    ulimits:
+      memlock: -1            # Maya pins (locks) its RAM tier for the GPU
+    ports:
+      - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8045}}:8080"
+    environment:
+      CONTEXT: "${CONTEXT:-131072}"
+      SETUP_ONLY: "${SETUP_ONLY:-0}"
+      REPACK: "${REPACK:-0}"
+      VERIFY: "${VERIFY:-1}"
+      MAYA_GPUS: "${MAYA_GPUS:-0,1,2,3}"
+      MAYA_PCIE_SHARE: "${MAYA_PCIE_SHARE:-}"
+      MAYA_CPU_LANE: "${MAYA_CPU_LANE:-}"
+      # the entrypoint passes --host 0.0.0.0 and --port 8080 itself
+    volumes:
+      - "${MODEL_DIR:-../../../../../../models-cache}/glm-5.3-flash-maya-gguf/Maya-L:/gguf:ro"
+      # one folder per quant (shard links, Maya's pack, the config); the launchers put it
+      # under ~/.local/share/club-3090
+      - "${STRATA_MAYA_DATA_DIR:-${CLUB3090_DATA_DIR:-../../..}/strata-maya-data}:/data"
+      - "../../../launcher:/opt/club3090:ro"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['${ESTATE_GPUS:-0,1,2,3}']
+              capabilities: [gpu]

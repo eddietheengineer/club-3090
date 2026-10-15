@@ -38,7 +38,8 @@ from scripts.lib.profiles import compat  # noqa: E402
 # removed from there.
 from scripts.lib.profiles.catalog_rules import LINEAGE_NO_SOURCE_REF as NO_SOURCE_REF  # noqa: E402
 TYPE_FAMILY = {"vllm": "vllm", "sglang": "sglang", "exllamav3": "exllamav3",
-               "llama.cpp": "llamacpp", "llama-cpp": "llamacpp", "llamacpp": "llamacpp"}
+               "llama.cpp": "llamacpp", "llama-cpp": "llamacpp", "llamacpp": "llamacpp",
+               "strata": "strata"}   # strata-maya (2026-10-15): the first fork of Strata
 
 fails = []
 profiles = []

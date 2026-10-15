@@ -29,7 +29,7 @@ cleanup() { [[ -n "$server_pid" ]] && kill "$server_pid" 2>/dev/null; rm -rf "$w
 trap cleanup EXIT
 
 port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')"
-mkdir -p "$work/ok" "$work/nodrafts" "$work/notjson" "$work/foreign"
+mkdir -p "$work/ok" "$work/nodrafts" "$work/notjson" "$work/foreign" "$work/maya"
 cat > "$work/ok/metrics" <<'JSON'
 {"engine": {"version": "0.1.43.1", "kv": "int8", "max_context": 131072, "expert_slots": 8746},
  "totals": {"requests": 2, "output_tokens": 300, "decode_ms": 3000, "prompt_tokens": 1100, "reused": 100,
@@ -45,6 +45,20 @@ cat > "$work/nodrafts/metrics" <<'JSON'
  "requests": [{"output_tokens": 50, "decode_ms": 500, "prompt_read": 10, "prompt_ms": 10,
                "drafts_offered": 0, "drafts_accepted": 0}]}
 JSON
+# Project Maya (strata-maya): version in engine.maya_version, no draft counts in /metrics (they are in
+# the engine log only), requests carry prompt_tokens + reused instead of prompt_read
+cat > "$work/maya/metrics" <<'JSON'
+{"engine": {"version": null, "maya_version": "1.1.11", "kv": "fp16", "max_context": 131072, "expert_slots": 5508},
+ "totals": {"requests": 2, "output_tokens": 300, "decode_ms": 3000, "prompt_tokens": 1100, "reused": 100, "prompt_ms": 500},
+ "requests": [
+   {"output_tokens": 200, "decode_ms": 2000, "prompt_tokens": 650, "reused": 50, "prompt_ms": 300, "hit_rate": 0.8},
+   {"output_tokens": 100, "decode_ms": 1000, "prompt_tokens": 450, "reused": 50, "prompt_ms": 200, "hit_rate": 0.7}],
+ "storage": {"path": "/data/maya-s"}}
+JSON
+printf '%s\n' "glm stat: decode 20.28 ms/tok" "glm spec: 15 of 16 drafts accepted (93.8%)" \
+  "glm kv: KV streaming: 93.81% of 3086 block reads hit VRAM" "glm spec: 120 of 150 drafts accepted (80.0%)" \
+  "glm spec: 30 of 50 drafts accepted (60.0%)" > "$work/maya.log"
+head -2 "$work/maya.log" > "$work/maya-early.log"
 echo '<html>not metrics</html>' > "$work/notjson/metrics"
 echo '{"totals": {"requests": 3}}' > "$work/foreign/metrics"
 
@@ -91,18 +105,41 @@ python3 "$SM" recent "http://127.0.0.1:1" >/dev/null 2>&1; r=$?
 python3 "$SM" recent >/dev/null 2>&1; r=$?
 [[ $r -eq 2 ]] && ok "bad usage: exit 2" || bad "bad usage: exit $r, want 2"
 
-# 5. soak-helper reads Strata's per-request docker-logs line, and not its progress line
+# 5. Project Maya: its document reads; drafts come from its engine log, given one
+out="$(python3 "$SM" recent "$base/maya")"; r=$?
+[[ $r -eq 0 ]] && command grep -qx 'version=1.1.11' <<<"$out" && command grep -qx 'drafts_offered=0' <<<"$out" \
+  && command grep -qx 'prefill_tok_s=2000.00' <<<"$out" \
+  && ok "Maya document: version from engine.maya_version, prefill from prompt_tokens - reused, no drafts without its log" \
+  || bad "Maya recent: rc=$r, got: $(tr '\n' ' ' <<<"$out")"
+out="$(python3 "$SM" recent "$base/maya" 2 --log-file "$work/maya.log")"
+command grep -qx 'drafts_offered=200' <<<"$out" && command grep -qx 'drafts_accepted=150' <<<"$out" \
+  && command grep -qx 'accept_rate=0.7500' <<<"$out" \
+  && ok "Maya recent N --log-file: the newest N 'glm spec' lines" || bad "Maya recent log: $(tr '\n' ' ' <<<"$out")"
+python3 "$SM" snapshot "$base/maya" --log-file "$work/maya-early.log" > "$work/m0.json" \
+  && python3 "$SM" snapshot "$base/maya" --log-file "$work/maya.log" > "$work/m1.json" \
+  && out="$(python3 "$SM" delta "$work/m0.json" "$work/m1.json")" \
+  && command grep -qx 'drafts_offered=200' <<<"$out" && command grep -qx 'accept_rate=0.7500' <<<"$out" \
+  && ok "Maya snapshot --log-file: the log's drafts are summed into totals, so delta reads them" \
+  || bad "Maya snapshot/delta: $(tr '\n' ' ' <<<"${out:-}")"
+python3 "$SM" snapshot "$base/maya" --log-file "$work/no-such.log" >/dev/null 2>&1; r=$?
+[[ $r -eq 3 ]] && ok "Maya log that can't be read: exit 3 (never a silent 'no drafts')" || bad "missing Maya log: exit $r, want 3"
+python3 "$SM" snapshot "$base/ok" --log-file "$work/maya.log" > "$work/s.json"
+python3 -c 'import json,sys; t=json.load(open(sys.argv[1]))["totals"]; sys.exit(0 if t["drafts_offered"] == 200 else 1)' "$work/s.json" \
+  && ok "a Strata document keeps its own draft counts even when a log is given" || bad "Strata totals overridden by a log"
+
+# 6. soak-helper reads Strata's per-request docker-logs line, and not its progress line
 got="$(python3 - <<'PY'
 import importlib.util
 spec = importlib.util.spec_from_file_location("sh", "scripts/soak-helper.py")
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 done = "[strata] done: 231 tokens in 3 s (107.7 tok/s) (stop, cancel=False), expert cache 74.7% hit"
 progress = "[strata] answering: 58 of max 1500 tokens, 103.0 tok/s, 1 s"
-print(m.engine_rate_from_logs(progress + "\n" + done), m.engine_rate_from_logs(progress))
+maya = "[maya] done: 207 tokens in 5 s (52.6 tok/s) (stop, cancel=False), expert cache 80.6% hit"
+print(m.engine_rate_from_logs(progress + "\n" + done), m.engine_rate_from_logs(progress), m.engine_rate_from_logs(maya))
 PY
 )"
-[[ "$got" == "(107.7, 'strata-log') (None, '')" ]] \
-  && ok "soak-helper: Strata 'done' line is an engine-reported decode rate; the progress line is not" \
+[[ "$got" == "(107.7, 'strata-log') (None, '') (52.6, 'strata-log')" ]] \
+  && ok "soak-helper: Strata's and Project Maya's 'done' lines are engine-reported decode rates; the progress line is not" \
   || bad "soak-helper Strata signature: got $got"
 
 if [[ $rc -eq 0 ]]; then echo "PASS: test-strata-metrics"; else echo "FAIL: test-strata-metrics"; fi

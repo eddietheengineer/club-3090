@@ -589,14 +589,15 @@ _LLAMACPP_LOG_RE = re.compile(
 # Strata's per-request line in docker logs; the rate is tokens over the time since the
 # first token (serve/server.py). Its /metrics is JSON unless asked for Prometheus text,
 # and carries no time_per_output_token, so the prom path finds nothing there.
-_STRATA_LOG_RE = re.compile(r"\[strata\] done: \d+ tokens in [0-9.]+ s \(([0-9]+(?:\.[0-9]+)?) tok/s\)")
+# Project Maya (strata-maya, a Strata fork) prints the same line as "[maya] done: ..."
+_STRATA_LOG_RE = re.compile(r"\[(?:strata|maya)\] done: \d+ tokens in [0-9.]+ s \(([0-9]+(?:\.[0-9]+)?) tok/s\)")
 # A counter reading this far out is a parse error, not a measurement.
 ENGINE_TPS_SANE_MAX = 100000.0
 ENGINE_SOURCE_LABELS = {
     "prom-tpot": "engine-reported: /metrics time_per_output_token_seconds",
     "sglang-log": "engine-reported: SGLang 'gen throughput (token/s)' log line",
     "llamacpp-log": "engine-reported: llama.cpp 'eval time' log line",
-    "strata-log": "engine-reported: Strata '[strata] done' log line (tokens since the first token)",
+    "strata-log": "engine-reported: Strata's '[strata] done' (or Project Maya's '[maya] done') log line (tokens since the first token)",
 }
 
 
