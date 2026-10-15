@@ -17,7 +17,7 @@ This doc isn't an evangelism piece. It's a *picker* — which engine to reach fo
 | **Production multi-tenant chat / API** (24-48 GB VRAM, fits-VRAM models) | **vLLM** | Continuous batching + paged attention + extensive tool-call/structured-output support |
 | **Single-card max-quality on small-VRAM rigs** (12-24 GB), bulletproof | **llama.cpp** | Engine-agnostic memory model; no Cliff 1/2 footguns; broadest model coverage; q4_0/q8_0 KV |
 | **Hyper-optimized prefix caching, structured outputs, multimodal at scale** | **SGLang** | RadixAttention-class prefix cache + FSM-native structured outputs + best-in-class spec-decode V2 |
-| **Big MoE (>VRAM) on consumer hardware** (M2/Kimi/DeepSeek-class) | upstream: **ktransformers** (or SGLang+kt-kernel). In this catalog: **[`llamacpp-club3090`](engines/LLAMACPP_CLUB3090.md)** for any of its MoE models; for Qwen3.8-Flash-Next also [Strata](engines/STRATA.md), [bucko-vllm](engines/BUCKO_VLLM.md) and [ExLlamaV3](engines/EXLLAMAV3.md), and for GLM-5.3-Flash [Project Maya](engines/STRATA_MAYA.md) | ktransformers: router-aware hot-expert caching; 1.5-2× decode TPS over llama.cpp's layer-uniform `--n-cpu-moe`. `llamacpp-club3090`: [@leloch](https://github.com/leloch/llama.cpp)'s expert cache keeps the experts the router reuses in spare VRAM (not in mainline llama.cpp) |
+| **Big MoE (>VRAM) on consumer hardware** (M2/Kimi/DeepSeek-class) | upstream: **ktransformers** (or SGLang+kt-kernel). In this catalog: **[`llamacpp-club3090`](engines/LLAMACPP_CLUB3090.md)** for any of its MoE models; for Qwen3.8-Flash-Next also [Strata](engines/STRATA.md), [bucko-vllm](engines/BUCKO_VLLM.md) and [ExLlamaV3](engines/EXLLAMAV3.md), and for GLM-5.3-Flash also [Project Maya](engines/STRATA_MAYA.md) | ktransformers: router-aware hot-expert caching; 1.5-2× decode TPS over llama.cpp's layer-uniform `--n-cpu-moe`. `llamacpp-club3090`: [@leloch](https://github.com/leloch/llama.cpp)'s expert cache keeps the experts the router reuses in spare VRAM (not in mainline llama.cpp) |
 | **Apple Silicon** | **llama.cpp** (Metal) or **SGLang** (MLX backend, v0.5.10+) | Both work; MLX backend is newer but native |
 
 ---
@@ -248,7 +248,7 @@ Q1: Does the model fit your VRAM at desired quant?
        │      Lower quant, smaller model, or rent cloud.
        └── YES → 
               In this catalog → llamacpp-club3090 (expert cache in spare VRAM)
-                                or an engine written for one model:
+                                or an engine catalogued here for one model:
                                 Strata, bucko-vllm, ExLlamaV3 (Qwen3.8-Flash-Next),
                                 Project Maya (GLM-5.3-Flash); engines/README.md
               Upstream alternatives:
