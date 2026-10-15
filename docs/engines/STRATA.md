@@ -39,12 +39,13 @@ A release that renames a `setup.py` flag the entrypoint passes fails the image b
 | `strata/qwen3.8-flash-next-iq3s-single` | 1 | 8019 | the same install, started with `--gpu 0` |
 | `strata/qwen3.8-flash-next-swift15-abliterated-iq3s-dual` | 2, layer split | 8024 | SC117's abliterated Swift 1.5 |
 | `strata/qwen3.8-flash-next-swift15-abliterated-iq3s-single` | 1 | 8025 | the same install, started with `--gpu 0` |
+| `strata/qwen3.8-flash-next-swift15-abliterated-iq3s-multi4` | 4, layer split | 8046 | the same install on `--gpus 0,1,2,3`; never booted here (two cards): community-validated |
 
 **Weights:**
 - The first two run ISTA-DASLab's GSQ-RCO IQ3_S of the original model (`ista-iq3s`, 83.6 GB in two shards).
 - The `swift15-abliterated` pair runs SC117's abliterated GSQ-RCO IQ3_S of UkisAI's Swift 1.5 (`sc117-swift15-abliterated-iq3s`, 83.55 GB in two shards, pinned to revision `2b89cf3f`). Swift 1.5 is a fine-tune of Qwen3.8-Flash-Next that thinks much shorter. SC117 replaced its 144 residual-writer tensors with ones from orcarouter's abliterated release, which removes the refusal direction. Its README says it has no reliable built-in guardrails, so put your own moderation in front of anything user-facing. It is under the Swift Open License 1.0 (commercial use is free only below US$1M annual revenue) as well as the Qwen licence. Strata serves it as its `swift` model family.
 
-**Data volume:** all four slugs share one volume, `strata-data` under the data directory (`~/.local/share/club-3090` by default; `STRATA_DATA_DIR` overrides). It holds Strata's MTP draft layer, which every slug shares, and one links folder, config and prepared pack per model family (`strata-iq3_s` for ISTA, `strata-swift-iq3_s` for Swift).
+**Data volume:** all five slugs share one volume, `strata-data` under the data directory (`~/.local/share/club-3090` by default; `STRATA_DATA_DIR` overrides). It holds Strata's MTP draft layer, which every slug shares, and one links folder, config and prepared pack per model family (`strata-iq3_s` for ISTA, `strata-swift-iq3_s` for Swift).
 
 **First start:** the first start of each model family runs Strata's setup. It checks the shards, prepares that family's pack, and, unless the volume already has it, range-reads about 5 GB of MTP tensors from `Qwen/Qwen3.8-Flash-Next`, so it needs the network. Swift 1.5 ships no draft layer of its own, so its slugs use the same one. On the reference rig it took about 14 minutes (image pull ~2, MTP fetch ~10, MTP pack ~2), longer than `switch.sh`'s 10-minute wait. Give the first launch `READY_TIMEOUT=1800`, or run `switch.sh` again once it times out (the container keeps going). Later starts take about 30 seconds. `SETUP_ONLY=1` runs just the setup.
 

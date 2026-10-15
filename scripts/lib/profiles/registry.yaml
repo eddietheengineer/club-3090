@@ -6450,6 +6450,37 @@ entries:
     weights_companions: []
     gateway: false
     serve_aliases: []
+  strata/qwen3.8-flash-next-swift15-abliterated-iq3s-multi4:
+    origin: core
+    model: qwen3.8-flash-next
+    weights_variant: sc117-swift15-abliterated-iq3s
+    workload: long-ctx-single
+    engine: strata
+    drafter: null
+    spec_method: mtp
+    kv_format: q8_0
+    act_format: 16bit
+    act8_capable: false
+    offload: engine
+    moe_cache: false
+    host_ram_gb: 84
+    kv_offload: null
+    chat_template: native
+    tp: 4
+    max_ctx: 131072
+    max_num_seqs: 1
+    mem_util: null
+    compose_path: models/qwen3.8-flash-next/strata/compose/multi4/sc117-swift15-abliterated-iq3s/base.yml
+    requires_nvlink: false
+    requires_homogeneous_arch: false
+    required_engine_features: []
+    default_port: 8046
+    kvcalc_key: SKIP
+    status: incubating
+    status_note: "NEVER BOOTED (this rig has 2 GPUs; multi4 is COMMUNITY-VALIDATED BY DESIGN). Four cards, Strata layer split (--gpus 0,1,2,3, auto): each card caches the experts of its own layers; Strata's layer split takes any number of cards (its docs/MULTI_GPU.md shows a 4-card split). Copied from the dual sibling with only the topology, cards, port and container changed; same image, data volume, links folder, config and pack as the dual and single Swift slugs. The dual sibling measured 125.7 / 161.7 decode on 0.1.44.1 (2026-10-14); no number for four cards. host_ram_gb 84 is the dual sibling's measured figure: Strata page-locks every expert in host RAM whatever the card count, plus the 28.8 GB n-gram table on a rotational model disk. SC117's abliterated Swift 1.5: no reliable built-in guardrails (put your own moderation in front); Swift Open License 1.0 on top of the Qwen licence. ⚠️ Quality unmeasured (8-pack pending)."
+    weights_companions: []
+    gateway: false
+    serve_aliases: []
 
 defaults:
   qwen3.6-27b:
