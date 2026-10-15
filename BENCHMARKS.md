@@ -452,6 +452,18 @@ acceptance signal and buys nothing.
 | --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
 | `single/unsloth-iq4xs/q4kv-vision.yml` (`llamacpp/qwen38-27b-single-iq4xs`), local derivative: `KV_TYPE=q8_0 CTX_SIZE=215000` + `--no-mmproj-offload` | @ensingerphilipp (1× 3090 PCIe Gen4 x16, 250 W; other cards idle) | q8_0 / q8_0 | 215000 (slot 215,040) | **47.15 / 56.20** decode (CV 1.1% / 1.3%) | 949 @10K | 23,264 MiB | 2026-09-21 | 🧪 Shipped b10920 pin, MTP n=2. **Serving-grade q8_0 KV at 215K on one card**, where the compose note says 131072: that ceiling was measured on the larger IQ4_NL (15.22 GiB), and this run keeps the F16 projector in system RAM. verify-full PASS incl. vision 4/4; verify-stress all rungs to 197,437 (91%), rc=1 only on the VRAM-margin guard (**869 < 1,024 MiB** — fits, thin margin). `Soak: ✓ PASS` (100 turns, 0 MiB growth, retention 100.2%; mode not stated). **Image cost of the CPU projector** (640×480, cache-busted, median of 5): submitter 5.04 s TTFT / 4.78 s engine prompt time on 16 vCPUs of an EPYC 7502P; our rig, ~1.5 s engine prompt time on the CPU (bursts to ~4 s; the first 2026-09-25 runs read 4.01 s because they sat in the slow mode) vs **0.6 s on the GPU**, same on b10920 and b11146 (EPYC 7543, 32-vCPU VM, steal 0), and the GPU projector holds ~1,180 MiB (22,348 vs 21,168 MiB). ⚠️ 250 W: not comparable to 370 W rows (same pin, q4_0 @262K: 67.25 / 78.76 at 370 W, 36.74 / 42.42 at 230 W). [#1380](https://github.com/noonghunna/club-3090/issues/1380) |
 
+### Single-card (1× RTX 3090) — PrismML llama.cpp (ternary)
+
+On the [`llama-cpp-prism`](docs/engines/LLAMA_CPP_PRISM.md) engine: prism-ml's Bonsai 2 27B, a ternary PQ2_0 quant of this model (7.21 GB, 2.13 bpw), which only PrismML's llama.cpp fork can run. `bench.sh` canonical (3 warm + 5 measured), one fresh boot per row. ⚠️ Neither slug has been benched on the pinned `prism-b10776-d00e252`; the bump to it was boot-tested with verify-full.
+
+| Compose | Rig | KV | Max ctx | Narr / Code TPS | PP tok/s | Peak VRAM | Date | Notes |
+| --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
+| `llama-cpp-prism/compose/single/prism-ternary-pq2/ternary.yml` (`llama-cpp-prism/qwen38-27b-single-ternary-pq2`) — `prism-b10735-842b188` | @noonghunna (1× 3090, 230 W) | q8_0 | 262144 | **40.91 / 40.40** (CV 0.6% / 0.2%) | **884.0** @10K · 600.1 @90K | 17,104 MiB | 2026-09-24 | 🐣 No drafter: prism-ml's conversion dropped the MTP head. Same-day control on `prism-b10685`: 42.14 / 40.38, 819.9 @10K · 575.0 @90K; the prefill gain is PrismML #216 (Ampere GDN layout). Soak: — |
+| ↳ same slug, `prism-b10685-7dffb15` | @noonghunna (1× 3090; power cap not recorded) | q8_0 | 262144 | 42.76 / 41.01 (CV 2.1% / 0.2%) | 834.8 @10K | 17,108 MiB | 2026-09-18 | TTFT 141 ms. verify-full 8 pass + 2 skipped, vision 4/4 on ground truth. KV A/B at 262144: f16 23,806 MiB vs q8_0 17,108 MiB for a 0.2% decode difference. Soak: — |
+| `llama-cpp-prism/compose/single/prism-ternary-mtp/mtp.yml` (`llama-cpp-prism/qwen38-27b-single-ternary-mtp`, MTP n=4) — the retired source build: `prism-b10709` + PrismML #205, #216 and #189 | @noonghunna (1× 3090; power cap not recorded) | q8_0 | not recorded (below 262144) | **51.40 / 66.27** | 862.7 @10K | 9,682 MiB | 2026-09-19 | 🧪 ProCreations' re-bundle with the MTP head. Spec-off on the same build: 40.95 / 40.94, so **1.26× / 1.62×**. TTFT 142 / 138 ms. The VRAM is at a smaller context than the pq2 rows, so don't compare them. Rebuilt on `prism-b10735` with #189 only (#205 and #216 were upstream by then), it read 51.15 / 68.08 (2026-09-24). Soak: — |
+
+A greedy depth sweep on the MTP slug (`/completion`, temp 0, top_k 1; 2026-09-19, same build) peaked at n=4 with 1.84× over spec-off for code and structured output, and at n=2 for prose; n=5 fell 18%. That's a best case for a drafter, not a `bench.sh` number. Quality: one 8-pack on the MTP slug's thinking leg at xhigh (same build, no reasoning budget in force): 124/150 pass@1, 134/150 pass@3; no instruct leg.
+
 ---
 
 ### Quad-card (4× RTX 3090, TP=4) — vLLM
@@ -739,6 +751,17 @@ Expert-offloaded MoE on the [`llamacpp-club3090`](docs/engines/LLAMACPP_CLUB3090
 | `bucko-vllm/compose/dual/albucino-autoround-int4-fp8ple/base.yml` — albucino W4A16 + FP8 PLE | @noonghunna (2× 3090, PCIe x16 + x8) | bf16 | 262144 | 79.5 / 83.1 | 1,623 @10K · 2,063 @90K (n=1) | 24.1 GB/GPU | 2026-10-06 | decode @90K depth 65.9 (n=1); MTP AL 2.84; host RAM ~119 GB. The earlier local build `4e74b439` measured 79.0 / 83.9 |
 
 ⚠️ **Owed before bucko's slugs move off 🐣:** 8-pack quality on the albucino slug (Swift-1.5's xhigh 8-pack, 2026-10-07: 126/150 pass@1), verify-stress, soak-continuous.
+
+**On the [`exllamav3`](docs/engines/EXLLAMAV3.md) engine (🐣)** — turboderp's official exl3 quants on ExLlamaV3 1.5.0 + TabbyAPI (our `tabbyapi-club3090` build of upstream's own Dockerfile, pinned by digest), layer-split over two cards, the experts that don't fit computed on the CPU (`MOE_SPLIT` sets how many per layer), MTP with a dynamic draft of up to 4, Q4 KV at 204800, the n-gram table in host RAM. Canonical bench (3 warm + 5 measured, `bench.sh`).
+
+| Compose | Rig | KV | Max ctx | Narr / Code TPS | PP tok/s | Peak VRAM | Date | Notes |
+| --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
+| `exllamav3/compose/dual/exl3-3.05bpw/cpumoe.yml` (`exllamav3/qwen38-flash-next-dual-exl3-305-cpumoe`, split 144) | @noonghunna (2× 3090, PCIe x16 + x8, no NVLink, 370 / 420 W) | Q4 | 204800 | **59.27 / 78.82** (CV 2.2% / 3.5%) | 1,386 @10K (⚠️ CV 13.8%) · 1,690 @90K (n=1) | 23.1 / 23.6 GiB | 2026-10-02 | One fresh boot (ready in 104 s), swap reset. Decode @90K depth 43.7; MTP acceptance 0.639; TTFT 275 / 302 ms; host CPU 55%. The thread count isn't in the run notes (the rig's saved settings carry `THREADS=28`). Soak: — |
+| ↳ same slug, `THREADS=28` confirmed in the boot log | @noonghunna (2× 3090; power cap not recorded) | Q4 | 204800 | 61.60 / 79.86 (CV 0.6% / 2.3%) | not measured | — | 2026-09-18 | TTFT 279 / 311 ms. The earlier container run at 52.19 / 68.11 was a compose bug: `THREADS` didn't reach the container, so it ran 16 threads. Soak: — |
+| `exllamav3/compose/dual/exl3-4.05bpw/cpumoe.yml` (`exllamav3/qwen38-flash-next-dual-exl3-405-cpumoe`), `MOE_SPLIT=125`, `THREADS=32`, cold boot (experts on 4 KiB pages) | @paulp83 (2× RTX 5090, TR PRO 3975WX, 8× DDR4-3200; power cap not stated) | Q4 | 204800 | 62.5 / 83.2 | 2,294 @10K · 3,097 @90K | — | 2026-10-02 | THP `madvise` (Ubuntu's default), so the expert arena starts on 4 KiB pages; after the engine promoted it to 2 MiB in the same container: 73.5–74.6 / 88.4–91.5. [#1542](https://github.com/noonghunna/club-3090/issues/1542). Soak: — |
+| ↳ same, pinned arena on hugetlbfs (`EXL3_MOE_PINNED_ARENA=1 EXL3_MOE_ARENA_HUGE=2m`) | @paulp83 (same rig) | Q4 | 204800 | 69.5 / **93.0** | **2,527** @10K · 3,145 @90K | — | 2026-10-02 | Decode @90K depth 54.8. At 262144 on the same setup, two boots read 69.6–71.1 / 88.5–92.2, and verify-stress filled 240,660 tokens. [#1542](https://github.com/noonghunna/club-3090/issues/1542). Soak: — |
+
+⚠️ The 4.05bpw slug has no bench on the reference rig in the shipped container; its 2026-09-17 runs were in a host venv at 32768 with FP16 KV. **Owed before exl3's slugs move off 🐣:** 8-pack quality, verify-stress, soak-continuous.
 
 ---
 

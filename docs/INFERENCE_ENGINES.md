@@ -1,6 +1,6 @@
 # Inference engine comparison — vLLM, llama.cpp, SGLang, ktransformers, ik_llama.cpp
 
-> **An upstream snapshot, not the catalog.** The matrices below describe the upstream projects as of 2026-05-07. For the engines club-3090's catalog runs today, what each is for and its page, see **[engines/README.md](engines/README.md)**. Two of the five engines compared here are not in the catalog: ik_llama.cpp is out (every `ik-llama/` slug is deprecated), and ktransformers has no engine profile. The catalog also runs engines this page doesn't cover: our MoE expert-cache llama.cpp build (`llamacpp-club3090`), ExLlamaV3 and PrismML llama.cpp.
+> **An upstream snapshot, not the catalog.** The matrices below describe the upstream projects as of 2026-05-07. For the engines club-3090's catalog runs today, what each is for and its page, see **[engines/README.md](engines/README.md)**. Two of the five engines compared here are not in the catalog: ik_llama.cpp is out (every `ik-llama/` slug is deprecated), and ktransformers has no engine profile. The catalog also runs engines this page doesn't cover: our MoE expert-cache llama.cpp build (`llamacpp-club3090`), ExLlamaV3, PrismML's llama.cpp fork, two vLLM derivatives (bucko-vllm and HyperQwen), Strata, and Project Maya (a Strata fork for GLM-5.3-Flash).
 
 Pragmatic comparison of five upstream engines. **Versions captured 2026-05-07** — all five projects move fast; verify against upstream release notes before making a long-horizon decision. Linked sources at the bottom.
 
@@ -17,7 +17,7 @@ This doc isn't an evangelism piece. It's a *picker* — which engine to reach fo
 | **Production multi-tenant chat / API** (24-48 GB VRAM, fits-VRAM models) | **vLLM** | Continuous batching + paged attention + extensive tool-call/structured-output support |
 | **Single-card max-quality on small-VRAM rigs** (12-24 GB), bulletproof | **llama.cpp** | Engine-agnostic memory model; no Cliff 1/2 footguns; broadest model coverage; q4_0/q8_0 KV |
 | **Hyper-optimized prefix caching, structured outputs, multimodal at scale** | **SGLang** | RadixAttention-class prefix cache + FSM-native structured outputs + best-in-class spec-decode V2 |
-| **Big MoE (>VRAM) on consumer hardware** (M2/Kimi/DeepSeek-class) | upstream: **ktransformers** (or SGLang+kt-kernel). In this catalog: **[`llamacpp-club3090`](engines/LLAMACPP_CLUB3090.md)** | ktransformers: router-aware hot-expert caching; 1.5-2× decode TPS over llama.cpp's layer-uniform `--n-cpu-moe`. `llamacpp-club3090`: [@leloch](https://github.com/leloch/llama.cpp)'s expert cache keeps the experts the router reuses in spare VRAM (not in mainline llama.cpp) |
+| **Big MoE (>VRAM) on consumer hardware** (M2/Kimi/DeepSeek-class) | upstream: **ktransformers** (or SGLang+kt-kernel). In this catalog: **[`llamacpp-club3090`](engines/LLAMACPP_CLUB3090.md)** for any of its MoE models; for Qwen3.8-Flash-Next also [Strata](engines/STRATA.md), [bucko-vllm](engines/BUCKO_VLLM.md) and [ExLlamaV3](engines/EXLLAMAV3.md), and for GLM-5.3-Flash [Project Maya](engines/STRATA_MAYA.md) | ktransformers: router-aware hot-expert caching; 1.5-2× decode TPS over llama.cpp's layer-uniform `--n-cpu-moe`. `llamacpp-club3090`: [@leloch](https://github.com/leloch/llama.cpp)'s expert cache keeps the experts the router reuses in spare VRAM (not in mainline llama.cpp) |
 | **Apple Silicon** | **llama.cpp** (Metal) or **SGLang** (MLX backend, v0.5.10+) | Both work; MLX backend is newer but native |
 
 ---
@@ -248,7 +248,9 @@ Q1: Does the model fit your VRAM at desired quant?
        │      Lower quant, smaller model, or rent cloud.
        └── YES → 
               In this catalog → llamacpp-club3090 (expert cache in spare VRAM)
-                                or ExLlamaV3 (CPU-computed experts)
+                                or an engine written for one model:
+                                Strata, bucko-vllm, ExLlamaV3 (Qwen3.8-Flash-Next),
+                                Project Maya (GLM-5.3-Flash); engines/README.md
               Upstream alternatives:
               Q5: Big MoE (>2× VRAM, < 96 GB RAM)?
               ├── YES → ktransformers (or SGLang+kt-kernel)
@@ -347,4 +349,4 @@ This file ages quickly — all five projects ship frequently (some multiple rele
 4. Add new feature rows where a project ships something the others don't
 5. Don't preserve historical "this used to be ❌, now ✅" — that lives in each project's release notes, not here
 
-Last refresh of the upstream matrices: **2026-05-07**. On 2026-10-13 the catalog-facing parts were corrected (the banner, the TL;DR and MoE picks, the per-model picks, the ik_llama.cpp and beellama.cpp notes, the reasoning-format default, two dead compose paths and the Qwen3-Next spec-decode note); the upstream versions and feature cells were not re-researched.
+Last refresh of the upstream matrices: **2026-05-07**. On 2026-10-13 the catalog-facing parts were corrected (the banner, the TL;DR and MoE picks, the per-model picks, the ik_llama.cpp and beellama.cpp notes, the reasoning-format default, two dead compose paths and the Qwen3-Next spec-decode note); the upstream versions and feature cells were not re-researched. On 2026-10-15 the banner, the big-MoE pick and the decision tree gained the engines catalogued since (Strata, Project Maya, bucko-vllm, HyperQwen).
