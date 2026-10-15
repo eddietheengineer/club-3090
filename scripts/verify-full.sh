@@ -19,7 +19,9 @@
 #   7. Output quality / cascade detection — 2K-token completion, scan for
 #      <tool_call> inline cascade and repetitive degeneracy
 #   8. MTP acceptance length — parse SpecDecoding metrics from docker logs,
-#      assert mean AL >= 2.0 (sanity that spec-decode is contributing)
+#      assert mean AL >= 2.0 (sanity that spec-decode is contributing).
+#      llama.cpp: per-request draft acceptance rate >= LLAMACPP_ACCEPT_MIN
+#      (default 0.30); skipped when llama-server runs no drafter
 #
 # For boundary / stress validation (longctx needle ladder, ~25K-token tool
 # prefill OOM detection): see scripts/verify-stress.sh
@@ -677,20 +679,87 @@ run_check "output_quality" check_output_quality
 #     profiles see AL 3.4-3.8 with n=3. MTP_ACCEPT_MIN permits a profile-specific
 #     measured floor when a shallower drafter is independently throughput-positive.
 # --------------------------------------------------------------------
+# llama.cpp: is a drafter configured? Read llama-server's own command line (docker top runs
+# ps on the host, so the image needs no tools), not the startup log, whose wording differs
+# between builds ("speculative decoding context initialized", "speculative decoding enabled:
+# draft-mtp", or neither). Only the llama-server process counts: a compose's wrapper shell
+# carries its whole script, comments included, as its argument. Prints the drafting flags
+# found, or nothing.
+llamacpp_spec_args() {
+  docker top "$1" -eo pid,args 2>/dev/null \
+    | awk 'NR > 1 && $2 ~ /(^|\/)llama-server$/ { $1 = ""; print; exit }' \
+    | command grep -oE -- '(--spec-type[ =][^ ]+|--spec-draft-model[ =][^ ]+|--model-draft[ =][^ ]+|(^| )-md [^ ]+)' \
+    | command grep -vE -- '--spec-type[ =]none$' | sed 's/^ //' | tr '\n' ' ' | sed 's/ *$//' || true
+}
+
+# llama.cpp: sum the per-request draft lines on stdin. llama-server prints one per request in
+# its timing block whenever it drafted (mainline, PrismML and our moe-cache fork, which adds
+# ", mean len = N"):
+#     draft acceptance = 0.95833 (  184 accepted /   192 generated)
+# Prints "<rate> <accepted> <generated>", or nothing when no line drafted anything.
+llamacpp_draft_rate() {
+  command grep -oE 'draft acceptance = [0-9.]+ \( *[0-9]+ accepted / *[0-9]+ generated\)' \
+    | awk '{ gsub(/[()]/, " "); a += $5; g += $8 } END { if (g > 0) printf "%.3f %d %d\n", a / g, a, g }' || true
+}
+
 check_mtp_acceptance() {
   echo "[9/10] MTP acceptance length threshold ..."
   # Spec-decode metrics extraction is engine-specific:
   #   vLLM emits "SpecDecoding metrics: Mean acceptance length: N.NN" to stdout
-  #   llama.cpp llama-server doesn't emit a "Mean acceptance length" line; spec
-  #     metrics are inferred from per-slot accept counts in the response timings
-  #     (engine-internal, not exposed via OpenAI API)
-  #   SGLang has its own format
-  # For non-vLLM engines we skip rather than fail — the per-engine spec-decode
-  # validation is the user's responsibility (e.g. llama.cpp users run their own
-  # verify-full-mtp.sh adaptations like @lamentofhighborne's, until #87 lands a
-  # generalized harness).
+  #   llama.cpp llama-server prints a per-request "draft acceptance = …" line (below)
+  #   SGLang, Strata, Project Maya and exl3 each have their own (below)
   case "$ENGINE_KIND" in
-    llamacpp) skip "llama.cpp engine — MTP acceptance check is vLLM-log-format-specific (run engine-side verification separately)"; return 0 ;;
+    llamacpp)
+      # ⚠ THIS USED TO `skip` ON EVERY llama.cpp SLUG ("vLLM-log-format-specific"), so a dead
+      # drafter passed here: speculative decoding rejects bad drafts, the output stays correct
+      # and only decode slows. Every drafter type llama-server runs (MTP, a draft model,
+      # DFlash, n-gram) counts through the same per-request stats, so one parser covers them.
+      if ! container_is_real; then
+        skip "container '${CONTAINER}' not found (CONTAINER=none for host endpoints)"
+        return 0
+      fi
+      local lc_cfg lc_since lc_out="" lc_try lc_rate lc_acc lc_gen lc_min
+      lc_cfg="$(llamacpp_spec_args "${CONTAINER}")"
+      for lc_try in 1 2; do
+        lc_since="$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)"
+        curl -sf -m 300 "${URL}/v1/chat/completions" \
+          -H "Content-Type: application/json" \
+          -d "{
+            \"model\": \"${MODEL}\",
+            \"messages\": [{\"role\": \"user\", \"content\": \"Count from 1 to 80, one number per line.\"}],
+            \"max_tokens\": 500,
+            \"temperature\": 0.0,
+            ${THINK_OFF_STD}\"chat_template_kwargs\": ${THINK_OFF_KW}
+          }" >/dev/null 2>&1 || { fail "acceptance-trigger request failed" "Check docker logs"; return 1; }
+        sleep 2
+        lc_out="$(docker logs --since "${lc_since}" "${CONTAINER}" 2>&1 | llamacpp_draft_rate)"
+        # A second request only when a drafter is configured and drafted nothing: an n-gram
+        # drafter (ngram-mod) has nothing to match on the first request after a boot
+        # (measured: 0 drafted, then 200/200 on the same request).
+        [[ -n "$lc_out" || -z "$lc_cfg" ]] && break
+      done
+      if [[ -z "$lc_out" ]]; then
+        if [[ -n "$lc_cfg" ]]; then
+          fail "a drafter is configured (${lc_cfg}) but drafted nothing in ${lc_try} request(s)" \
+               "llama-server prints no 'draft acceptance' line when it drafts nothing. Check the boot log for the draft model or MTP context loading, and for 'failed to initialize speculative decoding'."
+          return 1
+        fi
+        skip "no drafter configured (no --spec-type / -md / --model-draft on llama-server's command line)"
+        return 0
+      fi
+      read -r lc_rate lc_acc lc_gen <<<"$lc_out"
+      lc_min="${LLAMACPP_ACCEPT_MIN:-0.30}"
+      if ! [[ "$lc_min" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+        fail "invalid LLAMACPP_ACCEPT_MIN=${lc_min}" "Set a non-negative numeric threshold."
+        return 1
+      fi
+      if awk -v a="$lc_rate" -v m="$lc_min" 'BEGIN{exit !(a+0 >= m+0)}'; then
+        pass "draft acceptance ${lc_rate} >= ${lc_min} (llama.cpp, ${lc_acc}/${lc_gen} accepted${lc_cfg:+; ${lc_cfg}})"
+        return 0
+      fi
+      fail "draft acceptance ${lc_rate} < ${lc_min} (llama.cpp, ${lc_acc}/${lc_gen} accepted${lc_cfg:+; ${lc_cfg}})" \
+           "The drafter's tokens are being rejected: output stays correct, decode collapses. Check the drafter matches the target model (an MTP head from the same conversion, a draft model with the same tokenizer) and the draft depth (--spec-draft-n-max)."
+      return 1 ;;
     strata)
       # Strata writes its per-request lines to a log file inside the container, not to
       # docker logs, so a log grep here would find nothing and read as "no drafter".
