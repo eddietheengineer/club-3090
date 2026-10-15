@@ -36,7 +36,7 @@ Both are single-stream by design (`max_num_seqs=1`), 262K context, bf16 KV with 
 
 ## Known gaps
 
-- Quality isn't validated on these slugs: no 8-pack.
-- Streaming tool calls through `qwen3_coder` are known-broken on this stack.
+- Quality isn't validated: one thinking-leg 8-pack on the Swift 1.5 slug (effort xhigh, 2026-10-07: 126/150 pass@1, [BENCHMARKS.md](../../BENCHMARKS.md)), no instruct leg, and nothing on the albucino slug.
+- Streaming tool calls are unverified. On stock vLLM, MTP drops streamed tool calls under `tool_choice: "required"` (empty `tool_calls`, `finish_reason: stop`; `auto` was clean), and bucko drafts with MTP. Whether its vLLM base carries the fix is unknown, and nobody has run `scripts/stream-toolcall-probe.py` against it. benchlocal's packs don't stream, so an 8-pack won't show it. See [UPSTREAM.md](../UPSTREAM.md) → vllm#39598.
 - No P2P custom all-reduce on the reference rig, so decode trails the author's own numbers.
 - Its `VLLM_PREFIX_CACHE_RETENTION_INTERVAL=1600` (the author's value) opts into sparse prefix-cache retention on a hybrid model running MTP. Upstream vLLM reverted that default for this combination; A/B it before trusting prefix-cache numbers (compose comment).

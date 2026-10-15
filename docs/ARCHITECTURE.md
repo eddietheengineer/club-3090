@@ -47,7 +47,8 @@ The mental model: **engines are general; models are specific; hardware is fixed.
 
 ```
 docs/                         engine + hardware docs (general, model-agnostic)
-  engines/                      vLLM / llama.cpp / SGLang — comparison + deep dives
+  engines/                      one page per engine (vLLM, SGLang, llama.cpp + forks, ExLlamaV3,
+                                  Strata, Project Maya, …); the index is engines/README.md
   HARDWARE.md                   Ampere SM 8.6+, 24 GB, no NVLink
   ENGINE_FLAGS.md               every engine flag our composes pass — upstream source, usage count, hardware gating
   GLOSSARY.md                   plain-language definitions
