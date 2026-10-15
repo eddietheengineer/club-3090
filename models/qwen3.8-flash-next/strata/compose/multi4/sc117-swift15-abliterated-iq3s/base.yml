@@ -1,0 +1,83 @@
+# ===========================================================================
+# Profile (at-a-glance):
+#   Model:     Swift 1.5 (UkisAI's fine-tune of Qwen3.8-Flash-Next), SC117's abliterated GSQ-RCO
+#              IQ3_S (2 shards, 44.85 + 38.70 GB; the 28.8 GB per-layer embedding table sits in
+#              shard 1). Served as Strata's swift family; setup checks both shards are whole GGUFs.
+#   Engine:    Strata 0.1.44.1 — ghcr.io/noonghunna/strata-club3090, built by club-3090 from
+#              upstream's Dockerfile at the release commit (models/qwen3.8-flash-next/strata/image/)
+#   Topology:  4× 24 GB, Strata layer split (--gpus 0,1,2,3, layer split auto): each card
+#              caches the experts of its own layers (four cards hold about four times one card's
+#              experts); one hand-off per card per verify window, no NCCL and no P2P needed.
+#   Drafter:   MTP — Strata's own draft layer (--spec 4, min-p 0.5), the one the ISTA slugs use
+#              (from Qwen/Qwen3.8-Flash-Next; Swift ships none)
+#   KV:        Strata default (int8): 32K cells in VRAM, the rest streamed to RAM
+#   Vision:    no
+#   Max ctx:   131072
+#   Genesis:   N/A — Genesis is Qwen3-Next-specific
+#   Status:    🐣 Incubating
+#   Caveats:   Abliterated: its README says it has no reliable built-in guardrails, so put your own
+#              moderation in front of anything user-facing. Swift Open License 1.0 (commercial use free
+#              only below US$1M annual revenue) on top of the Qwen licence. Upstream documents the
+#              IQ3_S tier only in passing (its measured costs are IQ2_XS: decode -2%, MTP acceptance
+#              62.5% vs 66.8% with the base draft layer). Not gate-passing yet: quality unmeasured
+#              (8-pack pending). NEVER BOOTED on the reference rig (2 GPUs): multi4 is community-
+#              validated by design; Strata's layer split takes any number of cards (its
+#              docs/MULTI_GPU.md shows a 4-card split). One request at a time. Needs ~86 GB of free
+#              host RAM when the model disk is rotational (setup then keeps the 28.8 GB n-gram table in RAM; on an SSD it stays
+#              on disk), NVIDIA driver >= 580 (CUDA 13) and an AVX2 CPU; x86-64 only. Strata reasons by default and takes no
+#              server-side effort default (SC117 recommends reasoning_effort xhigh per request; the vLLM
+#              Flash-Next slugs default to low); our tooling has no thinking-budget support for it yet.
+#              No launch knobs (SPEC_N, REASONING_EFFORT, ...): Strata's settings live in the setup config
+#              on the data volume. The first start builds this model's pack on the shared data volume (~45 s
+#              when the MTP layer is already there).
+#              Not measured: the dual sibling's 125.7 / 161.7 decode (0.1.44.1, 2026-10-14) is the
+#              nearest reference, not a number for four cards.
+# CPU-Offload-Host-RAM-GB: 86
+#   ⤷ The dual sibling's MEASURED figure (2026-10-14, 0.1.44.1, a rotational model disk): Strata
+#     page-locks every expert in host RAM whatever the card count, plus the 28.8 GB n-gram table on a
+#     rotational disk (--ple-io ram). Not measured on four cards. Registry `host_ram_gb` (84) must
+#     stay <= this.
+#   Best for:  Swift 1.5's shorter thinking, abliterated, on 4 cards
+# ---------------------------------------------------------------------------
+# Strata (github.com/Niko1221/Strata) is its own engine for this model: see docs/engines/STRATA.md.
+# Siblings: ../../dual/sc117-swift15-abliterated-iq3s/base.yml and
+# ../../single/sc117-swift15-abliterated-iq3s/base.yml (same data volume, links folder, config and pack).
+#   bash scripts/switch.sh --force strata/qwen3.8-flash-next-swift15-abliterated-iq3s-multi4
+# The first start runs Strata's one-time setup for this model (shard check, pack; config kept on the
+# data volume). By hand: SETUP_ONLY=1 docker compose -f base.yml run --rm strata, then up -d.
+# ⚠️ Strata sizes its RAM tiers from FREE memory at start, so drop the page cache first on a
+#   box that just read large files. /health says loaded before the engine has filled its expert
+#   cache; the `ready: http` line in docker logs is the real gate.
+services:
+  strata:
+    image: ${STRATA_IMAGE:-ghcr.io/noonghunna/strata-club3090@sha256:fb97d83bdae01034102c4983273b68766eb057efac961273cf243300dc6afa1c}
+    container_name: ${ESTATE_CONTAINER:-strata-qwen38-flash-next-swift15-abl-iq3s-multi4}
+    restart: ${CLUB3090_RESTART:-unless-stopped}
+    # root, with the launcher's group: what Strata writes to the data volume stays
+    # removable by the user (the entrypoint sets umask 0002)
+    user: "0:${DOCKER_GID:-1000}"
+    # the argument picks setup.py's family: the mounted folder holds Swift 1.5 shards
+    entrypoint: ["/bin/sh", "/opt/club3090/strata-entrypoint.sh", "swift"]
+    ulimits:
+      memlock: -1            # Strata pins (locks) RAM for the GPU; upstream's docker run uses -1
+    ports:
+      - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8046}}:8080"
+    environment:
+      CONTEXT: "${CONTEXT:-131072}"
+      KV: "${KV:-}"
+      SETUP_ONLY: "${SETUP_ONLY:-0}"
+      REINSTALL: "${REINSTALL:-0}"
+      STRATA_START_GPUS: "${STRATA_START_GPUS:-0,1,2,3}"
+      # the entrypoint passes --host 0.0.0.0 and --port 8080 itself (API_KEY, when set, too)
+    volumes:
+      - "${MODEL_DIR:-../../../../../../models-cache}/qwen3.8-flash-next-swift15-abliterated-gsq-rco-gguf/IQ3_S:/gguf:ro"
+      # packs, MTP layer and config; the launchers put it under ~/.local/share/club-3090
+      - "${STRATA_DATA_DIR:-${CLUB3090_DATA_DIR:-../../..}/strata-data}:/data"
+      - "../../../launcher/strata-entrypoint.sh:/opt/club3090/strata-entrypoint.sh:ro"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['${ESTATE_GPUS:-0,1,2,3}']
+              capabilities: [gpu]

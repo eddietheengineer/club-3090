@@ -38,7 +38,8 @@
 #   Best for:  Swift 1.5's shorter thinking, abliterated, on 2 cards
 # ---------------------------------------------------------------------------
 # Strata (github.com/Niko1221/Strata) is its own engine for this model: see docs/engines/STRATA.md.
-# Sibling: ../../single/sc117-swift15-abliterated-iq3s/base.yml (single card, same data volume);
+# Siblings: ../../single/sc117-swift15-abliterated-iq3s/base.yml (single card, same data volume) and
+# ../../multi4/sc117-swift15-abliterated-iq3s/base.yml (four cards, never booted here);
 # ../../dual/ista-iq3s/base.yml serves ISTA's GSQ-RCO of the original model on the same data volume
 # (its own links folder, config and pack; the MTP layer is shared).
 #   bash scripts/switch.sh --force strata/qwen3.8-flash-next-swift15-abliterated-iq3s-dual
