@@ -15,7 +15,7 @@ stock upstream — but it has **not** cleared the gates a `✅ Production` slug 
 | **Quality 8-pack** | ⛔ **never run — deliberately left to the community** |
 | verify-stress · soak-continuous | ⛔ never run |
 | Concurrency curve | ⛔ never run (C=1 only) |
-| Context above 32768 | ⛔ never tried |
+| Context | ✅ 204800 shipped with Q4 KV, booted and benched here (the model declares 262144) |
 
 **The missing 8-pack is the important one.** The faster of the two shipped slugs is
 **3.05bpw**, and part of why it is fast is simply that it is small. Nobody has measured
@@ -80,15 +80,18 @@ Nothing here has been measured on one.
 ## Quick start
 
 ```bash
-# 3.05bpw — the faster tier (80 GB)
-bash scripts/launch.sh --variant exllamav3/qwen38-flash-next-dual-exl3-305-cpumoe --force
+# 3.05bpw — the faster tier (85 GB of weights, ~96 GB of host RAM)
+THREADS=28 bash scripts/switch.sh --force exllamav3/qwen38-flash-next-dual-exl3-305-cpumoe
 
-# 4.05bpw — the more conservative bit rate (101 GB)
-bash scripts/launch.sh --variant exllamav3/qwen38-flash-next-dual-exl3-405-cpumoe --force
+# 4.05bpw — the more conservative bit rate (107 GB of weights, ~118 GB of host RAM)
+THREADS=28 bash scripts/switch.sh --force exllamav3/qwen38-flash-next-dual-exl3-405-cpumoe
 ```
 
 `--force` is required: 🐣 Incubating slugs are non-functional by the launcher's
-definition and are hidden from `switch.sh --list` unless you pass `--all`.
+definition and are hidden from `switch.sh --list` unless you pass `--all`. With
+`launch.sh` the form is `FORCE=1 bash scripts/launch.sh --variant <slug>`
+(`launch.sh … --force` fails with *Unknown flag*). `THREADS=28` is the reference
+rig's value; see lever 1 below for yours.
 
 ⚠️ **The quant tier is an HF *branch*, not a subfolder.** turboderp publishes one branch
 per bpw off a near-empty `main`, so the `revision:` pin in the model profile is
@@ -100,46 +103,44 @@ file, 4.05 factors the vision tower into `vision_k6.safetensors`).
 
 ## Measured
 
-`bench.sh` canonical protocol, 2× RTX 3090, 32768 ctx, 28 threads:
+`bench.sh` canonical protocol, 2× RTX 3090, 28 threads, 2026-09-17, in a **host venv** at
+32768 ctx, FP16 KV and split 128. That isn't the shipped config:
 
 | Slug | narrative | code | prefill@10K | TTFT |
 |---|---|---|---|---|
 | `…-305-cpumoe` (3.05bpw) | **57.37** (CV 1.8%) | **74.51** (CV 2.3%) | **1566.0** (CV 0.9%) | 310 / 315 ms |
 | `…-405-cpumoe` (4.05bpw) | 48.53 | 62.94 | 1335.7 | — |
 
-Against the model's shipped vLLM recipe (`bucko-vllm`, BENCHMARKS row 3):
+The shipped container at its own config (3.05bpw, 204800 ctx, Q4 KV, split 144,
+`THREADS=28`), 2026-09-18:
 
-| | bucko vLLM | exl3 3.05bpw |
-|---|---|---|
-| narrative | **68.12** | 57.37 (−15.8%) |
-| code | 74.09 | 74.51 (**a tie** — +0.6% is inside the ~2.8% boot-to-boot noise) |
-| prefill@10K | ~565 | **1566.0 (+177%)** |
-| TTFT | 546 / 556 ms | **310 / 315 ms (−43%)** |
-
-⇒ **Pick exl3 for prefill- and TTFT-dominated work** (long prompts, agentic loops).
-For raw decode, the vLLM recipe still wins and remains the shipped default.
-
-### ⚠️⚠️ The container is ~9% slower than the venv — and the container is what you get
-
-Those figures were measured in a **host venv**. The shipped image, on identical weights,
-identical resolved config and identical pins, measures:
-
-| | venv (rows 4–6) | **shipped container (row 7)** | delta |
+| | narrative | code | TTFT |
 |---|---|---|---|
-| narrative | 57.37 | **52.19** (CV 1.1%) | **−9.0%** |
-| code | 74.51 | **68.11** (CV 2.0%) | **−8.6%** |
-| prefill@10K | 1566.0 | **1317.9** (CV 2.4%) | **−15.8%** |
-| TTFT | 310 / 315 ms | 319 / 338 ms | ~unchanged |
-| MTP acceptance | 0.688 | 0.664 | ~unchanged |
+| `…-305-cpumoe` | **61.60** (CV 0.6%) | **79.86** (CV 2.3%) | 279 / 311 ms |
 
-Both sides ran at CV 1.1–2.4%, so the gap sits well outside the ~2.8% boot-to-boot band:
-**it is real, not noise.** ⛔ The cause is **not diagnosed**. Container CPU scheduling,
-cgroup limits and thread affinity are the obvious suspects, since this engine is
-entirely host-compute-bound — but nobody has proven it.
+⚠️ **No like-for-like venv-vs-container comparison has been run:** the two tables differ in
+context, KV mode and split. An earlier version of this page said the container was ~9% slower
+than the venv. That was a compose bug, retracted 2026-09-18: the composes had no
+`environment:` block, so `THREADS` never reached the container, which ran 16 threads against
+the venv's 28 (52.19 / 68.11 at 16 threads). The boot log says which thread count it took:
+`[threads] --cpu-moe-threads 28 (THREADS set explicitly)`.
 
-⭐ **The lesson worth keeping:** the container and the venv install byte-identical
-pinned versions. That is an argument for parity and it turned out not to be parity.
-Benchmark the artifact you ship, not the one that was convenient to measure.
+### Against bucko-vllm
+
+Measured on the reference rig on different dates and configs:
+
+| | bucko, an earlier build (before 09-17) | **bucko v0.5.0 (10-06)** | exl3 3.05bpw, venv (09-17) | exl3 3.05bpw, container (09-18) |
+|---|---|---|---|---|
+| narrative | 68.12 | **79.5** | 57.37 | 61.60 |
+| code | 74.09 | **83.1** | 74.51 | 79.86 |
+| prefill@10K | ~565 | **1,623** | 1,566 | not measured |
+| TTFT | 546 / 556 ms | not measured | 310 / 315 ms | **279 / 311 ms** |
+
+⇒ Against the earlier build, exl3 tied bucko on code and led on prefill and TTFT.
+**bucko v0.5.0 changed that:** it now leads on decode, and its prefill matches exl3's.
+exl3's remaining case is less host RAM (~96 GB for 3.05bpw vs ~135 GB for bucko's albucino
+slug) and a TTFT edge that hasn't been re-measured against v0.5.0. On a 2× 5090 rig bucko decoded ~1.9× faster
+([#1542](https://github.com/noonghunna/club-3090/issues/1542)).
 
 ---
 
@@ -190,12 +191,13 @@ every generation aborts with *"chat completion aborted. Maybe the model was unlo
 — which points at entirely the wrong thing. The composes ship `shm_size: "2gb"`. Do not
 trim it: the segment scales with `cpu_moe_split_experts`.
 
-**2. Our harness misidentifies this engine, and the failure is silent.**
-`detect_engine` probes `/props` first and concludes "llama.cpp" — but **TabbyAPI serves
-a compatible `/props`**, and emits no `system_fingerprint` at all. So exl3 classifies as
-`llamacpp`, verify-full's spec-dec check skips, and the result **reads as "no drafter"**.
-That already produced one wrong report. Read `draft N/M accepted` off the server's own
-stdout until this is fixed.
+**2. Only `verify-full` reads the drafter counter.**
+TabbyAPI serves a llama.cpp-compatible `/props` and emits no `system_fingerprint`, so
+`verify-full` used to classify exl3 as `llamacpp`, skip its spec-dec check and read as
+"no drafter". Fixed 2026-09-18: it now takes the engine from the container or image name
+when they name one, and derives acceptance from the `draft N/M` lines in `docker logs`.
+`bench.sh` and `health.sh` still don't report exl3's acceptance: read
+`draft N/M accepted` from `docker logs` yourself.
 
 **3. Don't build the image from a live tabbyAPI checkout.**
 Upstream's `.dockerignore` excludes `venv` but **not `.venv`**, and excludes
@@ -232,9 +234,11 @@ theroyallab's. We vendor neither and patch neither — what we contribute is mea
 
 - **Quality, at either bit rate.** No 8-pack. This is the headline gap.
 - verify-stress, soak-continuous, any concurrency above C=1.
-- Any context above 32768 — that figure is *what was tested*, not a fitted ceiling.
-  The model declares 262144.
-- Quantised KV. exl3 offers modes beyond FP16; none were booted here, and q8-grade is
-  this stack's serving floor.
+- Context above the shipped 204800 on 2× 24 GB. The model declares 262144; a 2× 5090 rig
+  filled 240,660 of it ([#1542](https://github.com/noonghunna/club-3090/issues/1542)).
+- KV above Q4. The composes ship Q4 (`KV_TYPE`, exl3's modes are FP16 | Q8 | Q6 | Q4),
+  chosen to maximise context, and that is below this stack's q8 serving floor. The expert
+  split's VRAM fit is calibrated to Q4 at 204800, so Q8 or FP16 at that context hasn't been
+  booted; lower `CTX` with them.
 - Tensor parallelism. These slugs use autosplit layer-split; `tensor_parallel` is false.
 - Any model other than Qwen3.8-Flash-Next. GLM-5.3-Flash was tried and rejected.

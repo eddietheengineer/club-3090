@@ -1,8 +1,10 @@
 # club-3090
 
 **Recipes for serving LLMs locally on RTX 3090s** (and other NVIDIA cards): working compose configs,
-patches and measured numbers, across vLLM, SGLang, llama.cpp, ik_llama and exllamav3. Pick a model
-for your card count, launch it with one command, and get an OpenAI-compatible API.
+patches and measured numbers, across vLLM, SGLang, llama.cpp (mainline, our moe-cache fork and PrismML's
+ternary build), ExLlamaV3, and engines built for one model: Strata, Project Maya, bucko-vllm and
+HyperQwen ([`docs/engines/`](docs/engines/README.md)). Pick a model for your card count, launch it with
+one command, and get an OpenAI-compatible API.
 
 > 📣 **The newest slugs, numbers and caveats are posted in [Announcements](https://github.com/noonghunna/club-3090/discussions/categories/announcements) first.** The repo docs catch up afterwards, so when a page here and an announcement disagree, the announcement is newer. The card pages below link each slug to its announcement thread.
 
@@ -108,6 +110,7 @@ The stack stands on a lot of shoulders:
 - **[vibhavagarwal5](https://github.com/vllm-project/vllm/pull/38479)** — TurboQuant landing PR + tracking issue #40069
 - **[vLLM project](https://github.com/vllm-project/vllm)** — the engine + active maintenance
 - **[llama.cpp](https://github.com/ggerganov/llama.cpp)** — the alternative engine path
+- **The engine authors whose work the catalog serves as it is:** [Niko1221](https://github.com/Niko1221/Strata) (Strata), [mw00](https://github.com/mw00/project-maya) (Project Maya, a Strata fork for GLM-5.3-Flash), [DominikBucko](https://github.com/DominikBucko/qwen38-flash-next-2x3090) (bucko-vllm), [syv-ai](https://github.com/syv-ai/HyperQwen) (HyperQwen), [turboderp](https://github.com/turboderp-org/exllamav3) (ExLlamaV3, served by theroyallab's [TabbyAPI](https://github.com/theroyallab/tabbyAPI)) and [PrismML](https://github.com/PrismML-Eng/llama.cpp) (ternary llama.cpp). We pin their images, or build one from their release where they publish none; the engines are theirs.
 - **[Luce z-lab](https://github.com/luce-spec)** — DFlash N=5 draft model for Qwen3.6-27B
 - **Intel AutoRound** — quantization framework
 - **[@paulp83](https://github.com/paulp83)** — the Blackwell reference rig. First full gate on native FP4 (Qwen3.6-27B NVFP4 TP=2 @262K: 168.0 / 215.7 decode, 91% NIAH at 240K, soak PASS), first NVFP4 validation on the 35B-A3B MoE, first Blackwell DiffusionGemma and Nemotron-75B runs, and the only **mixed-architecture** numbers anyone has contributed (5090 + 3090 Ti in one box) — a rig class we could not otherwise characterise.

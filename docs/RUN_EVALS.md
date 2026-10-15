@@ -65,7 +65,17 @@ flags that (per-pack `thinking_validity` in the results JSON, and a warning in t
 | vLLM (Qwen3.8 composes) | thinking | `ENABLE_THINKING=false` | ✅ yes: the server serves the card's instruct row, **except `presence_penalty`** (vLLM drops it server-side) |
 | SGLang (`sgl/…`) | thinking | `ENABLE_THINKING=false` | ❌ **no**: the server keeps the thinking row. Send the instruct row from the client (below) |
 | llama.cpp (Qwen3.8, MiMo) | thinking | `INSTRUCT=1` | ✅ yes, including `presence_penalty` |
+| Strata (`strata/…`) | thinking | none: per request | ❌ **no**: the server decodes greedy. Send the card's row on both legs ([below](#engines-with-their-own-defaults)) |
+| Project Maya (`strata-maya/…`) | thinking | none: per request | n/a: GLM's card has one row, which the server serves on both legs |
+| bucko-vllm (`bucko-vllm/…`) | thinking | none: per request | ❌ **no**: the server keeps the thinking row |
+| HyperQwen (`vllm-hyperqwen/…`) | thinking | none: per request | ❌ **no**: the server keeps the thinking row |
+| ExLlamaV3 (`exllamav3/…`) | thinking | none: per request (`REASONING=false` only turns off the parser; leave it) | ❌ **no**: TabbyAPI's generic sampler. Send the card's row on both legs |
+| PrismML llama.cpp (`llama-cpp-prism/…`) | thinking | `INSTRUCT=1` | ✅ yes |
 | composes without a switch | per compose | per compose | read the header |
+
+"None: per request" means there is no boot switch: benchlocal's `--no-thinking` turns thinking off
+in each request. Those six engines also differ on effort and budget; read
+[Engines with their own defaults](#engines-with-their-own-defaults) before running them.
 
 Gated slugs (🧪 / 🐣) need forcing, and the form differs per script: `bash scripts/switch.sh --force <slug>`
 or `FORCE=1 bash scripts/launch.sh --variant <slug>`. (`launch.sh … --force` fails with *Unknown flag*.)
@@ -76,6 +86,9 @@ or `FORCE=1 bash scripts/launch.sh --variant <slug>`. (`launch.sh … --force` f
 bash scripts/switch.sh --force <slug>
 REASONING_EFFORT=low bash scripts/quality-test.sh --full --enable-thinking
 ```
+
+`low` is what the Qwen3.8 vLLM and SGLang composes serve. The engines in the next section serve
+other efforts.
 
 ### Instruct leg
 
@@ -98,8 +111,56 @@ bash scripts/quality-test.sh --full --no-thinking \
 
 **`presence_penalty`:** the Qwen3.8 card's instruct row sets it to 1.5. Neither vLLM nor SGLang can
 apply it server-side, so our published instruct numbers on those engines ran without it. To score
-the card's complete row, add `--extra-body '{"presence_penalty": 1.5}'` after `--` (it reaches the
-request) and say so when you post, since that result isn't comparable with the published ones.
+the card's complete row, send the whole row from the client, all after `--`:
+
+```bash
+bash scripts/quality-test.sh --full --no-thinking \
+  -- --temperature 0.7 --top-p 0.80 --top-k 20 --min-p 0.0 --extra-body '{"presence_penalty": 1.5}'
+```
+
+`--extra-body` on its own doesn't reach the request. It leaves server sampling on, and under server
+sampling benchlocal drops every sampler key, `presence_penalty` included. The explicit sampler flags
+are what turn server sampling off. Say so when you post, since that result isn't comparable with the
+published ones.
+
+### Engines with their own defaults
+
+Strata, Project Maya, bucko-vllm, HyperQwen, ExLlamaV3 and PrismML's llama.cpp each serve a
+different effort, and four of them don't serve the card's sampler on every leg. The Qwen3.8 card's
+rows, for where the table says to send one:
+- **thinking:** `--temperature 1.0 --top-p 0.95 --top-k 20 --min-p 0.0`
+- **instruct:** `--temperature 0.7 --top-p 0.80 --top-k 20 --min-p 0.0`
+
+| Engine | Thinking-leg effort (as served) | Efforts it accepts | Send from the client (after `--`) | Also |
+|---|---|---|---|---|
+| Strata | `xhigh` | low, medium, xhigh (`high` and `max` mean xhigh) | the thinking row on the thinking leg, the instruct row on the instruct leg | no server reasoning budget |
+| Project Maya | **`max`** | none, low, medium, high, xhigh, max | nothing: the server serves GLM's one row (temperature 1.0, top_p 0.95) | a 32K reasoning budget, clamped per request to leave room for the answer. Maya sizes its RAM tier from free memory, so drop the page cache before each boot |
+| bucko-vllm | `xhigh` | **low, medium, xhigh only**: `high` or `max` fails every request | the instruct row on the instruct leg | a 16,384-token server reasoning budget, the same as quality-test's cap: run the thinking leg with `THINKING_MAX_TOKENS=20480` |
+| HyperQwen | `low` | low, medium, xhigh (`high` and `max` mean xhigh) | the instruct row on the instruct leg | `REASONING_EFFORT` is also its boot setting, and the boot refuses `none` or `high`: set it on the `quality-test.sh` line only |
+| ExLlamaV3 | `xhigh` | low, medium, xhigh | the thinking row on the thinking leg, the instruct row on the instruct leg | boot with your rig's thread count (`THREADS=28` on the reference rig; [EXLLAMAV3.md](engines/EXLLAMAV3.md)) |
+| PrismML llama.cpp | **`medium`** | xhigh, medium, low, but **`low` behaves like xhigh** | nothing: `INSTRUCT=1` moves the server to the instruct row | a 32,768-token boot reasoning budget, which quality-test reads and raises its cap for |
+
+For an engine with no server switch, both legs look like this (Strata shown):
+
+```bash
+# thinking leg
+bash scripts/switch.sh --force <slug>
+REASONING_EFFORT=xhigh bash scripts/quality-test.sh --full --enable-thinking \
+  -- --temperature 1.0 --top-p 0.95 --top-k 20 --min-p 0.0
+
+# instruct leg: reboot, and no REASONING_EFFORT
+bash scripts/switch.sh --force <slug>
+bash scripts/quality-test.sh --full --no-thinking \
+  -- --temperature 0.7 --top-p 0.80 --top-k 20 --min-p 0.0
+```
+
+- **Set `REASONING_EFFORT` on every thinking leg** to the table's value. Unset isn't neutral: where
+  the server advertises an effort control (Project Maya), benchlocal then sends `high`, not the
+  served `max`.
+- **Leave it unset on every instruct leg.** With it set, benchlocal turns thinking off by sending
+  `reasoning_effort: "none"`, which ExLlamaV3's template rejects.
+- **Explicit sampler flags turn server sampling off** for that run, as on SGLang. Say which row you
+  sent when you post.
 
 ### Why each flag
 
@@ -108,7 +169,7 @@ Each of these exists because leaving it out produced a wrong number for us.
 | Flag | Why |
 |---|---|
 | *(no sampling flag)* | The server's sampler is the default (since 2026-10-09): it scores the compose's shipped sampler, not the packs' fixed one. `--pack-sampling` gives the reproducible baseline instead (a greedy instruct leg). On an SGLang instruct leg, send the row yourself (above). |
-| `REASONING_EFFORT=low` | Qwen3.8 only; forwarded per request. Pin it so the run records what it measured. Effort changes both cost and score, so results at different efforts aren't comparable. Other models ignore it. |
+| `REASONING_EFFORT=low` | Forwarded per request on the thinking leg. Set it to the effort the slug serves, so the run records what it measured: `low` on the Qwen3.8 vLLM and SGLang composes, and the [table above](#engines-with-their-own-defaults) for the newer engines. Effort changes both cost and score, so results at different efforts aren't comparable. Qwen3.8 and GLM-5.3-Flash honour it; a model whose template has no effort control ignores it. Leave it unset on an instruct leg. |
 | `--repeat 3` | For anything you'll quote: under the server's sampler (the default) every answer is sampled, so one draw isn't enough. |
 | `URL=http://localhost:<port>` | Optional. The endpoint is auto-detected, but naming it avoids picking up something else you have running. |
 
