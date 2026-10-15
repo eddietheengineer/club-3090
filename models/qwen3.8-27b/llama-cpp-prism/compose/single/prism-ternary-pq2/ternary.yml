@@ -22,7 +22,7 @@
 #              vs 45.80 tok/s, i.e. noise). q8_0 is this stack's serving floor.
 #   Vision:    ✅ available — separate mmproj (Q8_0, 0.63 GB), loaded only for
 #              image input so text-only serving never pays for it.
-#              ⛔ DOWNLOADED BUT NEVER LOADED — vision is UNVALIDATED here.
+#              ✅ verify-full vision 4/4 on ground truth (2026-10-15, b10776 pin).
 #   Max ctx:   262144 — the model's FULL declared context, MEASURED on ONE card.
 #              The whole ladder boots: 32768/65536/98304/131072/196608/262144.
 #   Genesis:   N/A — llama.cpp engine
@@ -170,7 +170,8 @@ services:
         ROW=(--reasoning "$$_r" --temp "$$_t" --top-p "$$_p" --presence-penalty "$$_pp"
              --top-k "$${TOP_K:-20}" --min-p "$$_mp")
         # -- Reasoning knobs: all six --reasoning-* flags reachable ------------------
-        # ⭐ BUDGET 16384 — raised from 8192 (maintainer, 2026-09-19). Method: boots of
+        # ⭐ BUDGET: 32768 today (below). History: 8192 → 16384 (maintainer, 2026-09-19)
+        # → 32768 (2026-10-10). The 16384 evidence, kept for its method — boots of
         # this compose differing ONLY in REASONING_BUDGET; lengths from the server's own
         # /tokenize (the cap is in TOKENS, and math tokenizes nothing like prose);
         # truncation detected by the exhaustion MARKER, never inferred from length;
@@ -295,7 +296,7 @@ services:
       # Vision. The projector is a SEPARATE artifact here (not embedded), and
       # upstream keeps it off the hot path: it is loaded only when an image
       # arrives, so text-only serving costs nothing for it.
-      # ⛔ NEVER LOADED ON THIS RIG — vision is entirely unvalidated.
+      # ✅ Validated: verify-full's vision check passes 4/4 on ground truth (2026-10-15).
       - '--mmproj'
       - '${MMPROJ:-/models/qwen3.8-27b-gguf/prism-ternary/Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf}'
       - '-mmdev'

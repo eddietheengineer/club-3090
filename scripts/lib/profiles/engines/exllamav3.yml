@@ -86,7 +86,7 @@ features:
                                 # VRAM, with a dynamic swap sweep
                                 # (EXL3_MOE_CPU_SWAP_INTERVAL, default 128 decode
                                 # steps).
-  ngram_table_offload: true     # Qwen's 31 GB PLE / n-gram table. ⭐ DISK-STREAMING
+  ngram_table_offload: true     # Qwen's PLE / n-gram table (32.6 GB at 3.05bpw, 39.0 GB at 4.05bpw). ⭐ DISK-STREAMING
                                 # IS THE UPSTREAM DEFAULT — it is never in VRAM.
                                 # `ngram_ram: true` opts into holding it in system
                                 # RAM instead, which is what our composes ship.
