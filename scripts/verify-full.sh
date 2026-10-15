@@ -697,10 +697,18 @@ check_mtp_acceptance() {
       # GET /metrics counts drafts offered and accepted; take it before and after one
       # request (scripts/lib/strata_metrics.py). Every Strata slug runs its MTP layer, so
       # no drafts at all is a failure, and so is a /metrics we cannot read.
-      local sm_dir sm_out sm_off sm_rate
+      local sm_dir sm_out sm_off sm_rate sm_c=()
       sm_dir="$(mktemp -d)"
-      if ! python3 "${ROOT_DIR}/scripts/lib/strata_metrics.py" snapshot "${URL}" > "${sm_dir}/before.json" 2> "${sm_dir}/err"; then
+      # Project Maya (strata-maya) counts its drafts only in its engine log: the reader needs the container
+      if container_is_real; then sm_c=(--container "${CONTAINER}"); fi
+      if ! python3 "${ROOT_DIR}/scripts/lib/strata_metrics.py" snapshot "${URL}" "${sm_c[@]}" > "${sm_dir}/before.json" 2> "${sm_dir}/err"; then
         fail "could not read ${URL}/metrics before the request" "$(cat "${sm_dir}/err")"; rm -rf "${sm_dir}"; return 1
+      fi
+      # Project Maya reports whether a draft block is loaded (engine.mtp): none on one GPU, where its MTP
+      # block can't run, so there is nothing to check. Strata's document has no such field: no skip there.
+      if [[ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["engine"].get("mtp", ""))' "${sm_dir}/before.json" 2>/dev/null)" == 0 ]]; then
+        skip "the engine loaded no draft block (engine.mtp 0: Project Maya drafts only on two or more GPUs)"
+        rm -rf "${sm_dir}"; return 0
       fi
       curl -sf -m 120 "${URL}/v1/chat/completions" \
         -H "Content-Type: application/json" \
@@ -711,7 +719,7 @@ check_mtp_acceptance() {
           \"temperature\": 0.0,
           ${THINK_OFF_STD}\"chat_template_kwargs\": ${THINK_OFF_KW}
         }" >/dev/null 2>&1 || { fail "acceptance-trigger request failed" "Check docker logs"; rm -rf "${sm_dir}"; return 1; }
-      if ! python3 "${ROOT_DIR}/scripts/lib/strata_metrics.py" snapshot "${URL}" > "${sm_dir}/after.json" 2> "${sm_dir}/err" \
+      if ! python3 "${ROOT_DIR}/scripts/lib/strata_metrics.py" snapshot "${URL}" "${sm_c[@]}" > "${sm_dir}/after.json" 2> "${sm_dir}/err" \
          || ! sm_out="$(python3 "${ROOT_DIR}/scripts/lib/strata_metrics.py" delta "${sm_dir}/before.json" "${sm_dir}/after.json" 2> "${sm_dir}/err")"; then
         fail "could not read ${URL}/metrics after the request" "$(cat "${sm_dir}/err")"; rm -rf "${sm_dir}"; return 1
       fi

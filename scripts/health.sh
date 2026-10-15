@@ -243,8 +243,10 @@ else: print(f'{s//3600}h{(s%3600)//60:02d}m')
       # Strata logs per request to a file inside the container, not to docker logs, so
       # its numbers come from GET /metrics (scripts/lib/strata_metrics.py).
       echo "Strata runtime (newest finished requests, from /metrics):"
-      local sm
-      if sm=$(python3 "${ROOT_DIR}/scripts/lib/strata_metrics.py" recent "$URL" 2>&1); then
+      local sm sm_c=()
+      # Project Maya (strata-maya) counts its drafts only in its engine log: the reader needs the container
+      [[ -n "$container" ]] && sm_c=(--container "$container")
+      if sm=$(python3 "${ROOT_DIR}/scripts/lib/strata_metrics.py" recent "$URL" "${sm_c[@]}" 2>&1); then
         local s_req s_dec s_acc s_off s_hit s_ver s_kv s_slots
         s_req=$(sed -n 's/^requests=//p' <<<"$sm");      s_dec=$(sed -n 's/^decode_tok_s=//p' <<<"$sm")
         s_acc=$(sed -n 's/^accept_rate=//p' <<<"$sm");   s_off=$(sed -n 's/^drafts_offered=//p' <<<"$sm")

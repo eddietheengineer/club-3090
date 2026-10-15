@@ -1174,7 +1174,8 @@ else
         _strata_url="http://localhost:${_strata_map##*:}"
       fi
       echo '```'
-      python3 "${REPO_ROOT}/scripts/lib/strata_metrics.py" recent "${_strata_url%/}" 2>&1 || true
+      # Project Maya (strata-maya) counts its drafts only in its engine log: the reader needs the container
+      python3 "${REPO_ROOT}/scripts/lib/strata_metrics.py" recent "${_strata_url%/}" --container "$CONTAINER" 2>&1 || true
       echo '```'
     } | redact
     subsection "Setup log (docker logs, first 200 lines)"

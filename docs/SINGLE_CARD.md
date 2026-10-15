@@ -26,6 +26,9 @@ before you put an agent on it.
 |  | `llamacpp/gemma-12b-single-q8kxl` | 🧪 experimental | 262144 | [single/unsloth-q8kxl/base.yml](../models/gemma-4-12b/llama-cpp/compose/single/unsloth-q8kxl/base.yml) | [#412](https://github.com/noonghunna/club-3090/discussions/412) |  |
 |  | `vllm/gemma-12b-qat-w4a16-single` | 🧪 experimental | 262144 | [single/qat-w4a16/mtp.yml](../models/gemma-4-12b/vllm/compose/single/qat-w4a16/mtp.yml) | [#412](https://github.com/noonghunna/club-3090/discussions/412) |  |
 | **Gemma 4 26B-A4B (MoE)** | `vllm/gemma-26ba4b-single` ⭐ | ⚠️ caveats | 176000 | [single/awq/int8.yml](../models/gemma-4-26b-a4b/vllm/compose/single/awq/int8.yml) | — |  |
+| **GLM-5.3-Flash (320.76B MoE, Z.ai)** | `strata-maya/glm53-flash-single-maya-l` | 🐣 incubating | 131072 | [single/maya-l/base.yml](../models/glm-5.3-flash/strata-maya/compose/single/maya-l/base.yml) | — | host RAM ≥ 148 GB |
+|  | `strata-maya/glm53-flash-single-maya-m` | 🐣 incubating | 131072 | [single/maya-m/base.yml](../models/glm-5.3-flash/strata-maya/compose/single/maya-m/base.yml) | — | host RAM ≥ 105 GB |
+|  | `strata-maya/glm53-flash-single-maya-s` | 🐣 incubating | 131072 | [single/maya-s/base.yml](../models/glm-5.3-flash/strata-maya/compose/single/maya-s/base.yml) | — | host RAM ≥ 87 GB |
 | **MiMo V2.6 Distill Qwen 9B (Xiaomi)** | `llamacpp/mimo9b-single-vision` ⭐ | ⚠️ caveats | 262144 | [single/bartowski-q8/full-vision.yml](../models/mimo-v2.6-9b/llama-cpp/compose/single/bartowski-q8/full-vision.yml) | — |  |
 | **Qwen 3.6 27B** | `vllm/minimal` ⭐ | ✅ production | 32768 | [single/autoround-int4/minimal.yml](../models/qwen3.6-27b/vllm/compose/single/autoround-int4/minimal.yml) | [#733](https://github.com/noonghunna/club-3090/discussions/733) |  |
 |  | `vllm/qwen-27b-single-nvfp4` | ⚠️ caveats | 65536 | [single/nvfp4/mtp.yml](../models/qwen3.6-27b/vllm/compose/single/nvfp4/mtp.yml) | [#608](https://github.com/noonghunna/club-3090/discussions/608) | needs sm 9.0+ (not a 3090) |
@@ -41,7 +44,7 @@ before you put an agent on it.
 | **Qwen3.8-Flash-Next (MoE, Qwen)** | `strata/qwen3.8-flash-next-iq3s-single` | 🐣 incubating | 131072 | [single/ista-iq3s/base.yml](../models/qwen3.8-flash-next/strata/compose/single/ista-iq3s/base.yml) | — | host RAM ≥ 84 GB |
 |  | `strata/qwen3.8-flash-next-swift15-abliterated-iq3s-single` | 🐣 incubating | 131072 | [single/sc117-swift15-abliterated-iq3s/base.yml](../models/qwen3.8-flash-next/strata/compose/single/sc117-swift15-abliterated-iq3s/base.yml) | — | host RAM ≥ 84 GB |
 
-18 slugs. ⭐ = the model's default for this topology (`bash scripts/switch.sh <model>/default`). Generated from the registry by `tools/docs/slug_tables.py`; don't edit by hand.
+21 slugs. ⭐ = the model's default for this topology (`bash scripts/switch.sh <model>/default`). Generated from the registry by `tools/docs/slug_tables.py`; don't edit by hand.
 <!-- END GENERATED: slug-table single -->
 
 ## Launch

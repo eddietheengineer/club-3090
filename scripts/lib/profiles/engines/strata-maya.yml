@@ -1,0 +1,39 @@
+schema_version: 1
+id: strata-maya
+display_name: Project Maya (a Strata fork for GLM-5.3-Flash; club-3090's image of the upstream release)
+type: strata
+stability: experimental
+min_sm: 7.5
+lineage:
+  relation: "fork"
+  base: "strata"
+  base_version: null
+  source: "https://github.com/mw00/project-maya"
+  source_ref: "89313399b330600b455603d3c569c1f188f96db1"
+  chain: []
+  delta: "Strata's C++/CUDA engine and Python server rewritten for GLM-5.3-Flash only (the GLM5-Next runner, a per-layer VRAM expert pool, a pinned RAM tier and a CPU lane priced against PCIe, MTP drafting across a two-card split), with its own quants (peasantsmith/GLM-5.3-Flash-Maya-GGUF). Upstream publishes no image, Dockerfile or Linux engine; our image compiles each release with our own Dockerfile (upstream's STRATA_PORTABLE option for an AVX2 baseline, text only), an image-provenance exception (docs/ADDING_ENGINES.md)"
+image_env: STRATA_MAYA_IMAGE
+install:
+  method: docker_image
+  # v1.1.11 (upstream 89313399), CI run 38695509380: archs 75;80;86;89;120, text only. Pinned 2026-10-15 after
+  # switch.sh boots + verify-full of the six dual and single slugs on this digest.
+  spec: ghcr.io/noonghunna/strata-maya-club3090@sha256:c66808309785b6a4b258b7807a0cbfd352c5f950a354abbfe24f4e9e903d95ef
+supported_model_families:
+  - glm5next-moe          # GLM-5.3-Flash: Project Maya is written for this model only
+supported_weight_formats:
+  - gguf                  # Project Maya's own quants (Maya-S / Maya-M / Maya-L)
+supported_kv_formats:
+  - fp16                  # the engine's latent KV cache, as its /metrics reports it ("kv": "fp16")
+supported_drafters: []    # MTP is the model's own NextN block (two or more GPUs), not a club drafter
+notes: >
+  Project Maya (github.com/mw00/project-maya, MIT): a fork of Strata (Niko1221/Strata) for
+  GLM-5.3-Flash only, with its own quants. Upstream publishes no Linux image, Dockerfile or
+  engine (maya.sh compiles on the user's PC), so club-3090 builds one per release
+  (models/glm-5.3-flash/strata-maya/image/, an image-provenance exception in
+  docs/ADDING_ENGINES.md): the engine compiled as maya.py compiles it, ggml's CPU code on an
+  AVX2 baseline, archs 75;80;86;89;120, text only (no vision encoder, no DFlash2 drafter). Host
+  needs NVIDIA driver >= 580 (CUDA 13) and an AVX2 CPU; x86-64 only. Experts are spread over a
+  per-layer VRAM pool, a pinned RAM tier sized from free memory, and the GGUF files; the CPU
+  computes part of each token's RAM-tier experts. MTP drafting runs only on two or more GPUs.
+  Serves on 8080 with Strata's /health, /props, /slots and JSON /metrics shape (engine kind
+  `strata`); the per-request engine lines go to a log file on the data volume.

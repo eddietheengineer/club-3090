@@ -220,6 +220,23 @@ This is the "free 30 GB of disk" moment.
 - The data volume carries one pack per model family and the shared MTP layer between versions; a release that
   changes the pack format re-prepares a family's pack at that family's first start (`REINSTALL=1` forces it).
 
+### strata-maya
+
+- Pinned by digest to `ghcr.io/noonghunna/strata-maya-club3090`, which our CI builds from each Project Maya
+  release with our own Dockerfile (`.github/workflows/strata-maya-image.yml`, recipe in
+  `models/glm-5.3-flash/strata-maya/image/`). A published image is not a pin: boot a dual and a single
+  `strata-maya/` slug on the new digest, run `verify-full` on each (its MTP check reads Maya's drafts from the
+  engine log through `strata_metrics.py --container`), then
+  `scripts/engine-pin-bump.sh strata-maya ghcr.io/noonghunna/strata-maya-club3090@sha256:<digest>` and update
+  `lineage.source_ref` to the image's `club3090.upstream.revision` label.
+- The volatile parts are Maya's own interfaces, which the launcher leans on: the `serve/server.py` and
+  `tools/iq_pack.py` flags (the image build fails when one disappears), the pack layout (`sources.json`, the
+  pack next to the shards), `maya.py`'s `MODELS` table (the launcher's SHA-256 check reads it; a quant renamed
+  there stops the first start with the reason) and the `glm spec:` log line our draft count parses. Maya
+  releases several times a day, so read the commits between the two pins for any of those.
+- The data volume keeps one pack per quant between versions. A release that changes the pack format needs
+  `REPACK=1` once (the launcher rebuilds a pack only when a shard changed).
+
 ### vllm-hyperqwen
 
 - Pinned by digest to syv-ai's official `ghcr.io/syv-ai/hyperqwen`, which their CI builds on every push to

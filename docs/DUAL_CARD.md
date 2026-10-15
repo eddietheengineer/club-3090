@@ -46,6 +46,9 @@ detected at boot, so you don't choose a compose for it.
 |  | `llamacpp-club3090/glm53-flash-dual-q2k-offload` | 🧪 experimental | 204800 | [dual/devquasar-q2k/offload.yml](../models/glm-5.3-flash/llamacpp-club3090/compose/dual/devquasar-q2k/offload.yml) | [#1117](https://github.com/noonghunna/club-3090/discussions/1117) | host RAM ≥ 110 GB |
 |  | `llamacpp-club3090/glm53-flash-dual-q3km-moecache` | 🧪 experimental | 204800 | [dual/devquasar-q3km/moecache.yml](../models/glm-5.3-flash/llamacpp-club3090/compose/dual/devquasar-q3km/moecache.yml) | [#1117](https://github.com/noonghunna/club-3090/discussions/1117) | host RAM ≥ 145 GB |
 |  | `llamacpp-club3090/glm53-flash-dual-q3km-offload` | 🧪 experimental | 204800 | [dual/devquasar-q3km/offload.yml](../models/glm-5.3-flash/llamacpp-club3090/compose/dual/devquasar-q3km/offload.yml) | [#1117](https://github.com/noonghunna/club-3090/discussions/1117) | host RAM ≥ 145 GB |
+|  | `strata-maya/glm53-flash-dual-maya-l` | 🐣 incubating | 131072 | [dual/maya-l/base.yml](../models/glm-5.3-flash/strata-maya/compose/dual/maya-l/base.yml) | — | host RAM ≥ 129 GB |
+|  | `strata-maya/glm53-flash-dual-maya-m` | 🐣 incubating | 131072 | [dual/maya-m/base.yml](../models/glm-5.3-flash/strata-maya/compose/dual/maya-m/base.yml) | — | host RAM ≥ 86 GB |
+|  | `strata-maya/glm53-flash-dual-maya-s` | 🐣 incubating | 131072 | [dual/maya-s/base.yml](../models/glm-5.3-flash/strata-maya/compose/dual/maya-s/base.yml) | — | host RAM ≥ 66 GB |
 | **Inkling-Small (263B MoE, Thinking Machines)** | `llamacpp-club3090/inkling-small-dual-iq4xs-moecache` | 🧪 experimental | 262144 | [dual/unsloth-ud-iq4xs/moecache.yml](../models/inkling-small/llamacpp-club3090/compose/dual/unsloth-ud-iq4xs/moecache.yml) | [#959](https://github.com/noonghunna/club-3090/discussions/959) | host RAM ≥ 121 GB |
 |  | `llamacpp-club3090/inkling-small-dual-iq4xs-residency` | 🧪 experimental | 262144 | [dual/unsloth-ud-iq4xs/residency.yml](../models/inkling-small/llamacpp-club3090/compose/dual/unsloth-ud-iq4xs/residency.yml) | [#959](https://github.com/noonghunna/club-3090/discussions/959) | host RAM ≥ 99 GB |
 | **Nemotron-3 Puzzle 75B-A9B (hybrid Mamba2+attn MoE)** | `vllm/nemotron-75b-dual-w4a16` | 🧪 experimental | 262144 | [dual/w4a16/turbo.yml](../models/nemotron-3-puzzle-75b/vllm/compose/dual/w4a16/turbo.yml) | [#706](https://github.com/noonghunna/club-3090/discussions/706) |  |
@@ -92,7 +95,7 @@ detected at boot, so you don't choose a compose for it.
 |  | `vllm/thinkingcap38-27b-dual-ultrafast` | 🧪 experimental | 262144 | [dual/autoround-int4/dflash2.yml](../models/thinkingcap-qwen3.8-27b/vllm/compose/dual/autoround-int4/dflash2.yml) | [#1418](https://github.com/noonghunna/club-3090/discussions/1418) |  |
 |  | `vllm/thinkingcap38-27b-dual-ultramax` | 🧪 experimental | 262144 | [dual/fp8/dflash2.yml](../models/thinkingcap-qwen3.8-27b/vllm/compose/dual/fp8/dflash2.yml) | [#1418](https://github.com/noonghunna/club-3090/discussions/1418) |  |
 
-59 slugs. ⭐ = the model's default for this topology (`bash scripts/switch.sh <model>/default`). Generated from the registry by `tools/docs/slug_tables.py`; don't edit by hand.
+62 slugs. ⭐ = the model's default for this topology (`bash scripts/switch.sh <model>/default`). Generated from the registry by `tools/docs/slug_tables.py`; don't edit by hand.
 <!-- END GENERATED: slug-table dual -->
 
 ## Launch

@@ -762,6 +762,21 @@ the image for this engine family (llama.cpp pins per-compose); the composes pin 
 alongside TPS). Depth behaviour is the model's real story and is tracked separately in
 `learnings/glm-5.3-flash.md`; the engine-level mechanism lives in `learnings/moe-cache-engine.md`.
 
+
+**On the [`strata-maya`](docs/engines/STRATA_MAYA.md) engine (🐣, Project Maya: a Strata fork for this model)** — Maya's own
+quants, its per-layer VRAM expert pool + pinned RAM tier, MTP on two cards (none on one), 131K, fp16 latent KV with 32K
+positions in VRAM. Canonical bench (3 warm + 5 measured, fresh boot); one request at a time; 370 / 420 W; thinking off.
+
+| Compose | Rig | KV | Max ctx | Narr / Code TPS | PP tok/s | Peak VRAM | Date | Notes |
+| --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
+| `strata-maya/compose/dual/maya-s/base.yml` — Project Maya **v1.1.11** (pinned `strata-maya-club3090@sha256:c6680830…`), Maya-S v2 | @noonghunna (2× 3090, PCIe x16 + x8) | fp16 | 131072 | **48.80 / 51.03** (CV 0.8% / 2.4%) | **1,136** @10K (CV 2.3%) · 1,209 @90K (n=1) | 23,754 / 23,670 MiB | 2026-10-15 | Booted through `switch.sh`, engine defaults (no calibration). MTP drafts accepted 80.1% across the window (warm-ups included); TTFT 37–45 ms; host RAM 66 GB. The download of another quant finished its hash check during the first 10K prefill run (1,106 vs 1,157 / 1,145). |
+| native v1.1.9 build (not this image), Maya-S v2, 2× / 1× | @noonghunna | fp16 | 131072 | 46.91 / 47.92 · 27.13 / 25.92 | 1,059 / 1,080 @10K | — | 2026-10-15 | Before cataloguing, with Maya's `--calibrate` result where it changed anything (1×: PCIE_SHARE 0.10). Host RAM 65 / 87 GB. |
+| native v1.1.9 build, Maya-L, 2× / 1× | @noonghunna | fp16 | 131072 | 29.61 / 26.67 · 17.22 / 16.36 | 984 / 1,095 @10K | — | 2026-10-14 | Calibrated (2×: PCIE_SHARE 0.10; 1×: + CPU_LANE 16). Host RAM 129 / 148 GB. |
+
+Every dual and single `strata-maya/` slug (Maya-S, -M, -L) passed `verify-full` on the pinned image (8 + 2 n/a on two
+cards; 7 + 3 n/a on one, which loads no draft block). The maintainer chose verify-full only for this round, so Maya-M and the
+other slugs on this image are not benched; their host RAM was read on the verify boots (Maya-M 86 / 105 GB on 2 / 1 cards).
+multi4 is never booted here (two cards): community-validated by design.
 ---
 
 ## Ornith-1.0 (DeepReinforce agentic-coding fine-tunes — 🧪 experimental)

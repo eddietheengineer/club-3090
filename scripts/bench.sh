@@ -767,7 +767,12 @@ if [[ "$CAPTURE" == "1" && -f "${ROOT_DIR}/scripts/lib/capture.sh" ]]; then
   # Strata keeps its per-request numbers in GET /metrics, not in docker logs, so the
   # window is two /metrics snapshots (scripts/lib/strata_metrics.py) instead of a log offset.
   if [[ "$ENGINE_KIND" == "strata" ]]; then
-    python3 "${ROOT_DIR}/scripts/lib/strata_metrics.py" snapshot "$URL" > "$CAP_WORK/strata0.json" 2> "$CAP_WORK/strata0.err" \
+    # Project Maya (strata-maya) counts its drafts only in its engine log: the reader needs the container
+    STRATA_SM_C=()
+    if [[ -n "${CONTAINER:-}" && "$CONTAINER" != none ]] && docker inspect --type container "$CONTAINER" >/dev/null 2>&1; then
+      STRATA_SM_C=(--container "$CONTAINER")
+    fi
+    python3 "${ROOT_DIR}/scripts/lib/strata_metrics.py" snapshot "$URL" "${STRATA_SM_C[@]}" > "$CAP_WORK/strata0.json" 2> "$CAP_WORK/strata0.err" \
       || rm -f "$CAP_WORK/strata0.json"
   fi
   export BENCH_PHASE_FILE="$CAP_WORK/phases" BENCH_SUMMARY_JSON="$CAP_WORK/summary.json"
@@ -1647,7 +1652,7 @@ if (( CAP_ENABLED )); then
               | awk '$1=="decode"{for(i=2;i<=NF;i++) if($i ~ /^n=/){split($i,a,"="); print a[2]; exit}}' || true)"
   if [[ "$ENGINE_KIND" == "strata" ]]; then
     if [[ -s "$CAP_WORK/strata0.json" ]] \
-       && python3 "${ROOT_DIR}/scripts/lib/strata_metrics.py" snapshot "$URL" > "$CAP_WORK/strata1.json" 2> "$CAP_WORK/strata1.err" \
+       && python3 "${ROOT_DIR}/scripts/lib/strata_metrics.py" snapshot "$URL" "${STRATA_SM_C[@]}" > "$CAP_WORK/strata1.json" 2> "$CAP_WORK/strata1.err" \
        && _sm="$(python3 "${ROOT_DIR}/scripts/lib/strata_metrics.py" delta "$CAP_WORK/strata0.json" "$CAP_WORK/strata1.json" 2> "$CAP_WORK/strata1.err")"; then
       _sv() { sed -n "s/^$1=//p" <<<"$_sm"; }
       echo "  Strata /metrics, every request in the capture window (warm-ups included): $(_sv requests) requests"

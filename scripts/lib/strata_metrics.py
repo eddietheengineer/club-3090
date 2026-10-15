@@ -7,22 +7,34 @@ nothing there and would report a dead drafter or an empty run. /metrics carries 
 `totals` (cumulative since the server started), `requests` (the newest 12, newest first) and
 `engine` (version, KV, expert slots). One reader, so every consumer reads them the same way.
 
-  strata_metrics.py snapshot <base-url>                totals + engine as JSON on stdout
+  strata_metrics.py snapshot <base-url> [--container C | --log-file F]
+                                                       totals + engine as JSON on stdout
   strata_metrics.py delta <before.json> <after.json>   what happened between two snapshots
-  strata_metrics.py recent <base-url> [N]              the newest N finished requests (default 12)
+  strata_metrics.py recent <base-url> [N] [--container C | --log-file F]
+                                                       the newest N finished requests (default 12)
 
 `delta` and `recent` print key=value lines:
   requests  output_tokens  decode_tok_s  prefill_tok_s  drafts_offered  drafts_accepted  accept_rate
 `recent` adds hit_rate and the engine's version, kv, max_context and expert_slots. A value is
 empty when there is nothing to divide by (no drafts offered: accept_rate is empty, not 0).
 
+Project Maya (the strata-maya engine, a Strata fork) serves the same document with its version in
+`engine.maya_version` and no draft counts in `totals`: its per-request "glm spec: N of M drafts
+accepted" lines go only to the engine log, `<storage.path>/maya.log` in our launcher's layout. Given
+the container (--container, read with docker exec) or the log itself (--log-file), `snapshot` sums
+those lines into totals.drafts_offered / drafts_accepted, so `delta` reads Maya's drafts like
+Strata's, and `recent` sums the newest N of them. Without either, a Maya document reads with no
+draft counts (drafts_offered=0), as before.
 Exit 0 with the lines; 2 on bad usage; 3 when /metrics is unreachable, is not JSON, or is not
-Strata's (no `engine.version` or `totals`). A consumer must report exit 3 as "could not read",
+Strata's (no `engine.version` / `engine.maya_version` or `totals`), or when a Maya log named by a
+given container can't be read. A consumer must report exit 3 as "could not read",
 never as "no drafts" or "nothing ran". STRATA_API_KEY, when set, is sent as a bearer token
 (Strata gates /metrics behind its API key when it has one). Standard library only.
 """
 import json
 import os
+import re
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -56,9 +68,52 @@ def parse(body, where):
     except ValueError:
         fail(f"{where}: not JSON")
     if not isinstance(data, dict) or not isinstance(data.get("totals"), dict) \
-            or not isinstance(data.get("engine"), dict) or not data["engine"].get("version"):
+            or not isinstance(data.get("engine"), dict) \
+            or not (data["engine"].get("version") or data["engine"].get("maya_version")):
         fail(f"{where}: not a Strata /metrics document (no engine.version or totals)")
     return data
+
+
+MAYA_SPEC = re.compile(r"glm spec: (\d+) of (\d+) drafts accepted")
+
+
+def maya_log_lines(data, source):
+    """The engine log's per-request draft lines, oldest first, as (accepted, offered) pairs.
+    source: ("container", name) reads <storage.path>/maya.log there; ("file", path) reads a file."""
+    kind, where = source
+    if kind == "file":
+        try:
+            with open(where, encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except OSError as e:
+            fail(f"could not read {where}: {e}")
+    else:
+        store = (data.get("storage") or {}).get("path") or ""
+        if not store.startswith("/"):
+            fail("Project Maya's /metrics names no storage.path, so its engine log can't be found")
+        log = store.rstrip("/") + "/maya.log"
+        try:
+            r = subprocess.run(["docker", "exec", where, "cat", log], capture_output=True,
+                               encoding="utf-8", errors="replace", timeout=30)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            fail(f"could not read {log} in {where}: {e}")
+        if r.returncode != 0:
+            fail(f"could not read {log} in {where}: {r.stderr.strip() or 'docker exec failed'}")
+        text = r.stdout
+    return [(int(m.group(1)), int(m.group(2))) for m in MAYA_SPEC.finditer(text)]
+
+
+def log_source(args):
+    """Pull --container C / --log-file F out of args (in place); None when neither is given."""
+    for flag, kind in (("--container", "container"), ("--log-file", "file")):
+        if flag in args:
+            i = args.index(flag)
+            if i + 1 >= len(args):
+                fail(f"{flag} needs a value", 2)
+            value = args[i + 1]
+            del args[i:i + 2]
+            return (kind, value)
+    return None
 
 
 def num(v):
@@ -99,6 +154,8 @@ def emit(pairs):
 
 
 def main(argv):
+    argv = list(argv)
+    source = log_source(argv)
     if len(argv) < 2 or argv[1] not in ("snapshot", "delta", "recent"):
         print(__doc__.split("\n\n")[2], file=sys.stderr)
         return 2
@@ -107,7 +164,12 @@ def main(argv):
         if len(argv) != 3:
             return main(argv[:1])
         data = fetch(argv[2])
-        json.dump({"totals": data["totals"], "engine": data["engine"]}, sys.stdout)
+        totals = dict(data["totals"])
+        if source and data["engine"].get("maya_version") and "drafts_offered" not in totals:
+            lines = maya_log_lines(data, source)
+            totals["drafts_accepted"] = sum(a for a, _ in lines)
+            totals["drafts_offered"] = sum(o for _, o in lines)
+        json.dump({"totals": totals, "engine": data["engine"]}, sys.stdout)
         print()
         return 0
     if cmd == "delta":
@@ -132,13 +194,20 @@ def main(argv):
     data = fetch(argv[2])
     reqs = [r for r in (data.get("requests") or []) if isinstance(r, dict)][:max(n, 0)]
     out = figures(sum(num(r.get("output_tokens")) for r in reqs), sum(num(r.get("decode_ms")) for r in reqs),
-                  sum(num(r.get("prompt_read")) for r in reqs), sum(num(r.get("prompt_ms")) for r in reqs),
+                  # Maya's requests carry prompt_tokens and reused, not prompt_read
+                  sum(num(r["prompt_read"]) if "prompt_read" in r else num(r.get("prompt_tokens")) - num(r.get("reused"))
+                      for r in reqs), sum(num(r.get("prompt_ms")) for r in reqs),
                   sum(num(r.get("drafts_offered")) for r in reqs), sum(num(r.get("drafts_accepted")) for r in reqs),
                   len(reqs))
+    if source and data["engine"].get("maya_version") and not any("drafts_offered" in r for r in reqs):
+        lines = maya_log_lines(data, source)[-max(n, 0):] if n > 0 else []
+        acc, off = sum(a for a, _ in lines), sum(o for _, o in lines)
+        out.update(drafts_offered=str(off), drafts_accepted=str(acc),
+                   accept_rate=f"{acc / off:.4f}" if off > 0 else "")
     hits = [num(r.get("hit_rate")) for r in reqs if r.get("hit_rate") is not None]
     out["hit_rate"] = f"{sum(hits) / len(hits):.3f}" if hits else ""
     eng = data["engine"]
-    out.update(version=str(eng.get("version", "")), kv=str(eng.get("kv", "")),
+    out.update(version=str(eng.get("version") or eng.get("maya_version") or ""), kv=str(eng.get("kv", "")),
                max_context=str(eng.get("max_context", "")), expert_slots=str(eng.get("expert_slots", "")))
     emit(out)
     return 0

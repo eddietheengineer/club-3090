@@ -44,7 +44,7 @@ vision_capable: true             # mmproj-F16.gguf, clip.projector_type = glm5ne
 # deepseek4-moe and inkling-moe — flagged so nobody wires it up by reflex.
 kv_calc_supported: false
 
-valid_tp: [2, 4, 8]
+valid_tp: [1, 2, 4, 8]          # 1: the strata-maya single-card slugs (Project Maya runs on one GPU)
 compatible_drafters:
   - anbeeld-glm53-dflash2
 requires_genesis: false
@@ -187,6 +187,58 @@ weights:
       - Q3_K_M/zai-org.GLM-5.3-Flash.f16.gguf.Q3_K_M.gguf-00012-of-00012.gguf
     verify_glob: "Q3_K_M/*.gguf"
     manual_note: "🧪 EXPERIMENTAL — TRUE K-quant, one tier above devquasar-q2k. ⭐ 0.0% i-quant (Q3_K x84 3,520 KiB + Q4_K x42 4,608 KiB, 134.37 GiB experts), gated from the tensor table. Non-expert side 4.78 GiB — between Q2_K's 3.90 and UD-IQ3_XXS's 7.33 — so its pool lands nearer the served config and it is the LESS confounded K-quant arm, and the plausible serving candidate. MEASURED 2026-09-10 dual: narrative 23.53 (CV 8.0%) / code 27.50 / prefill@10K 310.7, 5,829 slots, marginal hit 43.9/45.8%. ⭐ vs devquasar-q2k: +31% expert bytes gave a decode ratio of 0.768/0.790 against a byte-proportional prediction of 0.764, while prefill fell only to 0.901 — decode tracks bytes, prefill is compute-bound. ⚠️ NO MTP head (block_count=45). ⚠️ ~142 GiB host RSS under --no-mmap (vs Q2_K's ~109) — fits 196 GiB with ~48 GiB spare. ⚠️ QUALITY UNMEASURED. ⚠️⚠️ The K-quant-vs-served-i-quant comparison is NOT established: those arms ran at reasoning_effort=high (effectively thinking-OFF) while every prior BENCHMARKS row ran thinking-MAX. See learnings/glm-5.3-flash.md 2026-09-10."
+  maya-s:
+    path: glm-5.3-flash-maya-gguf/Maya-S-v2-IQ2_XXS
+    # local_subdir is the BUCKET; `files:`/`verify_glob` carry the quant-folder prefix (the HF repo
+    # keeps one folder per quant), same as the unsloth entries above.
+    local_subdir: glm-5.3-flash-maya-gguf
+    size_gb: 96.47
+    format: gguf
+    status: experimental
+    hf_repo: peasantsmith/GLM-5.3-Flash-Maya-GGUF
+    revision: f16ee4ba50d8fd2bb726ea1862ca6ca14ba188da
+    shards: 3
+    files:
+      - Maya-S-v2-IQ2_XXS/GLM-5.3-Flash-Maya-S-v2-IQ2_XXS-00001-of-00003.gguf
+      - Maya-S-v2-IQ2_XXS/GLM-5.3-Flash-Maya-S-v2-IQ2_XXS-00002-of-00003.gguf
+      - Maya-S-v2-IQ2_XXS/GLM-5.3-Flash-Maya-S-v2-IQ2_XXS-00003-of-00003.gguf
+    verify_glob: "Maya-S-v2-IQ2_XXS/*.gguf"
+    manual_note: "🐣 Maya-S v2: IQ2_XXS gate/up experts (error-feedback rounding), IQ2_S/IQ3_XXS down projections, Q6_K attention. Project Maya's own quant (peasantsmith, made from Z.ai's FP8 release; the MTP draft block included), served by the strata-maya engine (Project Maya, a Strata fork for GLM-5.3-Flash), NOT by llamacpp-club3090. The launcher SHA-256-checks the shards against Maya's own table once, then builds Maya's pack on the data volume. Text only. MEASURED natively on v1.1.9 2026-10-15 (2× 3090): 46.91 / 47.92 decode, 1,059 prefill @10K; 1×: 27.13 / 25.92. Upstream's KL vs FP8 0.428 (its own harness). ⚠️ Maya-S24 (not catalogued) measured faster on both card counts: its Q4_K attention leaves more VRAM for experts."
+  maya-m:
+    path: glm-5.3-flash-maya-gguf/Maya-M
+    # local_subdir is the BUCKET; `files:`/`verify_glob` carry the quant-folder prefix (the HF repo
+    # keeps one folder per quant), same as the unsloth entries above.
+    local_subdir: glm-5.3-flash-maya-gguf
+    size_gb: 116.0
+    format: gguf
+    status: experimental
+    hf_repo: peasantsmith/GLM-5.3-Flash-Maya-GGUF
+    revision: f16ee4ba50d8fd2bb726ea1862ca6ca14ba188da
+    shards: 3
+    files:
+      - Maya-M/GLM-5.3-Flash-Maya-M-IQ2_S-00001-of-00003.gguf
+      - Maya-M/GLM-5.3-Flash-Maya-M-IQ2_S-00002-of-00003.gguf
+      - Maya-M/GLM-5.3-Flash-Maya-M-IQ2_S-00003-of-00003.gguf
+    verify_glob: "Maya-M/*.gguf"
+    manual_note: "🐣 Maya-M: IQ2_S gate/up experts, IQ3_XXS down projections (IQ3_S in the most sensitive layers), Q6_K attention. Project Maya's own quant (peasantsmith, made from Z.ai's FP8 release; the MTP draft block included), served by the strata-maya engine (Project Maya, a Strata fork for GLM-5.3-Flash), NOT by llamacpp-club3090. The launcher SHA-256-checks the shards against Maya's own table once, then builds Maya's pack on the data volume. Text only. Upstream's KL vs FP8 0.291 (its own harness)."
+  maya-l:
+    path: glm-5.3-flash-maya-gguf/Maya-L
+    # local_subdir is the BUCKET; `files:`/`verify_glob` carry the quant-folder prefix (the HF repo
+    # keeps one folder per quant), same as the unsloth entries above.
+    local_subdir: glm-5.3-flash-maya-gguf
+    size_gb: 156.32
+    format: gguf
+    status: experimental
+    hf_repo: peasantsmith/GLM-5.3-Flash-Maya-GGUF
+    revision: f16ee4ba50d8fd2bb726ea1862ca6ca14ba188da
+    shards: 4
+    files:
+      - Maya-L/GLM-5.3-Flash-Maya-L-IQ3_S-00001-of-00004.gguf
+      - Maya-L/GLM-5.3-Flash-Maya-L-IQ3_S-00002-of-00004.gguf
+      - Maya-L/GLM-5.3-Flash-Maya-L-IQ3_S-00003-of-00004.gguf
+      - Maya-L/GLM-5.3-Flash-Maya-L-IQ3_S-00004-of-00004.gguf
+    verify_glob: "Maya-L/*.gguf"
+    manual_note: "🐣 Maya-L: IQ3_S gate/up experts, IQ4_XS down projections (Q5_K in the most sensitive layers), Q6_K attention; upstream: KL 0.188 vs FP8, 99.2% of FP8's zero-shot accuracy (its own harness). Project Maya's own quant (peasantsmith, made from Z.ai's FP8 release; the MTP draft block included), served by the strata-maya engine (Project Maya, a Strata fork for GLM-5.3-Flash), NOT by llamacpp-club3090. The launcher SHA-256-checks the shards against Maya's own table once, then builds Maya's pack on the data volume. Text only. MEASURED natively on v1.1.9 2026-10-14 (2× 3090): 29.61 / 26.67 decode, 984 prefill @10K; 1×: 17.22 / 16.36. The largest Maya quant: the slowest here, as the fewest experts fit in VRAM."
   dflash2-q4km:
     path: glm-5.3-flash-gguf/dflash2
     # ⚠️ REPO-ROOT artifact (the Anbeeld repo has no subfolder), so it lands FLAT and
@@ -255,4 +307,7 @@ setup:
     iq3xxs: unsloth-ud-iq3xxs
     q2k: devquasar-q2k
     q3km: devquasar-q3km
+    maya-s: maya-s
+    maya-m: maya-m
+    maya-l: maya-l
   vision: mmproj-f16
