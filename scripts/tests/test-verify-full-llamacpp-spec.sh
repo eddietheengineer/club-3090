@@ -7,7 +7,8 @@
 # passed verify-full. Speculative decoding rejects bad drafts, so the output stays
 # correct and only decode slows: nothing else in verify-full can see it.
 #
-# This drives the REAL functions, extracted from scripts/verify-full.sh, with docker,
+# This drives the REAL functions (scripts/lib/llamacpp-spec.sh, and step 9 extracted
+# from scripts/verify-full.sh), with docker,
 # curl and the pass/fail/skip helpers stubbed. The fixtures are the shapes measured on
 # the reference rig: a wrapper shell whose script text contains "-md path." (the
 # moe-cache Flash-Next compose), llama-server's own command line, and the per-request
@@ -20,6 +21,7 @@ export CLUB3090_CONFIG_DIR=/nonexistent/club-3090-test-config   # tests never re
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 VF="${VERIFY_FULL:-${ROOT}/scripts/verify-full.sh}"
+LIB="${LLAMACPP_SPEC_LIB:-${ROOT}/scripts/lib/llamacpp-spec.sh}"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 FAIL=0
 
@@ -27,9 +29,13 @@ ok()  { printf "  \033[32m✓\033[0m %s\n" "$1"; }
 bad() { printf "  \033[31m✗\033[0m %s\n" "$1"; printf "    expected=%s\n    got=%s\n" "$2" "$3"; FAIL=1; }
 check() { [[ "$2" == "$3" ]] && ok "$1" || bad "$1" "$2" "$3"; }
 
-# --- extract the functions under test ---------------------------------------
-awk '/^llamacpp_spec_args\(\) \{/,/^\}/; /^llamacpp_draft_rate\(\) \{/,/^\}/; /^check_mtp_acceptance\(\) \{/,/^\}/' \
-  "$VF" > "${TMP}/fns.sh"
+# --- the functions under test: the shared lib + verify-full's step 9 -------------
+# The helpers live in scripts/lib/llamacpp-spec.sh (shared with health.sh and report.sh);
+# verify-full must source it, or step 9 calls functions that don't exist.
+if ! command grep -qE '^source .*scripts/lib/llamacpp-spec\.sh' "$VF"; then
+  bad "verify-full.sh sources scripts/lib/llamacpp-spec.sh" "a source line" "none"
+fi
+{ cat "$LIB" 2>/dev/null; awk '/^check_mtp_acceptance\(\) \{/,/^\}/' "$VF"; } > "${TMP}/fns.sh"
 for fn in llamacpp_spec_args llamacpp_draft_rate check_mtp_acceptance; do
   if ! command grep -q "^${fn}() {" "${TMP}/fns.sh"; then
     bad "verify-full.sh defines ${fn}()" "a function body" "not found"
@@ -75,9 +81,9 @@ check "spec args: no drafter (wrapper text mentions both flags)" "" "$(spec_args
 check "spec args: --spec-type none is not a drafter" "" "$(spec_args "${TMP}/top-specnone")"
 
 # --- 2: llamacpp_draft_rate ------------------------------------------------------
-check "draft rate: one mainline line" "0.958 184 192" "$(llamacpp_draft_rate < "${TMP}/log-good")"
-check "draft rate: moe-cache line with mean len" "0.050 10 200" "$(llamacpp_draft_rate < "${TMP}/log-bad")"
-check "draft rate: lines summed, not averaged" "0.471 1457 3094" "$(printf '%s\n' \
+check "draft rate: one mainline line" "0.958 184 192 1" "$(llamacpp_draft_rate < "${TMP}/log-good")"
+check "draft rate: moe-cache line with mean len" "0.050 10 200 1" "$(llamacpp_draft_rate < "${TMP}/log-bad")"
+check "draft rate: lines summed, not averaged" "0.471 1457 3094 2" "$(printf '%s\n' \
   "draft acceptance = 0.95833 (  184 accepted /   192 generated)" \
   "draft acceptance = 0.43866 ( 1273 accepted /  2902 generated), mean len =  2.75" | llamacpp_draft_rate)"
 check "draft rate: no lines -> nothing" "" "$(llamacpp_draft_rate < "${TMP}/log-empty")"
