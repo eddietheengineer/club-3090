@@ -53,6 +53,14 @@ ANNOUNCEMENTS: list[tuple[str, list[int]]] = [
     # ThinkingCap-Qwen3.8-27B (bottlecapai fine-tune): every Qwen3.8 tier, both engines (#1418).
     ("sgl/thinkingcap38-27b-*", [1418]),
     ("vllm/thinkingcap38-27b-*", [1418]),
+    # Six engines announced together (#1700): Strata, Project Maya, bucko-vllm, HyperQwen,
+    # ExLlamaV3 and PrismML's llama.cpp.
+    ("strata/*", [1700]),
+    ("strata-maya/*", [1700]),
+    ("bucko-vllm/*", [1700]),
+    ("vllm-hyperqwen/*", [1700]),
+    ("exllamav3/*", [1700]),
+    ("llama-cpp-prism/*", [1700]),
     # CPU expert offload / the moe-cache engine
     ("llamacpp-club3090/glm53-flash-*", [1117]),
     ("llamacpp-club3090/qwen38-flash-next-*", [1117]),
