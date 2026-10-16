@@ -69,7 +69,7 @@ END = "  # <<< club-3090 local models <<<"
 # against every name the Qwen3.8-family composes serve.
 QWEN38_IDS = ["qwen3.8-27b", "qwen3.8-27b-fp8", "thinkingcap38-27b", "thinkingcap38-27b-fp8"]
 
-def qwen38_override(mid: str) -> str:
+def qwen38_override(mid: str, no_summary: bool = False) -> str:
     return f"""      {mid}:
         # Reply cap (thinking + answer). The gateway reports it per route, but when
         # it can't (routes rendered before model_info existed, or an engine that
@@ -88,13 +88,58 @@ def qwen38_override(mid: str) -> str:
         compat:
           supportsReasoningEffort: true
           qwenTemplateReasoningEffort: true
-          # Chat-completions wire only (omp talks Responses to an `openai/` gateway
+{NO_SUMMARY if no_summary else ""}          # Chat-completions wire only (omp talks Responses to an `openai/` gateway
           # route and does not send it there). vLLM enforces it on the THINKING
           # field, not the reply — keep it generous; effort is the lever. SGLang
           # ignores it.
           extraBody:
             thinking_token_budget: 8192
 """
+
+# Qwen3.8-Flash-Next takes the same template effort (low | medium | xhigh, xhigh
+# when a request names none), so its ids get the Qwen3.8 override. GLM-5.3-Flash
+# has its own ladder (below). Without an override omp treats a model as
+# non-reasoning, because no Flash-Next or GLM slug declares a thinking sampler
+# profile for the gateway to report, so it sent NO effort at all and every request
+# ran at the server's default, the slowest rung (club-3090 Discussion #1690).
+# These are the ids the engines REPORT, which is what the gateway names each route:
+# a compose's --served-model-name / --alias / --model-name / SERVED_MODEL_NAME,
+# Strata's "<family name>-<quant>" (qwen3.8-flash-next-iq3_s, swift-1.5-iq3_s) and
+# Project Maya's model_name (glm-5.3-flash). test-omp-setup checks both lists
+# against the composes.
+# Sent with the Flash-Next and GLM overrides only. omp adds `summary: "auto"` to the
+# Responses `reasoning` object, and LiteLLM's Responses -> chat-completions bridge
+# (routes on engines without /v1/responses: tabbyAPI, Project Maya) then forwards the
+# WHOLE object as `reasoning_effort` ({"effort": "low", "summary": "auto"}), which
+# tabbyAPI's string field and Maya's effort parser both reject. Without the summary
+# the bridge sends the effort string. The engines that serve Responses themselves
+# (llama.cpp, Strata, vLLM) don't use the summary request.
+NO_SUMMARY = "          supportsReasoningSummary: false\n"
+
+FLASH_NEXT_IDS = ["qwen3.8-flash-next", "qwen3.8-flash-next-ple", "qwen3.8-flash-next-swift15",
+                  "qwen3.8-flash-next-exl3-3.05bpw", "qwen3.8-flash-next-exl3-4.05bpw",
+                  "qwen3.8-flash-next-iq3_s", "swift-1.5-iq3_s"]
+GLM53_IDS = ["glm-5.3-flash"]
+
+def glm53_override(mid: str) -> str:
+    return f"""      {mid}:
+        # Reply cap, as for Qwen3.8; GLM's windows are 131K (Project Maya) to 205K.
+        maxTokens: 32768
+        reasoning: true
+        # GLM-5.3-Flash's own ladder: max (the vendor's default and the composes'),
+        # high and low. It cannot turn thinking off, low is the near-zero end, and
+        # `medium` is not one of its levels, so omp only offers these three. The
+        # default stays max, what the servers already do when a request names none.
+        thinking:
+          mode: effort
+          efforts: [low, high, max]
+          defaultLevel: max
+        compat:
+          supportsReasoningEffort: true
+          # The chat-completions form, chat_template_kwargs.reasoning_effort: llama.cpp
+          # and Project Maya read it as well as the top-level field.
+          qwenTemplateReasoningEffort: true
+{NO_SUMMARY}"""
 
 block = f"""{BEGIN}
   club:
@@ -119,7 +164,7 @@ block = f"""{BEGIN}
       # reasoning. Upstream's answer to oh-my-pi#11184; checked through the gateway.
       reasoningDisableMode: none-effort
     modelOverrides:
-{"".join(qwen38_override(m) for m in QWEN38_IDS)}{END}
+{"".join(qwen38_override(m) for m in QWEN38_IDS)}{"".join(qwen38_override(m, no_summary=True) for m in FLASH_NEXT_IDS)}{"".join(glm53_override(m) for m in GLM53_IDS)}{END}
 """
 
 if print_only:
