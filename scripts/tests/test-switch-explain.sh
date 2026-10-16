@@ -146,6 +146,31 @@ printf '%s' "$DEFAULT_OUT" | python3 -c \
   'import json,sys; d=json.load(sys.stdin); assert d.get("registry",{}).get("engine"), "no engine in resolved default"' \
   2>/dev/null || note "--explain vllm/default did not resolve to a concrete slug"
 
+# --- 5b) Where the weights must be (Discussion #1700) ------------------------
+# A user whose files sit under another name has to know the exact folder. It
+# comes from the slug's own weights variant, so three quants sharing one download
+# dir each name their own folder, and a borrowed drafter names the subdir it
+# lives in.
+MAYA_JSON="$(MODEL_DIR=/models-under-test bash "$SWITCH" --explain strata-maya/glm53-flash-dual-maya-l --json 2>/dev/null)" \
+  || note "--explain strata-maya/glm53-flash-dual-maya-l --json exited non-zero"
+printf '%s' "$MAYA_JSON" | python3 -c '
+import json, sys
+r = json.load(sys.stdin)["registry"]
+assert r.get("weights_path") == "glm-5.3-flash-maya-gguf/Maya-L", r.get("weights_path")
+assert r.get("model_dir") == "/models-under-test", r.get("model_dir")
+' 2>/dev/null || note "Maya-L --explain does not name glm-5.3-flash-maya-gguf/Maya-L as its weights folder"
+SWIFT_JSON="$(bash "$SWITCH" --explain bucko-vllm/qwen3.8-flash-next-swift15-dual --json 2>/dev/null)" \
+  || note "--explain bucko-vllm/qwen3.8-flash-next-swift15-dual --json exited non-zero"
+printf '%s' "$SWIFT_JSON" | python3 -c '
+import json, sys
+r = json.load(sys.stdin)["registry"]
+assert r.get("weights_path") == "swift-1.5-qwen3.8-flash-next-w4a16-autoround", r.get("weights_path")
+c = r.get("weights_companion_paths") or {}
+assert c.get("albucino-mtp-int4-g32") == "qwen3.8-flash-next-w4a16-fp8ple/runtime/mtp-int4-g32", c
+' 2>/dev/null || note "Swift --explain does not name its weights folder and the borrowed drafter's subdir"
+HUMAN_MAYA="$(MODEL_DIR=/models-under-test bash "$SWITCH" --explain strata-maya/glm53-flash-dual-maya-l 2>/dev/null)" || true
+assert_contains "$HUMAN_MAYA" "weights dir    /models-under-test/glm-5.3-flash-maya-gguf/Maya-L" "human --explain weights dir"
+
 # --- 6) Error paths -----------------------------------------------------------
 # Unknown slug → non-zero with a clear message.
 if bash "$SWITCH" --explain bogus/nope >/dev/null 2>&1; then

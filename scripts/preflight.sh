@@ -916,6 +916,34 @@ _preflight_escapes_mount() {
   return 0                                            # escapes: container will not see it
 }
 
+# _preflight_compose_mounts_model_dir_whole <compose>... — true when a compose mounts
+# ${MODEL_DIR} itself at /models, so /models/<sub> in the container is
+# ${MODEL_DIR}/<sub> on the host.
+_preflight_compose_mounts_model_dir_whole() {
+  command grep -hv '^[[:space:]]*#' "$@" 2>/dev/null \
+    | command grep -qE '\$\{MODEL_DIR[^}]*\}:/models(:ro)?(["'"'"'[:space:]]|$)'
+}
+
+# _preflight_compose_command_model_paths <compose>... — the /models/<path> elements
+# of an exec-form `command: [ ... ]` list, which may span lines.
+_preflight_compose_command_model_paths() {
+  awk '
+    FNR == 1 { incmd = 0 }
+    /^[[:space:]]*#/ { next }
+    {
+      line = $0
+      if (!incmd && line ~ /^[[:space:]]*command:[[:space:]]*\[/) {
+        incmd = 1
+        sub(/^[[:space:]]*command:[[:space:]]*/, "", line)
+      }
+      if (incmd) {
+        print line
+        if (line ~ /\]/) incmd = 0
+      }
+    }' "$@" 2>/dev/null \
+    | command grep -oE '/models/[^]"'"'"'\\[:space:],]+' || true
+}
+
 _preflight_compose_flag_paths() {
   local flags="$1"
   shift
@@ -1375,6 +1403,26 @@ preflight_compose_deps() {
     # Comment lines are skipped, as in the vLLM extractor above: a compose header
     # that MENTIONS `${MODEL_DIR}/sub` was otherwise checked as a mount.
     done < <(command grep -hv '^[[:space:]]*#' "${compose_files[@]}" 2>/dev/null | command grep -oE '\$\{MODEL_DIR[^}]*\}/[^"[:space:]]+' || true)
+
+    # bucko-vllm mounts the whole ${MODEL_DIR} at /models and names the model (and
+    # the Swift slug's drafter) as bare exec-form `command:` arguments, with no flag,
+    # so none of the readers above saw them and a missing or misnamed folder got past
+    # preflight to fail inside the container (Discussion #1700). Only `command: [...]`
+    # elements are read: elsewhere `/models/…` is also a bind-mount TARGET (SGLang's
+    # chat templates) or a shell default, which must not be checked as a host path.
+    if _preflight_compose_mounts_model_dir_whole "${compose_files[@]}"; then
+      while IFS= read -r token; do
+        path="$(_preflight_compose_path_default "$token")"
+        [[ -n "$path" ]] || continue
+        if [[ ! -f "${model_dir}/${path}/config.json" ]]; then
+          missing+=("${model_dir}/${path}/config.json (HF model)")
+        elif _preflight_escapes_mount "$model_dir" "${model_dir}/${path}"; then
+          escaped+=("${model_dir}/${path}")
+        else
+          shard_dirs+=("${model_dir}/${path}")
+        fi
+      done < <(_preflight_compose_command_model_paths "${compose_files[@]}")
+    fi
   fi
 
   # Present on the host, unreachable from the container. Reported SEPARATELY from

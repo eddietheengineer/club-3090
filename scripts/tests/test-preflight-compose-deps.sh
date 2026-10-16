@@ -218,4 +218,59 @@ assert_contains "$out" "${TMP_DIR}/dflt-models/vendor-gguf/IQ3_S (MODEL_DIR volu
 assert_not_contains "$out" "/mnt/models/huggingface/vendor-gguf"
 assert_not_contains "$out" "IQ3_S;"
 
+# bucko-vllm: the whole ${MODEL_DIR} is mounted at /models and the model (plus the
+# Swift slug's drafter) are bare exec-form `command:` arguments. Nothing read them, so
+# preflight passed with no weights on disk and the boot failed inside the container
+# (Discussion #1700). Run against the REAL composes: a fixture would test the fixture.
+bucko_main="${ROOT_DIR}/models/qwen3.8-flash-next/bucko-vllm/compose/dual/albucino-autoround-int4-fp8ple/base.yml"
+bucko_swift="${ROOT_DIR}/models/qwen3.8-flash-next/bucko-vllm/compose/dual/ukisai-swift15-autoround-int4/base.yml"
+mkdir -p "${TMP_DIR}/bucko-empty"
+out="$(expect_missing "$bucko_main" "${TMP_DIR}/bucko-empty")"
+assert_contains "$out" "${TMP_DIR}/bucko-empty/qwen3.8-flash-next-w4a16-fp8ple/config.json (HF model)"
+# The hint must offer the main weights, not the drafter that shares their folder.
+assert_contains "$out" "WEIGHT_KEY=qwen3.8-flash-next:albucino-autoround-int4-fp8ple"
+out="$(expect_missing "$bucko_swift" "${TMP_DIR}/bucko-empty")"
+assert_contains "$out" "${TMP_DIR}/bucko-empty/swift-1.5-qwen3.8-flash-next-w4a16-autoround/config.json (HF model)"
+assert_contains "$out" "${TMP_DIR}/bucko-empty/qwen3.8-flash-next-w4a16-fp8ple/runtime/mtp-int4-g32/config.json (HF model)"
+assert_contains "$out" "WEIGHT_KEY=qwen3.8-flash-next:albucino-mtp-int4-g32"
+# POSITIVE CONTROL: both folders present → no complaint.
+mkdir -p "${TMP_DIR}/bucko-ok/qwen3.8-flash-next-w4a16-fp8ple/runtime/mtp-int4-g32" \
+         "${TMP_DIR}/bucko-ok/swift-1.5-qwen3.8-flash-next-w4a16-autoround"
+touch "${TMP_DIR}/bucko-ok/qwen3.8-flash-next-w4a16-fp8ple/config.json" \
+      "${TMP_DIR}/bucko-ok/qwen3.8-flash-next-w4a16-fp8ple/runtime/mtp-int4-g32/config.json" \
+      "${TMP_DIR}/bucko-ok/swift-1.5-qwen3.8-flash-next-w4a16-autoround/config.json"
+out="$(run_deps "$bucko_main" "${TMP_DIR}/bucko-ok")"
+[[ -z "$out" ]] || { echo "ASSERTION FAILED: bucko weights present but reported: $out" >&2; exit 1; }
+out="$(run_deps "$bucko_swift" "${TMP_DIR}/bucko-ok")"
+[[ -z "$out" ]] || { echo "ASSERTION FAILED: bucko Swift weights present but reported: $out" >&2; exit 1; }
+# A folder symlinked OUT of ${MODEL_DIR} is invisible in the container, because only
+# ${MODEL_DIR} is mounted: refused with the symlink fix, not a re-download.
+mkdir -p "${TMP_DIR}/bucko-link"
+ln -s "${TMP_DIR}/bucko-ok/qwen3.8-flash-next-w4a16-fp8ple" "${TMP_DIR}/bucko-link/qwen3.8-flash-next-w4a16-fp8ple"
+if out="$(run_deps "$bucko_main" "${TMP_DIR}/bucko-link")"; then
+  echo "ASSERTION FAILED: a model folder symlinked out of MODEL_DIR passed preflight" >&2; exit 1
+fi
+assert_contains "$out" "resolve OUTSIDE \$MODEL_DIR through a symlink"
+# A link that stays inside ${MODEL_DIR} (another name for the same folder) is fine.
+mkdir -p "${TMP_DIR}/bucko-rel/elsewhere"
+cp -r "${TMP_DIR}/bucko-ok/qwen3.8-flash-next-w4a16-fp8ple" "${TMP_DIR}/bucko-rel/elsewhere/"
+ln -s "elsewhere/qwen3.8-flash-next-w4a16-fp8ple" "${TMP_DIR}/bucko-rel/qwen3.8-flash-next-w4a16-fp8ple"
+out="$(run_deps "$bucko_main" "${TMP_DIR}/bucko-rel")"
+[[ -z "$out" ]] || { echo "ASSERTION FAILED: an in-MODEL_DIR relative symlink was refused: $out" >&2; exit 1; }
+# Only `command:` lists are read: a `/models/…` bind-mount TARGET (as SGLang's chat
+# template mounts) must not be checked as a host path.
+target_compose="${TMP_DIR}/mount-target.yml"
+cat > "$target_compose" <<'YAML'
+services:
+  engine:
+    image: example
+    volumes:
+      - "${MODEL_DIR}:/models:ro"
+      - ./chat_template.jinja:/models/not-a-model/chat_template.jinja:ro
+    environment:
+      - M=/models/also-not-checked
+YAML
+out="$(run_deps "$target_compose" "${TMP_DIR}/bucko-empty")"
+[[ -z "$out" ]] || { echo "ASSERTION FAILED: a /models mount target was checked as weights: $out" >&2; exit 1; }
+
 echo "test-preflight-compose-deps: ok"
