@@ -57,9 +57,30 @@ Measurements, with dates and settings, are in each compose's header and in [BENC
 ## What club-3090 adds
 
 - **A launcher for every compose** (`models/glm-5.3-flash/strata-maya/launcher/`: `maya-entrypoint.sh` and `maya_prepare.py`). Maya's own setup isn't used in the image. The model folder is mounted read-only, but Maya writes its pack next to the shards, so the launcher links the shards into a folder of their own on the data volume, checks their SHA-256 there, builds the pack with Maya's `tools/iq_pack.py` (and stamps it as `maya.py` does, so a changed shard rebuilds it), writes the config and starts `serve/server.py` on the cards `MAYA_GPUS` names. The compose passes the quant as the launcher's one argument, not as a setting, so no saved value can point a slug at another quant's pack.
-- **Calibration knobs:** `MAYA_PCIE_SHARE` and `MAYA_CPU_LANE` become the engine's `STRATA_GLM_PCIE_SHARE` / `STRATA_GLM_CPU_LANE` when set. They are what Maya's own `maya.sh --calibrate` tunes for a PC; the composes ship the engine's own choice.
+- **Calibration knobs:** `MAYA_PCIE_SHARE` and `MAYA_CPU_LANE` become the engine's `STRATA_GLM_PCIE_SHARE` / `STRATA_GLM_CPU_LANE` when set. They are what Maya's own calibration tunes for a PC; the composes ship the engine's own choice. See [Tuning for your PC](#tuning-for-your-pc).
 - **Runtime numbers from `/metrics`.** Maya serves Strata's `/metrics` document (its version in `engine.maya_version`), but its draft counts are only in its engine log (`/data/<quant>/maya.log`, "glm spec: N of M drafts accepted"). Given the container, `scripts/lib/strata_metrics.py` sums them, so `health.sh`, `verify-full` (its MTP acceptance check), `bench.sh` and `report.sh` read Maya's drafts the way they read Strata's.
 - **The club conventions:** the `CLUB3090_RESTART` knob, `BIND_HOST` / `ESTATE_PORT` / `ESTATE_CONTAINER` / `ESTATE_GPUS`, and the host GID plus `umask 0002` on the data volume.
+
+## Tuning for your PC
+
+Maya's calibration measures decode at a few splits of each token's RAM-tier experts between the CPU and the PCIe link, and at fewer CPU threads, then keeps the fastest. It takes about 10–15 minutes, because the model loads first. Boot the slug you want to tune first and let it come up: the calibration reads the config that boot wrote, and all the topologies of one quant share its folder on the data volume, so a config last written by the one-card slug tunes one card. Then stop it, since the calibration needs the GPUs to itself. For `strata-maya/glm53-flash-single-maya-s`:
+
+```bash
+bash scripts/switch.sh --down
+f="$(bash scripts/settings.sh compose-env-file)"
+CLUB3090_DATA_DIR="${CLUB3090_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/club-3090}" \
+  docker compose --env-file "$f" -f models/glm-5.3-flash/strata-maya/compose/single/maya-s/base.yml \
+  run --rm --entrypoint /bin/sh strata-maya -c \
+  'umask 0002; cd /opt/maya && exec .venv/bin/python maya.py --calibrate --no-start --yes --plain --config /data/maya-s/maya.json'
+docker compose --env-file "$f" -f models/glm-5.3-flash/strata-maya/compose/single/maya-s/base.yml down
+rm -f "$f"
+```
+
+For another slug, use its compose and its quant's folder (`/data/maya-m/…`, `/data/maya-l/…`).
+- **Keep `--no-start`.** Without it Maya starts a server when it finishes, from the config our launcher wrote: listening on every address in the container, with no API key.
+- **It prints** each split and thread count it tried, then the settings it changed, e.g. `tuned for this PC: STRATA_GLM_PCIE_SHARE=0.10 (32.3 tok/s)`, or that the engine's own settings are already the fastest here.
+- **The `down`** removes the network the one-off run created; without it, each tuned quant leaves one behind.
+- **Save what it printed as settings**, because the launcher writes Maya's config afresh at every boot and drops what the tuning wrote there. `STRATA_GLM_PCIE_SHARE` becomes `MAYA_PCIE_SHARE` and `STRATA_GLM_CPU_LANE` becomes `MAYA_CPU_LANE`: `bash scripts/settings.sh set MAYA_PCIE_SHARE=0.10`. Every Maya slug reads a saved value, whatever its quant or card count, so save the result of the slug you run. `switch.sh --set` doesn't accept these two settings yet.
 
 ## Known gaps
 
