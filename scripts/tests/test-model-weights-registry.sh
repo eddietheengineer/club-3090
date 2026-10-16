@@ -83,6 +83,22 @@ assert_lookup carnice-v2-27b-int4-recipe-d-bf16mtp/chat_template.jinja qwen3.6-2
 assert_lookup qwopus3.6-27b-int4-recipe-d-bf16mtp/config.json qwen3.6-27b:qwopus-bf16mtp
 assert_lookup gemma-4-31b-google-qat-w4a16/config.json gemma-4-31b:google-qat-w4a16
 
+# Entries that SHARE a download dir (`local_subdir`) must still resolve to their own
+# recipe: the lookup feeds preflight's "missing weights" hint, and a tie used to go to
+# the alphabetically last variant — a missing Maya-L folder printed the Maya-S download
+# (reported on a 2× 5090 rig, Discussion #1700).
+assert_lookup glm-5.3-flash-maya-gguf/Maya-L glm-5.3-flash:maya-l
+assert_lookup glm-5.3-flash-maya-gguf/Maya-M glm-5.3-flash:maya-m
+assert_lookup glm-5.3-flash-maya-gguf/Maya-S-v2-IQ2_XXS glm-5.3-flash:maya-s
+assert_lookup glm-5.3-flash-gguf/UD-IQ3_XXS glm-5.3-flash:unsloth-ud-iq3xxs
+assert_lookup deepseek-v4-flash-0731-gguf/UD-IQ2_XXS deepseek-v4-flash-0731:unsloth-iq2-xxs
+# A main artifact and the drafter inside it: the dir is the main weights, the
+# drafter's own subdir is the drafter.
+assert_lookup qwen3.8-flash-next-w4a16-fp8ple qwen3.8-flash-next:albucino-autoround-int4-fp8ple
+assert_lookup qwen3.8-flash-next-w4a16-fp8ple/config.json qwen3.8-flash-next:albucino-autoround-int4-fp8ple
+assert_lookup qwen3.8-flash-next-w4a16-fp8ple/runtime/mtp-int4-g32 qwen3.8-flash-next:albucino-mtp-int4-g32
+assert_lookup qwen3.6-27b-gguf qwen3.6-27b:gguf
+
 # `verify_glob` must match the entry's declared `format`.
 #
 # It DEFAULTS to `*.safetensors` (weights.py), so a GGUF entry that simply omits

@@ -220,8 +220,15 @@ def _lookup_path(rel: str) -> tuple[str, str]:
         rel = rel[: -len("/config.json")]
     rel = rel.split(":", 1)[0]
 
+    # Several entries can share one download dir (`local_subdir`): the three Maya quants
+    # under glm-5.3-flash-maya-gguf/, the unsloth UD-* quants of one model, a main
+    # artifact and the drafter shipped inside it. Matching on that dir alone tied them,
+    # and the tie went to the alphabetically LAST variant, so preflight told a Maya-L
+    # user to download Maya-S. Each entry also knows a more specific dir of its own —
+    # its `path` and the dir its `files` live in — and the longest of those that
+    # contains `rel` decides. An exact file match beats any dir.
     models = _load_models()
-    matches: list[tuple[int, str, str]] = []
+    matches: list[tuple[int, int, str, str]] = []
     for model_id, model in models.items():
         for variant, meta in (model.get("weights") or {}).items():
             subdir = str(meta.get("local_subdir") or meta.get("path") or "")
@@ -231,13 +238,26 @@ def _lookup_path(rel: str) -> tuple[str, str]:
             if isinstance(files, str):
                 files = [files]
             exact_files = {f"{subdir}/{name}" for name in files}
+            dirs = {subdir}
+            if meta.get("path"):
+                dirs.add(str(meta["path"]).strip("/"))
+            if exact_files:
+                files_dir = os.path.dirname(os.path.commonprefix(sorted(exact_files)) + "x") \
+                    if len(exact_files) == 1 else os.path.commonpath(sorted(exact_files))
+                if files_dir == subdir or files_dir.startswith(f"{subdir}/"):
+                    dirs.add(files_dir)
+            # On an equal match a model's own weights beat the companions (a drafter or a
+            # vision projector) that share their dir.
+            primary = 0 if meta.get("kind") in ("draft", "mmproj") else 1
             if rel in exact_files:
-                matches.append((len(rel) + 1000, model_id, variant))
-            elif rel == subdir or rel.startswith(f"{subdir}/"):
-                matches.append((len(subdir), model_id, variant))
+                matches.append((len(rel) + 1000, primary, model_id, variant))
+                continue
+            hit = [len(d) for d in dirs if rel == d or rel.startswith(f"{d}/")]
+            if hit:
+                matches.append((max(hit), primary, model_id, variant))
     if not matches:
         _die(f"no recipe for path: {rel}")
-    _, model_id, variant = sorted(matches, reverse=True)[0]
+    _, _, model_id, variant = sorted(matches, reverse=True)[0]
     return model_id, variant
 
 
