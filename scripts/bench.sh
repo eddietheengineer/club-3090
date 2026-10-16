@@ -628,7 +628,7 @@ CAP_ENABLED=0
 CAP_T0=""; CAP_T1=""
 CAP_DMON_PID=""; CAP_VRAM_PID=""; CAP_LINK_PID=""
 CAP_VRAM_IDLE=""; CAP_CPU0=""
-CAP_ARGV=""; CAP_OFFLOAD=""; CAP_CACHE_WANTED=0
+CAP_ARGV=""; CAP_OFFLOAD=""; CAP_MOECACHE=0; CAP_CACHE_WANTED=0
 CAP_PCIE_PCT=""; CAP_RAM_DEMAND=""; CAP_RAM_WINDOW=""; CAP_RAM_SUMMARY=""
 CAP_WORK=""
 if [[ "$CAPTURE" == "1" && -f "${ROOT_DIR}/scripts/lib/capture.sh" ]]; then
@@ -658,7 +658,7 @@ if [[ "$CAPTURE" == "1" && -f "${ROOT_DIR}/scripts/lib/capture.sh" ]]; then
   echo "  endpoint       : ${URL}  (mode=${ENDPOINT})"
   echo "  model          : ${MODEL}"
   if [[ -n "${CAP_PID:-}" ]]; then
-    echo "  serving pid    : ${CAP_PID}$([[ -n "$CAP_ARGV" ]] || echo '  (argv unreadable — different uid?)')"
+    echo "  serving pid    : ${CAP_PID} ($(cap_server_pid_source "$CAP_PID"))$([[ -n "$CAP_ARGV" ]] || echo '  (argv unreadable — different uid?)')"
   else
     echo "  serving pid    : unknown (set SERVER_PID=<pid> for argv/RSS/swap capture)"
   fi
@@ -691,8 +691,22 @@ if [[ "$CAPTURE" == "1" && -f "${ROOT_DIR}/scripts/lib/capture.sh" ]]; then
   _v="$(cap_moe_cache_config "$CAP_ARGV" || true)"
   [[ -n "$_v" ]] && echo "  moe-cache cfg  : ${_v}"
   case "$_v" in *"moe_cache_cap=<unset>"*) : ;; *) CAP_CACHE_WANTED=1 ;; esac
-  # The GATE for every moe-cache capture below.
+  # Is any of the model in host RAM? (CPU offload, whichever engine does it.)
   CAP_OFFLOAD="$(cap_offload_detected "$CAP_ARGV" || true)"
+  # Project Maya's GLM engine reports its RAM tier only in its own log file inside
+  # the container (and in /metrics once a request has run): ask the Strata reader.
+  if [[ -z "$CAP_OFFLOAD" && "$ENGINE_KIND" == "strata" ]]; then
+    _hr_c=()
+    if [[ -n "${CONTAINER:-}" && "$CONTAINER" != none ]] && docker inspect --type container "$CONTAINER" >/dev/null 2>&1; then
+      _hr_c=(--container "$CONTAINER")
+    fi
+    CAP_OFFLOAD="$(python3 "${ROOT_DIR}/scripts/lib/strata_metrics.py" host-ram "$URL" "${_hr_c[@]}" 2>/dev/null || true)"
+  fi
+  # The GATE for every moe-cache capture below: llama.cpp's [moe-cache] lines exist
+  # only on a llama.cpp-family offload. bucko-vllm, Strata, Project Maya and
+  # ExLlamaV3 keep experts in host RAM too, but print none of those lines.
+  CAP_MOECACHE=0
+  if [[ -n "$CAP_OFFLOAD" ]] && cap_offload_is_llamacpp "$CAP_OFFLOAD"; then CAP_MOECACHE=1; fi
   # One rendering, used for BOTH the printed line and the card record — the card
   # parser reads the printed line back, so a second phrasing here would make the
   # in-process record and the parsed one disagree (caught by the round-trip test).
@@ -748,7 +762,7 @@ if [[ "$CAPTURE" == "1" && -f "${ROOT_DIR}/scripts/lib/capture.sh" ]]; then
   CAP_VRAM_IDLE="$(cap_vram_used || true)"
   CAP_CPU0="$(cap_cpu_snap || true)"
   # Cache counters BEFORE the measured window, so the MARGINAL rate can be derived.
-  if [[ -n "$CAP_OFFLOAD" ]]; then
+  if (( CAP_MOECACHE )); then
     cap_refresh_log
     cap_moe_parse counters > "$CAP_WORK/counters0" 2>/dev/null || true
   fi
@@ -1760,6 +1774,9 @@ print(f"{sum(xs)/len(xs):.2f}" if xs else "")
   echo "========== CAPTURE: EXPERT CACHE (moe-cache) =========="
   if [[ -z "$CAP_OFFLOAD" ]]; then
     echo "  skipped: no CPU offload detected — nothing for an expert cache to cache."
+  elif (( ! CAP_MOECACHE )); then
+    echo "  not captured: experts are in host RAM (${CAP_OFFLOAD}), but this engine doesn't print"
+    echo "                llama.cpp's [moe-cache] lines, so there is no pool census or hit rate to read here."
   elif ! cap_log_available "moe-cache telemetry"; then
     : # the notice is already printed by cap_log_available
   else

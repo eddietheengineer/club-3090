@@ -12,6 +12,13 @@ nothing there and would report a dead drafter or an empty run. /metrics carries 
   strata_metrics.py delta <before.json> <after.json>   what happened between two snapshots
   strata_metrics.py recent <base-url> [N] [--container C | --log-file F]
                                                        the newest N finished requests (default 12)
+  strata_metrics.py host-ram <base-url> [--container C | --log-file F]
+                                                       evidence that experts sit in host RAM
+
+`host-ram` prints one line of evidence and exits 0, or exits 1 when there is none: the expert
+slots in RAM that /metrics reports (`tiers.now.ram_slots`, from the engine's STAT lines, so only
+once a request has run), else, for Project Maya, the "RAM tier X GB pinned" lines of its engine
+log (the latest one per card). bench.sh uses it for Maya, whose docker log doesn't say.
 
 `delta` and `recent` print key=value lines:
   requests  output_tokens  decode_tok_s  prefill_tok_s  drafts_offered  drafts_accepted  accept_rate
@@ -75,11 +82,27 @@ def parse(body, where):
 
 
 MAYA_SPEC = re.compile(r"glm spec: (\d+) of (\d+) drafts accepted")
+# "glm fast: CUDA0 RAM tier 52.66 GB pinned, 4737 slots" — once per card at each start
+MAYA_RAM_TIER = re.compile(r"\b(CUDA\d+) RAM tier ([0-9]+(?:\.[0-9]+)?) GB pinned")
 
 
 def maya_log_lines(data, source):
     """The engine log's per-request draft lines, oldest first, as (accepted, offered) pairs.
     source: ("container", name) reads <storage.path>/maya.log there; ("file", path) reads a file."""
+    return [(int(m.group(1)), int(m.group(2))) for m in MAYA_SPEC.finditer(maya_log_text(data, source))]
+
+
+def maya_ram_tier_gb(data, source):
+    """The RAM tier the engine log reports, in GB: the latest line per card, summed (the log is
+    appended across restarts, so an earlier start's line for the same card is superseded)."""
+    latest = {}
+    for m in MAYA_RAM_TIER.finditer(maya_log_text(data, source)):
+        latest[m.group(1)] = float(m.group(2))
+    return sum(latest.values())
+
+
+def maya_log_text(data, source):
+    """The text of Project Maya's engine log. source as for maya_log_lines."""
     kind, where = source
     if kind == "file":
         try:
@@ -100,7 +123,7 @@ def maya_log_lines(data, source):
         if r.returncode != 0:
             fail(f"could not read {log} in {where}: {r.stderr.strip() or 'docker exec failed'}")
         text = r.stdout
-    return [(int(m.group(1)), int(m.group(2))) for m in MAYA_SPEC.finditer(text)]
+    return text
 
 
 def log_source(args):
@@ -156,7 +179,7 @@ def emit(pairs):
 def main(argv):
     argv = list(argv)
     source = log_source(argv)
-    if len(argv) < 2 or argv[1] not in ("snapshot", "delta", "recent"):
+    if len(argv) < 2 or argv[1] not in ("snapshot", "delta", "recent", "host-ram"):
         print(__doc__.split("\n\n")[2], file=sys.stderr)
         return 2
     cmd = argv[1]
@@ -187,6 +210,20 @@ def main(argv):
             fail("the second snapshot has fewer requests than the first: the server restarted between them")
         emit(totals_figures(after["totals"], before["totals"]))
         return 0
+    if cmd == "host-ram":
+        if len(argv) != 3:
+            return main(argv[:1])
+        data = fetch(argv[2])
+        slots = num(((data.get("tiers") or {}).get("now") or {}).get("ram_slots"))
+        if slots > 0:
+            print(f"/metrics ({int(slots)} expert slots in RAM)")
+            return 0
+        if source and data["engine"].get("maya_version"):
+            gb = maya_ram_tier_gb(data, source)
+            if gb > 0:
+                print(f"engine log (RAM tier {gb:.2f} GB pinned)")
+                return 0
+        return 1
     # recent
     if len(argv) not in (3, 4):
         return main(argv[:1])
