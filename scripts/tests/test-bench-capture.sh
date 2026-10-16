@@ -29,9 +29,9 @@ BENCH="$ROOT_DIR/scripts/bench.sh"
 LIB="$ROOT_DIR/scripts/lib/capture.sh"
 FIX="$ROOT_DIR/scripts/tests/fixtures/offload-matrix"
 # ⚠️⚠️ FIXTURE PORTS LIVE ABOVE THE PRODUCT'S PORT SPACE, ON PURPOSE.
-# This test binds fake servers across PORT_BASE..PORT_BASE+22. The registry
+# This test binds fake servers across PORT_BASE..PORT_BASE+24. The registry
 # allocates real slug `default_port`s across 8010-8199, so a base inside that
-# span silently collides: any slug parked on one of these 23 ports makes this
+# span silently collides: any slug parked on one of these 25 ports makes this
 # guard fail WHENEVER THAT MODEL IS SERVING, and the failure reads as a broken
 # test rather than a port clash. Measured 2026-09-18: the old 8147 base overlapped
 # ELEVEN registry slugs (eight sgl/qwen38-27b-multi* on 8147-8154 plus three
@@ -540,6 +540,68 @@ command grep -q 'cpu-moe-split-experts' <<<"$(cap_offload_detected 'python main.
 CAP_LOG="$TMP/end.log" && command grep -q 'CUDA_Host' <<<"$(cap_offload_detected '')" \
   || fail "a CUDA_Host model buffer line must trigger offload detection"
 echo "  ✓ argv/env fingerprint: KV type, offload signals (x3), moe-cache cap"
+
+# --- offload on the engines that aren't llama.cpp (paulp83, #1700) ------------
+# bucko-vllm keeps its experts in host RAM through vLLM's own --cpu-offload-gb, and
+# Strata narrates loading its expert arena into RAM. Both read "not detected", so
+# the bench said "nothing for an expert cache to cache" about engines built on one.
+CAP_LOG=""
+v="$(cap_offload_detected 'vllm serve /models/m --offload-backend uva --cpu-offload-gb 30 --cpu-offload-params experts' || true)"
+[[ "$v" == "argv --cpu-offload-gb 30" ]] || fail "vLLM --cpu-offload-gb 30 must trigger offload detection, got: '$v'"
+v="$(cap_offload_detected 'vllm serve /models/m --cpu-offload-gb 0' || true)"
+[[ -z "$v" ]] || fail "--cpu-offload-gb 0 is vLLM's default (no offload) and must not count, got: '$v'"
+printf '%s\n' 'INFO 10-15 12:00:01 [uva.py:59] Total CPU offloaded parameters: 29.6' > "$TMP/vllm-offload.log"
+CAP_LOG="$TMP/vllm-offload.log"; v="$(cap_offload_detected '' || true)"
+[[ "$v" == "boot log (vLLM CPU offload 29.6 GiB)" ]] || fail "vLLM's offload line must be read, got: '$v'"
+printf '%s\n' "[strata] starting the engine: reading the model's weights ..." \
+  '[strata] loading the experts into RAM (about 52 GB) and locking part of them for the GPU.' > "$TMP/strata-ram.log"
+CAP_LOG="$TMP/strata-ram.log"; v="$(cap_offload_detected '' || true)"
+[[ "$v" == "boot log (experts loaded into host RAM)" ]] || fail "Strata's expert-arena narration must count, got: '$v'"
+printf '%s\n' "[strata] starting the engine: reading the model's weights ..." > "$TMP/strata-start.log"
+CAP_LOG="$TMP/strata-start.log"; v="$(cap_offload_detected '' || true)"
+[[ -z "$v" ]] || fail "Strata's start line alone says nothing about RAM, got: '$v'"
+CAP_LOG=""
+# Only llama.cpp-family reasons may open the [moe-cache] parser. The round trip
+# through cap_offload_detected catches a reason string renamed on one side only.
+for r in "$(cap_offload_detected 'llama-server -ot x=CPU')" "$(cap_offload_detected 'llama-server --n-cpu-moe 20')" \
+         "boot log (CUDA_Host model buffer)"; do
+  cap_offload_is_llamacpp "$r" || fail "'$r' is a llama.cpp offload and must open the moe-cache capture"
+done
+for r in "argv --cpu-offload-gb 30" "boot log (vLLM CPU offload 29.6 GiB)" "boot log (experts loaded into host RAM)" \
+         "$(cap_offload_detected 'python3 main.py --cpu-moe-split-experts 144')" "container argv --cpu-moe-threads" \
+         "engine log (RAM tier 109.57 GB pinned)" "/metrics (9799 expert slots in RAM)" ""; do
+  cap_offload_is_llamacpp "$r" && fail "'$r' is not a llama.cpp offload: no [moe-cache] lines to parse"
+done
+# The serving pid from the container when no process has a known server name
+# (Strata, Project Maya, TabbyAPI), so RSS and swap are captured there too. A
+# stub docker and pgrep keep it hermetic; the pids can't exist on any host.
+mkdir -p "$TMP/stub"
+cat > "$TMP/stub/docker" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+  top) printf '%s\n' 'PID RSS' '999999901 120000' '999999902 98000000' '999999903 5000' ;;
+  inspect) printf '%s\n' "${STUB_INSPECT:-[{\"Config\":{\"Cmd\":[\"--port\",\"8080\"]}}]}" ;;
+  *) exit 1 ;;
+esac
+EOF
+printf '#!/usr/bin/env bash\nexit 1\n' > "$TMP/stub/pgrep"
+chmod +x "$TMP/stub/docker" "$TMP/stub/pgrep"
+v="$(PATH="$TMP/stub:$PATH" CONTAINER=maya-x SERVER_PID= cap_server_pid || true)"
+[[ "$v" == "999999902" ]] || fail "with no named server process, the pid must be the container's largest, got: '$v'"
+[[ "$(PATH="$TMP/stub:$PATH" CONTAINER=maya-x SERVER_PID= cap_server_pid_source 999999902)" == "largest process in container maya-x" ]] \
+  || fail "the fingerprint must say the pid came from the container"
+v="$(PATH="$TMP/stub:$PATH" CONTAINER=maya-x SERVER_PID=none cap_server_pid || true)"
+[[ -z "$v" ]] || fail "SERVER_PID=none must disable the container fallback too, got: '$v'"
+v="$(PATH="$TMP/stub:$PATH" CONTAINER=none SERVER_PID= cap_server_pid || true)"
+[[ -z "$v" ]] || fail "CONTAINER=none must not reach docker, got: '$v'"
+# The container command is read even when an argv was found: the adopted process
+# need not be the one the container command starts.
+v="$(PATH="$TMP/stub:$PATH" CONTAINER=exl3-x STUB_INSPECT='[{"Config":{"Cmd":["--cpu-moe-split-experts","144"]}}]' \
+     cap_offload_detected 'python3 main.py --host 0.0.0.0' || true)"
+[[ "$v" == "container argv --cpu-moe-split-experts" ]] || fail "a container command with the exl3 flag must count, got: '$v'"
+v="$(PATH="$TMP/stub:$PATH" CONTAINER=exl3-x cap_offload_detected 'python3 main.py --host 0.0.0.0' || true)"
+[[ -z "$v" ]] || fail "a container command without an offload flag must not count, got: '$v'"
+echo "  ✓ offload on bucko-vllm / Strata / ExLlamaV3 detected, only llama.cpp reasons open the moe-cache parser, container pid fallback"
 
 # --- derived RAM demand + status enum + divergence ---------------------------
 # 94001 misses x 4352 KiB / 1024 / 60 s = 6658 MB/s
@@ -1163,5 +1225,26 @@ command grep -q "BENCH_GPUS='7' selects no GPU" "$TMP/gbad.out.err" \
   || fail "BENCH_GPUS naming an absent card must stop the run with a Fix: hint"
 command grep -q 'NARRATIVE' "$TMP/gbad.out" && fail "a bad BENCH_GPUS must stop before measuring"
 echo "  ✓ BENCH_GPUS end to end: fingerprint names it, VRAM reads the selected card, a bad one stops the run"
+
+# --- 22. a non-llama.cpp offload never reaches the [moe-cache] parser (#1700) ----
+# The log below HAS [moe-cache] pool lines (the healthy fake server's own), so if
+# the gate opened on any offload, the census would be printed. The control run adds
+# a llama.cpp offload line to the same log and must print it: that proves the lines
+# parse, so their absence in the first run is the gate, not a bad fixture.
+command grep -v -E 'CUDA_Host +model buffer|CPU +model buffer size' "$TMP/server-healthy-$PORT_BASE.log" > "$TMP/vllm-moe.log"
+command grep -q '\[moe-cache\] CUDA[0-9] pool' "$TMP/vllm-moe.log" || fail "fixture: the healthy server log has no pool lines"
+printf '%s\n' 'INFO 10-15 12:00:01 [uva.py:59] Total CPU offloaded parameters: 29.6' >> "$TMP/vllm-moe.log"
+run_bench healthy "$((PORT_BASE+23))" "$TMP/vllmoff.out" SERVER_LOG="$TMP/vllm-moe.log" SERVER_PID=none
+V="$TMP/vllmoff.out"
+command grep -q 'CPU offload    : DETECTED via boot log (vLLM CPU offload 29.6 GiB)' "$V" \
+  || fail "vLLM's offload line must reach the fingerprint: $(command grep -m1 'CPU offload' "$V")"
+command grep -q 'not captured: experts are in host RAM (boot log (vLLM CPU offload 29.6 GiB))' "$V" \
+  || fail "a non-llama.cpp offload must say why the moe-cache capture is empty"
+command grep -q 'pool census (per device' "$V" && fail "a vLLM offload must not parse llama.cpp's [moe-cache] lines"
+{ cat "$TMP/vllm-moe.log"; echo 'llm_load_tensors:   CUDA_Host model buffer size = 52011.25 MiB'; } > "$TMP/llama-moe.log"
+run_bench healthy "$((PORT_BASE+24))" "$TMP/llamaoff.out" SERVER_LOG="$TMP/llama-moe.log" SERVER_PID=none
+command grep -q 'pool census (per device' "$TMP/llamaoff.out" \
+  || fail "control: a llama.cpp offload on the same log must parse the census (else the fixture proves nothing)"
+echo "  ✓ a vLLM offload is reported but kept out of the moe-cache parser; the llama.cpp control still parses"
 
 echo "test-bench-capture: ok"

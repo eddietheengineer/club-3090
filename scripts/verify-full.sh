@@ -302,9 +302,21 @@ check_patches() {
     pass "Genesis patches applied (apply_all completed clean)"
   elif grep -q "\[Genesis\] applied:" <<< "$docker_logs"; then
     pass "Genesis patches applied (partial log — apply_all may still be running)"
-  else
+  elif container_loads_genesis; then
     skip "no Genesis marker in logs (container restarted, or Genesis not loaded)"
+  else
+    # No shipped compose has loaded Genesis since 2026-07-06, so on a plain vLLM
+    # container the old hint above read like a fault (paulp83, #1700).
+    skip "not applicable — this container doesn't load Genesis (no Genesis mount, no GENESIS_* setting)"
   fi
+}
+
+# container_loads_genesis — the container mounts Genesis's patch tree (vllm/_genesis)
+# or sets a GENESIS_* variable: the two ways a compose has ever turned it on.
+container_loads_genesis() {
+  local spec
+  spec="$(docker inspect --format '{{range .Mounts}}{{.Source}} {{.Destination}}{{"\n"}}{{end}}{{range .Config.Env}}{{.}}{{"\n"}}{{end}}' "${CONTAINER}" 2>/dev/null)" || return 0
+  command grep -qE '(^|[/ ])_genesis([/ ]|$)|^GENESIS_' <<< "$spec"
 }
 run_check "patches" check_patches
 

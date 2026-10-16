@@ -136,7 +136,8 @@ cap_gpu_count() {
 # cap_server_pid — pid of the local serving process.
 #   SERVER_PID=<n>     use it verbatim
 #   SERVER_PID=none    disable /proc inspection entirely (hermetic tests, docker)
-#   unset              pgrep -x for the known bare-metal server names
+#   unset              pgrep -x for the known bare-metal server names, then the
+#                      container's largest process (cap_container_pid)
 # `pgrep -x` matches the executable NAME exactly. `pgrep -f` would match this
 # script's own command line and has killed the calling shell before — never use it.
 cap_server_pid() {
@@ -148,8 +149,39 @@ cap_server_pid() {
     p="$(pgrep -x "$name" 2>/dev/null | head -1 || true)"
     [[ -n "$p" ]] && { echo "$p"; return 0; }
   done
+  if p="$(cap_container_pid)"; then echo "$p"; return 0; fi
   echo ""
   return 1
+}
+
+# cap_container_pid — host pid of the largest process (by RSS) in $CONTAINER.
+# For the engines whose server has none of the names above — Strata and Project
+# Maya (a python server plus the engine binary that holds the RAM tier), TabbyAPI
+# (python3) — so their RSS and swap are captured instead of reading "unknown".
+# The largest process is the one holding the weights, which is what the swap
+# check is about. Container processes are host processes: their /proc/<pid>/status
+# and cmdline are readable without sharing the uid.
+cap_container_pid() {
+  [[ "${SERVER_PID:-}" == "none" ]] && return 1
+  [[ -n "${CONTAINER:-}" && "${CONTAINER}" != "none" ]] || return 1
+  cap_have docker || return 1
+  local p
+  p="$(docker top "$CONTAINER" -eo pid,rss 2>/dev/null \
+       | awk 'NR > 1 && $1 ~ /^[0-9]+$/ && $2 + 0 > best { best = $2 + 0; pid = $1 }
+              END { if (pid != "") print pid }')"
+  [[ -n "$p" ]] || return 1
+  echo "$p"
+}
+
+# cap_server_pid_source <pid> — how cap_server_pid found it, for the fingerprint line.
+cap_server_pid_source() {
+  local pid="$1" comm
+  [[ -n "${SERVER_PID:-}" ]] && { echo "SERVER_PID"; return 0; }
+  comm="$(cat "/proc/${pid}/comm" 2>/dev/null || true)"
+  case "$comm" in
+    llama-server|ik_llama-server|sglang|vllm) echo "process name ${comm}" ;;
+    *) echo "largest process in container ${CONTAINER:-?}" ;;
+  esac
 }
 
 # cap_init [tmpdir] — resolve everything the later captures depend on.
@@ -346,22 +378,38 @@ cap_kv_type() {
 # weights is resident outside GPU VRAM:
 #   llama.cpp argv  -ot / --override-tensor / --n-cpu-moe / --cpu-moe
 #   ExLlamaV3 argv  --cpu-moe-split-experts / --cpu-moe-threads
-#   boot log       a "CUDA_Host model buffer" allocation
-# For containerized TabbyAPI, the Python server argv is not visible in the host
-# /proc namespace, so inspect the container command as a last resort. This is
-# important for Qwen3.8-Flash-Next: its CPU-MoE path is configured with
-# --cpu-moe-split-experts, not any llama.cpp spelling.
-# Echoes the reason; returns 0 when offload is active.
+#   vLLM argv       --cpu-offload-gb N with N > 0 (bucko-vllm keeps its experts
+#                   in host RAM this way: --cpu-offload-params experts)
+#   boot log       a "CUDA_Host model buffer" allocation (llama.cpp); vLLM's
+#                   "Total CPU offloaded parameters: X" (printed only when X > 0);
+#                   Strata's "[strata] loading the experts into RAM" (its server
+#                   narrates the engine's expert-arena load)
+# Project Maya's GLM engine says it only in its own log file inside the container,
+# so bench.sh asks scripts/lib/strata_metrics.py host-ram for that one.
+# For containerized TabbyAPI, the Python server argv may not be the one we read,
+# so inspect the container command too. This is important for Qwen3.8-Flash-Next:
+# its CPU-MoE path is configured with --cpu-moe-split-experts, not any llama.cpp
+# spelling.
+# Echoes the reason; returns 0 when offload is active. Only the llama.cpp-family
+# reasons mean llama.cpp's [moe-cache] lines can exist: cap_offload_is_llamacpp.
 cap_offload_detected() {
-  local argv="${1:-}" inspect_argv=""
+  local argv="${1:-}" inspect_argv="" v
   if [[ -n "$argv" ]]; then
     local f
     for f in -ot --override-tensor --n-cpu-moe --cpu-moe -ncmoe \
              --cpu-moe-split-experts --cpu-moe-threads; do
       if cap_argv_has "$argv" "$f"; then echo "argv ${f}"; return 0; fi
     done
+    # A value, not a presence test: --cpu-offload-gb 0 is vLLM's default (no offload).
+    v="$(cap_argv_flag "$argv" --cpu-offload-gb || true)"
+    if [[ "$v" =~ ^[0-9]+([.][0-9]+)?$ ]] && awk -v g="$v" 'BEGIN { exit !(g > 0) }'; then
+      echo "argv --cpu-offload-gb ${v}"; return 0
+    fi
   fi
-  if [[ -z "$argv" && -n "${CONTAINER:-}" && "${CONTAINER:-}" != "none" ]] \
+  # The container's own command: with no argv at all, or one that named none of
+  # the flags above (cap_server_pid can adopt a process that isn't the one the
+  # container command starts).
+  if [[ -n "${CONTAINER:-}" && "${CONTAINER:-}" != "none" ]] \
      && cap_have docker && docker inspect "$CONTAINER" >/dev/null 2>&1; then
     # Config.Cmd/Entrypoint are JSON, but a literal flag match is sufficient and
     # avoids depending on jq (the launcher path is stdlib-only).
@@ -382,6 +430,30 @@ cap_offload_detected() {
     echo "boot log (CPU-MoE/offload marker)"
     return 0
   fi
+  if [[ -n "$CAP_LOG" && -r "$CAP_LOG" ]]; then
+    # vLLM's UVA offloader logs this line only when it moved bytes to host RAM;
+    # the figure is GiB (vllm/utils/mem_utils.py format_gib prints the bare number).
+    v="$(command grep -oE 'Total CPU offloaded parameters: *[0-9][0-9.]*' "$CAP_LOG" 2>/dev/null \
+         | tail -1 | sed -E 's/^Total CPU offloaded parameters: *//')"
+    if [[ -n "$v" ]]; then echo "boot log (vLLM CPU offload ${v} GiB)"; return 0; fi
+    if command grep -qE '\[[a-z_-]+\] loading the experts into RAM' "$CAP_LOG" 2>/dev/null; then
+      echo "boot log (experts loaded into host RAM)"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+# cap_offload_is_llamacpp <reason> — 0 when the reason cap_offload_detected gave
+# is a llama.cpp-family one, i.e. llama.cpp's [moe-cache] telemetry can be in the
+# log. Every other engine keeps its expert-cache numbers elsewhere (Strata's
+# /metrics, vLLM's own counters), so parsing [moe-cache] lines there would read
+# an absence as a cache result.
+cap_offload_is_llamacpp() {
+  case "${1:-}" in
+    "argv -ot"|"argv --override-tensor"|"argv --n-cpu-moe"|"argv --cpu-moe"|"argv -ncmoe"|\
+    "boot log (CUDA_Host model buffer)") return 0 ;;
+  esac
   return 1
 }
 

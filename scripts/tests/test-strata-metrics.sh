@@ -11,7 +11,8 @@
 #   2. no drafts offered: accept_rate is EMPTY, not 0 (the consumer decides what that means);
 #   3. delta between two snapshots, and a restart between them (fewer requests) refused;
 #   4. negative controls, each exit 3: not JSON, JSON without engine.version, unreachable;
-#   5. soak-helper's Strata log signature: the per-request 'done' line, not the progress line.
+#   5. soak-helper's Strata log signature: the per-request 'done' line, not the progress line;
+#   6. host-ram: the evidence bench.sh reads for Project Maya's RAM tier, and its exit 1 / 3.
 set -uo pipefail
 export CLUB3090_CONFIG_DIR=/nonexistent/club-3090-test-config   # tests never read your real settings (#1466)
 export PYTHONUTF8="${PYTHONUTF8:-1}"
@@ -141,6 +142,41 @@ PY
 [[ "$got" == "(107.7, 'strata-log') (None, '') (52.6, 'strata-log')" ]] \
   && ok "soak-helper: Strata's and Project Maya's 'done' lines are engine-reported decode rates; the progress line is not" \
   || bad "soak-helper Strata signature: got $got"
+
+# 7. host-ram: bench.sh's evidence that Project Maya keeps experts in host RAM (#1700). Its
+# docker log doesn't say; /metrics does once a request has run, and its engine log always.
+mkdir -p "$work/maya-tiers" "$work/maya-tiers0"
+python3 - "$work" <<'PY'
+import json, sys
+w = sys.argv[1]
+doc = json.load(open(f"{w}/maya/metrics"))
+doc["tiers"] = {"now": {"tok_s": 29.6, "vram_hit": 0.57, "ram_slots": 9799, "ram_used": 9120}, "history": {}}
+json.dump(doc, open(f"{w}/maya-tiers/metrics", "w"))
+doc["tiers"]["now"]["ram_slots"] = 0
+json.dump(doc, open(f"{w}/maya-tiers0/metrics", "w"))
+PY
+# the log is appended across restarts: an earlier start on one card, then the current one on two
+printf '%s\n' "glm fast: CUDA0 RAM tier 10.00 GB pinned, 900 slots" "glm stat: decode 20.28 ms/tok" \
+  "glm fast: CUDA0 RAM tier 52.66 GB pinned, 4737 slots" "glm fast: CUDA1 RAM tier 56.91 GB pinned, 5062 slots" > "$work/maya-ram.log"
+printf '%s\n' "glm fast: CUDA0 RAM tier 0.00 GB pinned, 0 slots" > "$work/maya-ram0.log"
+out="$(python3 "$SM" host-ram "$base/maya-tiers")"; r=$?
+[[ $r -eq 0 && "$out" == "/metrics (9799 expert slots in RAM)" ]] \
+  && ok "host-ram: expert slots in RAM from /metrics" || bad "host-ram /metrics: rc=$r, got: $out"
+out="$(python3 "$SM" host-ram "$base/maya" --log-file "$work/maya-ram.log")"; r=$?
+[[ $r -eq 0 && "$out" == "engine log (RAM tier 109.57 GB pinned)" ]] \
+  && ok "host-ram: Maya's engine log, the latest line per card (an earlier start's line superseded)" \
+  || bad "host-ram log: rc=$r, got: $out"
+python3 "$SM" host-ram "$base/maya" --log-file "$work/maya.log" >/dev/null 2>&1; r=$?
+[[ $r -eq 1 ]] && ok "host-ram: no RAM-tier line, exit 1 (no evidence, not a guess)" || bad "host-ram no line: exit $r, want 1"
+python3 "$SM" host-ram "$base/maya-tiers0" --log-file "$work/maya-ram0.log" >/dev/null 2>&1; r=$?
+[[ $r -eq 1 ]] && ok "host-ram: a RAM tier of 0 slots / 0 GB (all experts in VRAM) is not offload: exit 1" \
+  || bad "host-ram zero tier: exit $r, want 1"
+python3 "$SM" host-ram "$base/ok" --log-file "$work/maya-ram.log" >/dev/null 2>&1; r=$?
+[[ $r -eq 1 ]] && ok "host-ram: a Strata document doesn't read a Maya log: exit 1" || bad "host-ram Strata: exit $r, want 1"
+python3 "$SM" host-ram "$base/maya" --log-file "$work/no-such.log" >/dev/null 2>&1; r=$?
+[[ $r -eq 3 ]] && ok "host-ram: a Maya log that can't be read: exit 3" || bad "host-ram missing log: exit $r, want 3"
+python3 "$SM" host-ram "http://127.0.0.1:1" >/dev/null 2>&1; r=$?
+[[ $r -eq 3 ]] && ok "host-ram: unreachable server: exit 3" || bad "host-ram unreachable: exit $r, want 3"
 
 if [[ $rc -eq 0 ]]; then echo "PASS: test-strata-metrics"; else echo "FAIL: test-strata-metrics"; fi
 exit $rc
