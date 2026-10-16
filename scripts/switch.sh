@@ -1058,6 +1058,41 @@ explain_variant() {
   exit 0
 }
 
+# The log of a stopped managed container, saved before teardown removes it: it is
+# what a user reads after a crash. <data dir>/logs/stopped-containers/<name>-<finished
+# at>.log; the newest 10 are kept. Prints the path. Fails when it can't be written, and
+# the caller then keeps the container.
+_save_stopped_container_log() {
+  local c="$1" dir finished file
+  dir="$(club_config_data_dir)/logs/stopped-containers"
+  mkdir -p "$dir" 2>/dev/null || return 1
+  finished="$(docker inspect --format '{{.State.FinishedAt}}' "$c" 2>/dev/null || true)"
+  finished="${finished%%.*}"; finished="${finished//[^0-9T]/}"   # 2026-10-16T12:03:04.1Z -> 20261016T120304
+  [[ "$finished" == 0001* || -z "$finished" ]] && finished="never-started"
+  file="${dir}/${c}-${finished}.log"
+  docker logs "$c" > "$file" 2>&1 || { rm -f "$file"; return 1; }
+  # shellcheck disable=SC2012  # our own files, named <container>-<stamp>.log: no spaces
+  ls -1t "$dir"/*.log 2>/dev/null | tail -n +11 | xargs -r rm -f --
+  printf '%s\n' "$file"
+}
+
+# Compose down by the container's project label alone, for when its compose files are
+# gone (a removed worktree, a renamed compose). `docker stop` used to be the only
+# fallback, and it left the container and its network behind; enough of those exhaust
+# Docker's address pools (paulp83, Discussion #1700). It runs from an empty directory
+# with COMPOSE_FILE unset, so no compose file from the current directory or the
+# environment is read in. `docker stop` stays the last resort: no project label, or a
+# compose that can't do a down without a file (docker-compose v1).
+_teardown_by_project() {
+  local c="$1" project empty rc=1
+  project="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project"}}' "$c" 2>/dev/null || true)"
+  if [[ -n "$project" && "$project" != "<no value>" ]] && empty="$(mktemp -d 2>/dev/null)"; then
+    (cd "$empty" && env -u COMPOSE_FILE ${COMPOSE_BIN} -p "$project" down --remove-orphans) && rc=0
+    rmdir "$empty" 2>/dev/null || true
+  fi
+  [[ $rc -eq 0 ]] || docker stop "$c" >/dev/null
+}
+
 down_running() {
   # Closed-world teardown: bring down ONLY containers switch.sh manages — those
   # whose name is in the registry-derived VARIANT_CONTAINER set — each via its
@@ -1066,8 +1101,14 @@ down_running() {
   # name, unrelated user containers) are left untouched; gpu_preflight() is the
   # safety net for any non-managed process still pinning the GPU. This catches
   # beellama-/ik-llama-/sglang- containers the old prefix regex missed (#281).
-  local running c
-  running=$(docker ps --format '{{.Names}}' 2>/dev/null || true)
+  #
+  # A managed container that is NOT running (crashed, exited, or created and never
+  # started) is brought down too. Skipped, it kept its compose network forever, and
+  # after a `docker network prune` (the fix for exhausted address pools) the next
+  # `compose up` of that slug tried to restart it and failed with "network ... not
+  # found". Its log is saved first (_save_stopped_container_log); one whose log can't
+  # be saved is left as it is.
+  local c state saved
   # Set of container names we manage (deduped, non-empty values of the map).
   local -A managed=()
   local slug
@@ -1075,11 +1116,26 @@ down_running() {
     [[ -n "${VARIANT_CONTAINER[$slug]}" ]] && managed["${VARIANT_CONTAINER[$slug]}"]=1
   done
   local brought_down=0
-  for c in $running; do
-    [[ -n "${managed[$c]:-}" ]] || continue   # not ours — leave it alone
+  # {{.Status}}, not {{.State}}: every Docker version has it ("Up 2 hours", "Exited (1)
+  # 3 minutes ago", "Created", "Dead"). Anything not plainly stopped is brought down as
+  # a running one, as before.
+  # The list comes in on fd 3, so nothing in the loop can read it off stdin.
+  while IFS=$'\t' read -r c state <&3; do
+    [[ -n "$c" && -n "${managed[$c]:-}" ]] || continue   # not ours — leave it alone
+    case "$state" in
+      Exited*|Created*|Dead*)
+        if ! saved="$(_save_stopped_container_log "$c")"; then
+          echo "[switch] leaving stopped container ${c} as it is: its log could not be saved to $(club_config_data_dir)/logs." >&2
+          echo "[switch]   read it with 'docker logs ${c}', then remove it and its network with:" >&2
+          echo "[switch]   docker compose -p $(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project"}}' "$c" 2>/dev/null) down" >&2
+          continue
+        fi
+        echo "[switch] removing stopped container: ${c} (${state}); its log: ${saved}" ;;
+      *)
+        echo "[switch] bringing down: ${c}" ;;
+    esac
     brought_down=1
-    echo "[switch] bringing down: ${c}"
-    # derive the compose dir/file from the container's labels — stop fallback
+    # derive the compose dir/file from the container's labels — project-label fallback
     local lbl_dir lbl_file
     lbl_dir=$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project.working_dir"}}' "$c" 2>/dev/null || true)
     lbl_file=$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project.config_files"}}' "$c" 2>/dev/null || true)
@@ -1100,11 +1156,11 @@ down_running() {
       cfg_args+=(-f "$cfg")
     done
     if [[ -n "$lbl_dir" && ${#cfg_args[@]} -gt 0 ]]; then
-      (cd "$lbl_dir" && ${COMPOSE_BIN} "${cfg_args[@]}" down --remove-orphans) || docker stop "$c" >/dev/null
+      (cd "$lbl_dir" && ${COMPOSE_BIN} "${cfg_args[@]}" down --remove-orphans) || _teardown_by_project "$c"
     else
-      docker stop "$c" >/dev/null
+      _teardown_by_project "$c"
     fi
-  done
+  done 3< <(docker ps -a --format '{{.Names}}\t{{.Status}}' 2>/dev/null || true)
   [[ "$brought_down" -eq 1 ]] || echo "[switch] no club-3090 container running"
   # Teardown must prune too, or `--down` leaves the OWUI picker advertising a
   # model that is no longer serving — the same stale-entry class that let seven
