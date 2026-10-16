@@ -797,7 +797,7 @@ explain_detect_card() {
 # never reimplements the row). Exits non-zero with a message on an unknown slug.
 explain_registry_json() {
   local root="$1" slug="$2"
-  python3 - "$root" "$slug" <<'PY_EXPLAIN_REG'
+  python3 - "$root" "$slug" "${MODEL_DIR:-}" <<'PY_EXPLAIN_REG'
 import json
 import sys
 from pathlib import Path
@@ -843,6 +843,40 @@ out = {
     "compose_path": cp,
     "serving_file": serving,
 }
+
+# Where the weights must be: the folder under MODEL_DIR that setup.sh downloads to
+# and the compose mounts. Read from the model profile by the slug's own variant, not
+# looked up by path. Additive keys; a profile that can't be read leaves them null
+# rather than failing --explain.
+def _weights_dir(model, variant):
+    import os.path
+    meta = ((_models.get(model) or {}).get("weights") or {}).get(variant) or {}
+    subdir = str(meta.get("local_subdir") or meta.get("path") or "").strip("/")
+    rel = str(meta.get("path") or subdir).strip("/")
+    files = meta.get("files") or []
+    if isinstance(files, str):
+        files = [files]
+    if subdir and files:
+        # A drafter shipped inside another artifact lives in a subdir of it.
+        full = [f"{subdir}/{f}" for f in files]
+        common = os.path.dirname(full[0]) if len(full) == 1 else os.path.commonpath(full)
+        if common.startswith(f"{rel}/"):
+            rel = common
+    return rel or None
+
+model_dir = sys.argv[3] if len(sys.argv) > 3 else ""
+try:
+    from scripts.lib.profiles import weights as _weights_mod  # noqa: E402
+    _models = _weights_mod._load_models()
+except (Exception, SystemExit):
+    _models = {}
+companions = {}
+for c in entry.get("weights_companions") or []:
+    cm, _, cv = c.partition(":") if ":" in c else (out["model"], ":", c)
+    companions[c] = _weights_dir(cm, cv)
+out["weights_path"] = _weights_dir(out["model"], out["weights_variant"])
+out["weights_companion_paths"] = companions
+out["model_dir"] = model_dir or None
 print(json.dumps(out))
 PY_EXPLAIN_REG
 }
@@ -966,6 +1000,12 @@ print()
 print("  Config (registry):")
 show("engine", reg.get("engine"))
 show("weights", reg.get("weights_variant"))
+_mdir = reg.get("model_dir") or "$MODEL_DIR"
+if reg.get("weights_path"):
+    show("weights dir", f"{_mdir}/{reg['weights_path']}")
+for _c, _p in (reg.get("weights_companion_paths") or {}).items():
+    if _p:
+        show("  + " + _c.split(":")[-1], f"{_mdir}/{_p}")
 show("workload", reg.get("workload"))
 show("drafter", reg.get("drafter"))
 show("KV", reg.get("kv_format"))
