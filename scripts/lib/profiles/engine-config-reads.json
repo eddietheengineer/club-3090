@@ -1,0 +1,131 @@
+{
+ "_doc": "Evidence that each pinned engine READS every key our launchers write into its own config file. Checked by scripts/lib/profiles/engine_config_reads.py (gate: scripts/tests/test-engine-config-reads.sh); the tool's docstring has the rules. After an engine pin bump, run: python3 scripts/lib/profiles/engine_config_reads.py verify <engine> --record",
+ "engines": {
+  "strata": {
+   "engine_profile": "scripts/lib/profiles/engines/strata.yml",
+   "verified_image": "ghcr.io/noonghunna/strata-club3090@sha256:75deea401784c424810e8c0c40e8798ab3727276ee6d4dd64515042b491d70e1",
+   "render": "strata_config",
+   "programs": [
+    "models/qwen3.8-flash-next/strata/launcher/strata_config.py"
+   ],
+   "fixture": {
+    "exe": "/opt/strata/engine/strata",
+    "args": [
+     "--pack",
+     "/data/packs/iq3_s",
+     "--prefill",
+     "auto",
+     "--spec",
+     "4",
+     "--spec-min-p",
+     "0.5",
+     "--mtp",
+     "/data/mtp/rt",
+     "--max-context",
+     "131072",
+     "--kv",
+     "int8",
+     "--kv-resident",
+     "32768"
+    ],
+    "model_name": "qwen3.8-flash-next-iq3_s",
+    "port": 8080,
+    "gpu": [
+     0,
+     1
+    ],
+    "host": "0.0.0.0"
+   },
+   "settings": {
+    "REASONING_EFFORT": "low",
+    "ENABLE_THINKING": "false",
+    "THINKING_BUDGET": "256",
+    "SPEC_N": "3",
+    "TEMP": "0.7",
+    "TOP_P": "0.9",
+    "TOP_K": "10",
+    "MIN_P": "0.05",
+    "PRESENCE_PENALTY": "0.5",
+    "REPEAT_PENALTY": "1.1"
+   },
+   "setup_only": {
+    "CONTEXT": "the entrypoint passes it to setup.py as --max-context (setup owns it: it sizes the KV and expert cache); strata_config.py only compares it",
+    "KV": "the entrypoint passes it to setup.py as --kv; strata_config.py only compares it"
+   },
+   "server": "/opt/strata/serve/server.py",
+   "engine_help": [
+    "/opt/strata/engine/strata",
+    "--help"
+   ],
+   "config_receivers": [
+    "cfg"
+   ],
+   "config_scopes": [
+    "main",
+    "sampling_defaults_from_config"
+   ],
+   "reads": {
+    "reasoning_effort": "main(): the server's default effort for requests that name none (logged 'thinking level: ...')",
+    "reasoning_budget_tokens": "main(): Service.reasoning_budget_tokens, the thinking cap for every request",
+    "sampling.temperature": "sampling_defaults_from_config(): a default for requests that leave the field out",
+    "sampling.top_p": "sampling_defaults_from_config()",
+    "sampling.top_k": "sampling_defaults_from_config()",
+    "sampling.min_p": "sampling_defaults_from_config()",
+    "sampling.presence_penalty": "sampling_defaults_from_config()",
+    "sampling.repetition_penalty": "sampling_defaults_from_config()",
+    "args:--spec": "the engine's own flag: the MTP drafter's verify window"
+   }
+  },
+  "strata-maya": {
+   "engine_profile": "scripts/lib/profiles/engines/strata-maya.yml",
+   "verified_image": "ghcr.io/noonghunna/strata-maya-club3090@sha256:c66808309785b6a4b258b7807a0cbfd352c5f950a354abbfe24f4e9e903d95ef",
+   "render": "maya_prepare",
+   "programs": [
+    "models/glm-5.3-flash/strata-maya/launcher/maya_settings.py",
+    "models/glm-5.3-flash/strata-maya/launcher/maya_prepare.py"
+   ],
+   "settings": {
+    "REASONING_EFFORT": "low",
+    "ENABLE_THINKING": "false",
+    "THINKING_BUDGET": "256",
+    "KV": "int8",
+    "TEMP": "0.7",
+    "TOP_P": "0.9",
+    "TOP_K": "10",
+    "MIN_P": "0.05",
+    "PRESENCE_PENALTY": "0.5",
+    "REPEAT_PENALTY": "1.1",
+    "CONTEXT": "65536"
+   },
+   "setup_only": {},
+   "server": "/opt/maya/serve/server.py",
+   "engine_help": [
+    "/opt/maya/build/strata",
+    "--help"
+   ],
+   "config_receivers": [
+    "cfg"
+   ],
+   "config_scopes": [
+    "main",
+    "sampling_defaults_from_config"
+   ],
+   "reads": {
+    "reasoning_effort": "main(): svc.default_effort (logged 'thinking level when a request names none: ...')",
+    "thinking_budget": "main(): svc.think_budget (logged 'thinking budget: N tokens')",
+    "sampling.temperature": "sampling_defaults_from_config(): a default for requests that leave the field out",
+    "sampling.top_p": "sampling_defaults_from_config()",
+    "sampling.top_k": "sampling_defaults_from_config()",
+    "sampling.min_p": "sampling_defaults_from_config()",
+    "sampling.presence_penalty": "sampling_defaults_from_config()",
+    "sampling.repetition_penalty": "sampling_defaults_from_config()",
+    "args:--kv": "the engine's own flag (its GLM path reads only int8: the launcher refuses q4_0 / k8v4, a value rule this gate doesn't check)",
+    "args:--max-context": "the engine's own flag: KV/state capacity"
+   }
+  }
+ },
+ "not_config_writers": {
+  "scripts/lib/effort_budget.py": "prints shell variables the vLLM / SGLang composes put on their own command line; it writes no engine config file",
+  "models/qwen3.8-flash-next/bucko-vllm/patches/default-thinking-budget/apply.py": "patches bucko's vLLM source with a default thinking budget; it writes no engine config file"
+ }
+}
