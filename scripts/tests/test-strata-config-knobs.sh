@@ -3,7 +3,7 @@
 # Strata's run config at every boot (models/qwen3.8-flash-next/strata/launcher/).
 #   1. no settings: the live config is setup's copy, unchanged;
 #   2. each setting lands on the key Strata reads (reasoning_effort, reasoning_budget_tokens,
-#      max_tokens, sampling.*, --spec in args); xhigh / max become Strata's "high";
+#      sampling.*, --spec in args; never max_tokens); xhigh / max become Strata's "high";
 #      ENABLE_THINKING=false wins over REASONING_EFFORT;
 #   3. the setup copy is never written, and a setting removed is gone at the next apply;
 #   4. needs-setup: only a CONTEXT / KV that differs from what setup was given asks for a new setup
@@ -48,7 +48,9 @@ out="$(run REASONING_EFFORT=xhigh THINKING_BUDGET=2048 MAX_TOKENS=4096 SPEC_N=3 
           MIN_P=0 PRESENCE_PENALTY=1.5 REPEAT_PENALTY=1.05)" || bad "apply failed: $out"
 [[ "$(get 'c["reasoning_effort"]')" == high ]] && ok "REASONING_EFFORT=xhigh -> reasoning_effort high" || bad "effort: $(get 'c.get("reasoning_effort")')"
 [[ "$(get 'c["reasoning_budget_tokens"]')" == 2048 ]] && ok "THINKING_BUDGET -> reasoning_budget_tokens" || bad "budget"
-[[ "$(get 'c["max_tokens"]')" == 4096 ]] && ok "MAX_TOKENS -> max_tokens" || bad "max_tokens"
+# MAX_TOKENS is not a Strata setting (#1723 wrote it; Strata never read it): nothing may write max_tokens
+[[ "$(get '"max_tokens" in c')" == False ]] && ok "MAX_TOKENS ignored (Strata reads no output cap from its config)" \
+  || bad "max_tokens written into the config"
 [[ "$(get 'c["args"][c["args"].index("--spec")+1]')" == 3 && "$(get 'c["args"].count("--spec")')" == 1 ]] \
   && ok "SPEC_N=3 replaces --spec 4 (once)" || bad "spec: $(get 'c["args"]')"
 [[ "$(get 'sorted(c["sampling"].items())')" == "[('min_p', 0.0), ('presence_penalty', 1.5), ('repetition_penalty', 1.05), ('temperature', 0.6), ('top_k', 20), ('top_p', 0.95)]" ]] \
@@ -78,7 +80,7 @@ out="$(run)" && command grep -q "CONTEXT 65536 -> 131072" <<<"$out" && ok "CONTE
 
 echo "== 5. a bad value exits 2 with the reason"
 CMD=(validate)
-for probe in REASONING_EFFORT=minimal ENABLE_THINKING=off THINKING_BUDGET=-1 SPEC_N=0 SPEC_N=9 MAX_TOKENS=0 \
+for probe in REASONING_EFFORT=minimal ENABLE_THINKING=off THINKING_BUDGET=-1 SPEC_N=0 SPEC_N=9 \
              TEMP=x TOP_P=0 TOP_K=65 MIN_P=2 PRESENCE_PENALTY=-1 REPEAT_PENALTY=0 KV=q8 CONTEXT=100; do
   err="$(run "$probe" 2>&1)"; r=$?
   [[ $r -eq 2 && "$err" == *"${probe%%=*}"* ]] && ok "$probe refused" || bad "$probe: rc=$r $err"

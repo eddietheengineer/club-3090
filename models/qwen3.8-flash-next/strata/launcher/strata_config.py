@@ -9,12 +9,15 @@ setting only reached Strata if someone edited the JSON by hand:
   REASONING_EFFORT       reasoning_effort              none | low | medium | high (high = the template's xhigh)
   ENABLE_THINKING=false  reasoning_effort: none        thinking off for requests that don't ask for it
   THINKING_BUDGET        reasoning_budget_tokens       whole tokens, 0 = no budget
-  MAX_TOKENS             max_tokens                    a positive integer
   SPEC_N                 args: --spec N                the MTP drafter's verify window (setup writes 4; 1..8)
   TEMP TOP_P TOP_K       sampling.temperature / top_p  >= 0 / 0 < x <= 1 / integer 1..64
   MIN_P                  sampling.min_p                0..1
   PRESENCE_PENALTY       sampling.presence_penalty     >= 0
   REPEAT_PENALTY         sampling.repetition_penalty   > 0 (1 = off)
+
+MAX_TOKENS is not one of them: Strata reads no default output cap from the run config (its max_tokens
+there is the vision encoder's, serve/runconfig.py doesn't list it); a default cap comes only from the
+Chat settings its web page saves (POST /settings).
 
 The live config is rebuilt from the copy setup wrote (<config>.setup.json) every time, so a
 setting removed is a setting gone: nothing we wrote lingers. CONTEXT and KV belong to setup
@@ -85,9 +88,6 @@ def settings():
     budget = env("THINKING_BUDGET")
     if budget is not None:
         keys["reasoning_budget_tokens"] = as_int("THINKING_BUDGET", budget, lo=0)
-    max_tokens = env("MAX_TOKENS")
-    if max_tokens is not None:
-        keys["max_tokens"] = as_int("MAX_TOKENS", max_tokens, lo=1)
     spec_n = env("SPEC_N")
     if spec_n is not None:
         spec = as_int("SPEC_N", spec_n, lo=1, hi=8)
