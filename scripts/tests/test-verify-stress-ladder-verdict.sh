@@ -21,7 +21,7 @@ END='fail "ceiling ladder: no rung succeeded and none were skipped"'
 s=$(command grep -n -F "$START" "$SRC" | head -1 | cut -d: -f1)
 e=$(command grep -n -F "$END"   "$SRC" | head -1 | cut -d: -f1)
 [[ -n "$s" && -n "$e" && "$e" -gt "$s" ]] || { echo "FAIL: could not locate the verdict chain (anchors moved?)"; exit 1; }
-CHAIN=$(mktemp); trap 'rm -f "$CHAIN"' EXIT
+CHAIN=$(mktemp); trap 'rm -f "$CHAIN" "$CHAIN.out"' EXIT
 sed -n "${s},$((e+2))p" "$SRC" > "$CHAIN"
 
 # Refuse a vacuous run: the extract must actually be the chain.
@@ -66,6 +66,33 @@ check "recall miss then OOM       " FAIL 'any_recall_miss=1; any_fail=1'
 check "all rungs rejected (400)   " FAIL 'any_skipped=1'
 check "filler sizing error        " FAIL 'any_sizing_error=1'
 check "clean sweep, all rungs pass" PASS 'any_pass=1'
+
+# The VRAM margin advisory on a clean sweep: it counts as a failure (report.sh reads it as an
+# ADVISORY) on engines with headroom to lose, but not on Strata / Maya, whose expert cache takes
+# all but --vram-reserve-mib of free VRAM by design (paulp83, #1700: four Strata/Maya report.sh
+# runs exited 2 on it with every correctness check passing).
+margin() {  # <engine kind> <free MB after the ladder> -> "<FAILED> <advisory printed: 0|1>"
+  local out
+  out=$( set +e
+    pass() { echo "PASS|$1"; }; fail() { echo "FAIL|$1"; }; skip() { echo "SKIP|$1"; }
+    any_pass=1 any_fail=0 any_skipped=0 any_recall_miss=0 any_recall_empty=0 any_sizing_error=0
+    first_fail_tokens=0 first_recall_miss_tokens=0 first_recall_miss_pct=0
+    last_pass_tokens=190000 last_pass_pct=93 rung_count=5 ceiling_start=95000 n_ctx=204800
+    vram_before_all=1500 vram_after_all="$2" vram_margin_mb=1024 tok_per_scale_unit=63
+    LOG_CMD="docker logs X" ENGINE_KIND="$1" FAILED=0
+    source "$CHAIN" > "$CHAIN.out" 2>&1
+    echo "$FAILED $(command grep -c 'VRAM margin thin at ceiling' "$CHAIN.out")" )
+  echo "$out"
+}
+expect_margin() {
+  local name="$1" want="$2" got; got="$(margin "$3" "$4")"
+  if [[ "$got" == "$want" ]]; then echo "  ok   $name -> FAILED/advisory $got"; else echo "  FAIL $name -> got '$got', want '$want'"; rc=1; fi
+}
+echo "VRAM margin advisory on a clean sweep:"
+expect_margin "vLLM, 600 MB free           " "1 1" vllm 600
+expect_margin "llama.cpp, 600 MB free      " "1 1" llamacpp 600
+expect_margin "vLLM, 2000 MB free          " "0 0" vllm 2000
+expect_margin "Strata / Maya, 300 MB free  " "0 0" strata 300
 
 [[ "$rc" == "0" ]] && echo "PASS: all ladder verdict states classified" || echo "FAIL: ladder verdict regression"
 exit "$rc"
