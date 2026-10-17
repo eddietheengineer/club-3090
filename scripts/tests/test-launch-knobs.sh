@@ -22,7 +22,11 @@
 #      not absent — the atoi("")==0 class). Existing ones are benign (every read uses
 #      ${NAME:-x}, checked in 1) and are counted; the count may only fall;
 #   4. self-tests: fixture composes and deliberately broken catalogue copies, each of
-#      which MUST make its check fail — a guard that cannot fail proves nothing.
+#      which MUST make its check fail — a guard that cannot fail proves nothing;
+#   5. conformance (knob_conformance.py, knob-conformance.json): every live compose reads each
+#      catalogued knob that applies to it (by its model's own template, or its drafter), or the
+#      manifest declares why not: a sourced `unsupported`, or a `not_wired` backlog entry that
+#      only shrinks. Steps 1-4 check the knobs a compose reads; this one, the knobs it should.
 # Read-only: `docker compose config` renders, nothing is started. Skips the docker legs
 # cleanly when docker compose is unavailable.
 set -uo pipefail
@@ -378,6 +382,11 @@ c["knobs"]["SPEC_N"]["variants"][0]["checks"][0]["kind"] = "regex"
 expect(len(lk.catalogue_errors(c)) == 2, "mutation caught: schema (missing description, unknown check kind)")
 raise SystemExit(1 if fails else 0)
 PY
+
+# ── 5. conformance: the knobs a compose should read ─────────────────────────────
+echo "[5] every live compose reads each standard knob that applies to it, or declares why not"
+python3 scripts/lib/profiles/knob_conformance.py selftest || bad "a knob-conformance self-test failed (above)"
+python3 scripts/lib/profiles/knob_conformance.py check || bad "knob conformance reported problems (above)"
 
 if (( fails > 0 )); then
   echo "test-launch-knobs: $fails failure(s)" >&2

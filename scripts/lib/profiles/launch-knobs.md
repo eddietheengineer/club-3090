@@ -54,6 +54,16 @@ settings to docker: the process environment (`switch.sh` / `launch.sh`) and an
 `--env-file` (`gpu-mode.sh`). A claimed knob's sentinel must reach the rendered
 environment, command or entrypoint. An unclaimed knob's sentinel must not.
 
+## Which slugs should read a knob: knob-conformance.json
+
+The scan above says which composes read a knob; it can't say which should. `knob-conformance.json` does, and
+`knob_conformance.py check` (step 5 of the guard) holds every live curated compose to it. Each catalogued knob
+applies by `model` (the model's own chat template has the switch: every model with a live slug is classified,
+with the template as evidence), by `drafter` (the slug has a drafter or a spec method) or `never` (an opt-in
+feature). A compose that doesn't read an applicable knob needs an `unsupported` entry (the engine can't take
+it, with a repo file that says so) or a `not_wired` entry (backlog: exact compose paths, counted by
+`not_wired_ceiling`, which only falls). `knob_conformance.py gaps` lists uncovered gaps as entries.
+
 ## Schema
 
 Knob (`knobs.<ENV_NAME>`):
