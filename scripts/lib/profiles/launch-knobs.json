@@ -385,9 +385,10 @@
    "status": "first-batch",
    "description": "Server-default thinking mode for requests that don't set their own.",
    "type": "bool",
-   "unset": "the compose default: true on the Qwen3.8 family and Nemotron, false on vllm/thinkingcap-dual-w4a8",
+   "unset": "the compose default: true on the Qwen3.8 family and Nemotron, false on vllm/thinkingcap-dual-w4a8; Strata: thinking on (the template's default)",
    "engines": [
     "sglang",
+    "strata",
     "vllm"
    ],
    "variants": [
@@ -549,6 +550,50 @@
        ]
       }
      ]
+    },
+    {
+     "match": {
+      "engine": [
+       "strata"
+      ],
+      "model": [
+       "qwen3.8-flash-next"
+      ]
+     },
+     "enforced": "boot",
+     "values": [
+      "true",
+      "false"
+     ],
+     "spelling": {
+      "on": "true",
+      "off": "false"
+     },
+     "default": "",
+     "source": {
+      "file": "models/qwen3.8-flash-next/strata/launcher/strata_config.py",
+      "what": "false -> \"reasoning_effort\": \"none\" in Strata's run config (thinking off for requests that don't ask for it); true leaves the template's default; anything else exits 2 before setup"
+     },
+     "checks": [
+      {
+       "kind": "program",
+       "compose": "models/qwen3.8-flash-next/strata/compose/dual/ista-iq3s/base.yml",
+       "program": "models/qwen3.8-flash-next/strata/launcher/strata_config.py",
+       "args": [
+        "validate"
+       ],
+       "accept": [
+        "true",
+        "false"
+       ],
+       "reject": [
+        "off",
+        "no",
+        "1",
+        "TRUE"
+       ]
+      }
+     ]
     }
    ],
    "interacts": [
@@ -566,6 +611,14 @@
      "source": {
       "file": "models/qwen3.8-27b/vllm/compose/dual/autoround-int4/mtp.yml",
       "what": "\"Sampler follows the reasoning mode\" block in the entrypoint"
+     }
+    },
+    {
+     "knob": "REASONING_EFFORT",
+     "effect": "Strata: false writes reasoning_effort none into its config, and wins over a REASONING_EFFORT that is also set (a line says so at boot)",
+     "source": {
+      "file": "models/qwen3.8-flash-next/strata/launcher/strata_config.py",
+      "what": "settings(): ENABLE_THINKING=false sets reasoning_effort to none, with a note when REASONING_EFFORT named a level"
      }
     }
    ],
@@ -590,10 +643,11 @@
    "status": "first-batch",
    "description": "Server-default reasoning effort for requests that don't send their own.",
    "type": "enum",
-   "unset": "the compose default: low (Qwen3.8 vLLM/SGLang, Inkling-Small), medium (Qwen3.8 llama.cpp), max (GLM-5.3-Flash)",
+   "unset": "the compose default: low (Qwen3.8 vLLM/SGLang, Inkling-Small), medium (Qwen3.8 llama.cpp), max (GLM-5.3-Flash); Strata: the template's own default (xhigh)",
    "engines": [
     "llamacpp",
     "sglang",
+    "strata",
     "vllm"
    ],
    "variants": [
@@ -895,6 +949,72 @@
        ]
       }
      ]
+    },
+    {
+     "match": {
+      "engine": [
+       "strata"
+      ],
+      "model": [
+       "qwen3.8-flash-next"
+      ]
+     },
+     "enforced": "boot",
+     "values": [
+      "none",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+     ],
+     "aliases": {
+      "xhigh": "high",
+      "max": "high"
+     },
+     "default": "",
+     "source": {
+      "file": "models/qwen3.8-flash-next/strata/launcher/strata_config.py",
+      "what": "written into Strata's run config as \"reasoning_effort\" (Strata takes none | low | medium | high, high being the template's xhigh: serve/server.py clean_shared_defaults, v0.1.45); xhigh and max, our other engines' names for that level, are mapped to high; anything else exits 2 before setup, so the boot stops"
+     },
+     "checks": [
+      {
+       "kind": "program",
+       "compose": "models/qwen3.8-flash-next/strata/compose/dual/ista-iq3s/base.yml",
+       "program": "models/qwen3.8-flash-next/strata/launcher/strata_config.py",
+       "args": [
+        "validate"
+       ],
+       "accept": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+       ],
+       "reject": [
+        "minimal",
+        "LOW",
+        "extreme"
+       ]
+      },
+      {
+       "kind": "program",
+       "compose": "models/qwen3.8-flash-next/strata/compose/dual/sc117-swift15-abliterated-iq3s/base.yml",
+       "program": "models/qwen3.8-flash-next/strata/launcher/strata_config.py",
+       "args": [
+        "validate"
+       ],
+       "accept": [
+        "low",
+        "high"
+       ],
+       "reject": [
+        "minimal"
+       ]
+      }
+     ]
     }
    ],
    "interacts": [
@@ -962,11 +1082,19 @@
     "exllamav3",
     "llamacpp",
     "sglang",
+    "strata",
     "vllm"
    ],
    "variants": [
     {
-     "match": {},
+     "match": {
+      "engine": [
+       "exllamav3",
+       "llamacpp",
+       "sglang",
+       "vllm"
+      ]
+     },
      "enforced": "boot",
      "min": 0,
      "every_consumer_contains": [
@@ -1051,6 +1179,44 @@
        ]
       }
      ]
+    },
+    {
+     "match": {
+      "engine": [
+       "strata"
+      ],
+      "model": [
+       "qwen3.8-flash-next"
+      ]
+     },
+     "enforced": "boot",
+     "min": 1,
+     "max": 8,
+     "default": "",
+     "source": {
+      "file": "models/qwen3.8-flash-next/strata/launcher/strata_config.py",
+      "what": "replaces the value after --spec in Strata's run-config args (the MTP drafter's verify window; setup writes 4, --suffix-draft can grow it to 8: `strata --help`, v0.1.45); 0 or more than 8 exits 2 before setup"
+     },
+     "checks": [
+      {
+       "kind": "program",
+       "compose": "models/qwen3.8-flash-next/strata/compose/dual/ista-iq3s/base.yml",
+       "program": "models/qwen3.8-flash-next/strata/launcher/strata_config.py",
+       "args": [
+        "validate"
+       ],
+       "accept": [
+        "1",
+        "4",
+        "8"
+       ],
+       "reject": [
+        "0",
+        "9",
+        "x"
+       ]
+      }
+     ]
     }
    ],
    "interacts": [
@@ -1076,6 +1242,14 @@
      "source": {
       "file": "models/qwen3.6-27b/llama-cpp/compose/single/unsloth-q4km/mtp-vision.yml",
       "what": "_spec_n=\"$${SPEC_N:-$${MTP_DRAFT_N_MAX:-2}}\" (and siblings)"
+     }
+    },
+    {
+     "knob": "SPEC",
+     "effect": "Strata reads SPEC_N only: its MTP drafter can't be turned off from here (no 0), and SPEC is not read",
+     "source": {
+      "file": "models/qwen3.8-flash-next/strata/launcher/strata_config.py",
+      "what": "settings(): SPEC_N must be 1..8"
      }
     }
    ],

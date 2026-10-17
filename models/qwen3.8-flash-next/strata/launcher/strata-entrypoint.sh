@@ -6,6 +6,13 @@
 #   SETUP_ONLY=1         run the one-time setup (SHA-256 check, pack, MTP layer) and exit,
 #                        so the boot that gets benched is not the one that did the setup
 #   REINSTALL=1          redo the setup for an existing config
+#   CONTEXT, KV          setup's context and KV format; a change from what setup was given
+#                        runs setup again at the next boot (it sizes the KV and expert cache)
+#   REASONING_EFFORT, ENABLE_THINKING, THINKING_BUDGET, SPEC_N, MAX_TOKENS,
+#   TEMP, TOP_P, TOP_K, MIN_P, PRESENCE_PENALTY, REPEAT_PENALTY
+#                        written into Strata's config at every boot by strata_config.py
+#                        (mounted next to this file; its header maps each to Strata's key).
+#                        Unset = Strata's own default; a bad value stops the boot.
 #   STRATA_START_GPUS    the cards to start on, as the container sees them: "0,1" (the dual
 #                        compose's default, a layer split) or one number (single card)
 #
@@ -32,7 +39,12 @@ case "$FAMILY" in
   *) echo "[strata-recipe] the family argument must be qwen or swift, not '$FAMILY'" >&2; exit 1 ;;
 esac
 cfg="$DATA/config/strata-$tag.json"
+# setup's own output, kept untouched: the live config ($cfg) is rebuilt from it at every boot
+# with the settings above, so a setting you remove is gone the next boot.
+setup_cfg="$DATA/config/strata-$tag.setup.json"
+knobs=/opt/club3090/strata_config.py
 mkdir -p "$DATA/config" "$LINKS"
+.venv/bin/python "$knobs" validate || exit 1   # a bad setting stops here, before any setup
 
 # ⚠️ setup.py SHA-256-checks the shards and DELETES one that mismatches: point it at
 # SYMLINKS on the data volume so the read-only model tree is never written. Each link takes
@@ -46,7 +58,15 @@ for i in 1 2; do
   ln -sfn "$1" "$LINKS/$want-0000$i-of-00002.gguf"
 done
 
+do_setup=0
 if [ "${REINSTALL:-0}" = "1" ] || [ ! -f "$cfg" ]; then
+  do_setup=1
+else
+  # A data volume from before this recipe has no setup copy; its config is setup's output.
+  [ -f "$setup_cfg" ] || cp -f "$cfg" "$setup_cfg"
+  if .venv/bin/python "$knobs" needs-setup "$setup_cfg"; then do_setup=1; fi
+fi
+if [ "$do_setup" = "1" ]; then
   case "${STRATA_START_GPUS:-0,1}" in *,*) gsel="--gpus" ;; *) gsel="--gpu" ;; esac
   set -- --family "$FAMILY" --model "$MODEL" --gguf-dir "$LINKS" \
     --context "${CONTEXT:-131072}" --vision no --data-dir "$DATA" \
@@ -54,10 +74,11 @@ if [ "${REINSTALL:-0}" = "1" ] || [ ! -f "$cfg" ]; then
     "$gsel" "${STRATA_START_GPUS:-0,1}" --no-start
   if [ -n "${KV:-}" ]; then set -- "$@" --kv "$KV"; fi
   .venv/bin/python setup.py --setup --yes "$@"
-  cp -f "/opt/strata/strata-$tag.json" "$cfg"
-else
-  [ -e "/opt/strata/strata-$tag.json" ] || ln -s "$cfg" "/opt/strata/strata-$tag.json"
+  cp -f "/opt/strata/strata-$tag.json" "$setup_cfg"
 fi
+.venv/bin/python "$knobs" apply "$setup_cfg" "$cfg"
+# The start below reads the one config linked into /opt/strata: point it at the live one.
+ln -sfn "$cfg" "/opt/strata/strata-$tag.json"
 
 if [ "${SETUP_ONLY:-0}" = "1" ]; then
   echo "[strata-recipe] setup done, config: $cfg"
