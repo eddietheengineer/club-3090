@@ -27,8 +27,10 @@ from pathlib import Path
 EVIDENCE = "/opt/club3090/strata-cpu-flags.txt"
 
 EDITS = [
-    ('"-DSTRATA_ENABLE_CUDA=ON", "-DSTRATA_BUILD_TESTS=OFF",',
-     '"-DSTRATA_ENABLE_CUDA=ON", "-DSTRATA_BUILD_TESTS=OFF", "-DSTRATA_PORTABLE=ON",'),
+    # Anchored on the last define alone: v0.1.45 put two -D options between it and
+    # -DSTRATA_ENABLE_CUDA=ON, which the old two-define anchor no longer matched.
+    ('"-DSTRATA_BUILD_TESTS=OFF",',
+     '"-DSTRATA_BUILD_TESTS=OFF", "-DSTRATA_PORTABLE=ON",'),
     ('"-DSTRATA_PORTABLE=OFF"',
      '"-DSTRATA_PORTABLE=ON"'),
     ("RUN rm -rf build build-vision\n",

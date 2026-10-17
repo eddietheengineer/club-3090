@@ -2,8 +2,9 @@
 # Guard: the strata-club3090 image recipe's edits to upstream's Dockerfile
 # (models/qwen3.8-flash-next/strata/image/: portable.py, always; build_opts.py, opt-in).
 #
-# Runs against upstream's own Dockerfile from the v0.1.44.1 release (the pinned engine),
-# copied verbatim to fixtures/strata-image/ (Strata is MIT). The build step's Python is run
+# Runs against upstream's own Dockerfiles from the v0.1.44.1 and v0.1.45 releases, copied
+# verbatim to fixtures/strata-image/ (Strata is MIT), once per file: v0.1.45 moved the text
+# portable.py anchors on, so a recipe change has to hold for the old and the new release. The build step's Python is run
 # for real against fixtures/strata-image/fake-setup.py, which builds nothing but calls run()
 # the way setup.py does, so no network, docker or GPU is needed:
 #   1. portable.py applies;
@@ -22,6 +23,17 @@ cd "$ROOT_DIR"
 IMG="models/qwen3.8-flash-next/strata/image"
 FIX="scripts/tests/fixtures/strata-image"
 
+# One run per upstream Dockerfile; each run below sees one in $DF.
+if [[ -z "${STRATA_TEST_DOCKERFILE:-}" ]]; then
+  all=0
+  for f in Dockerfile-v0.1.44.1 Dockerfile-v0.1.45; do
+    echo "### $f"
+    STRATA_TEST_DOCKERFILE="$f" bash "${BASH_SOURCE[0]}" || all=1
+  done
+  exit "$all"
+fi
+DF="$STRATA_TEST_DOCKERFILE"
+
 rc=0
 ok()  { echo "  ✓ $*"; }
 bad() { echo "  ✗ $*"; rc=1; }
@@ -32,7 +44,7 @@ trap 'rm -rf "$work"' EXIT
 # A Dockerfile with portable.py applied, plus build_opts.py with the given options.
 recipe() {  # <out> [build_opts args...]
   local out="$1"; shift
-  cp "$FIX/Dockerfile-v0.1.44.1" "$out"
+  cp "$FIX/$DF" "$out"
   python3 "$IMG/portable.py" "$out" || return 1
   [[ $# -eq 0 ]] || python3 "$IMG/build_opts.py" "$out" "$@"
 }
@@ -69,7 +81,7 @@ if recipe "$work/Dockerfile.portable"; then
     && command grep -q '/opt/club3090/strata-cpu-flags.txt' "$work/Dockerfile.portable" \
     && ok "portable build + CPU-flag evidence" || bad "portable.py ran but its edits aren't there"
 else
-  bad "portable.py refused upstream's v0.1.44.1 Dockerfile"
+  bad "portable.py refused upstream's $DF"
 fi
 
 echo "== 2. build_opts.py --jobs 37 --ccache applies on top"
@@ -85,7 +97,7 @@ t = open(sys.argv[1], encoding="utf-8").read()
 compile(t.split("<<'PYEOF'\n", 1)[1].split("\nPYEOF\n", 1)[0], "build-step", "exec")
 PY
 else
-  bad "build_opts.py refused upstream's v0.1.44.1 Dockerfile"
+  bad "build_opts.py refused upstream's $DF"
 fi
 
 echo "== 3. --jobs"
@@ -144,7 +156,7 @@ else
 fi
 
 echo "== 5. anchors must appear exactly once"
-cp "$FIX/Dockerfile-v0.1.44.1" "$work/Dockerfile.dup"
+cp "$FIX/$DF" "$work/Dockerfile.dup"
 python3 "$IMG/portable.py" "$work/Dockerfile.dup" >/dev/null
 printf "\nRUN .venv/bin/python - <<'PYEOF'\nprint()\nPYEOF\n" >> "$work/Dockerfile.dup"
 cp "$work/Dockerfile.dup" "$work/Dockerfile.dup.orig"
@@ -165,5 +177,5 @@ err="$(bash "$IMG/build.sh" --jobs x 2>&1)" && bad "--jobs x accepted" \
 err="$(bash "$IMG/build.sh" --ccache --push 2>&1)" && bad "--ccache --push accepted" \
   || { command grep -q -- "--ccache is for builds on a rig" <<<"$err" && ok "--ccache --push refused" || bad "--ccache --push: $err"; }
 
-if [[ "$rc" -eq 0 ]]; then echo "test-strata-image-recipe: ok"; else echo "test-strata-image-recipe: FAILED" >&2; fi
+if [[ "$rc" -eq 0 ]]; then echo "test-strata-image-recipe ($DF): ok"; else echo "test-strata-image-recipe ($DF): FAILED" >&2; fi
 exit "$rc"
