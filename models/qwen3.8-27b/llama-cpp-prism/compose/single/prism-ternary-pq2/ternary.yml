@@ -108,6 +108,7 @@ services:
       # THINKING knob here would be a no-op that looks like a control. The
       # sibling qwen3.8-27b compose keeps one only as documented back-compat.
       - INSTRUCT
+      - ENABLE_THINKING
       - REASONING
       # Reasoning knobs read by the entrypoint. Bare form on purpose: `- VAR=${VAR:-}`
       # sets them EMPTY-but-present, and an empty budget lands as `--reasoning-budget ''`.
@@ -155,6 +156,25 @@ services:
         # ⚠️ INSTRUCT wins if both INSTRUCT and THINKING are set (matches the sibling).
         # ⚠️ Every flag is emitted EXACTLY ONCE. Appending a second copy and relying on
         # llama.cpp's last-wins is DEPRECATED upstream and warns.
+        # ENABLE_THINKING (club-3090's standard switch: true | false) picks the same row: false
+        # selects the INSTRUCT row, true keeps the THINKING row. INSTRUCT / THINKING / REASONING
+        # are this compose's own names and win when set; a boot note says so when they disagree.
+        case "$${ENABLE_THINKING:-}" in
+          ""|true|false) ;;
+          *) echo "[thinking] ENABLE_THINKING='$${ENABLE_THINKING}' must be true or false." >&2; exit 1 ;;
+        esac
+        if [ "$${ENABLE_THINKING:-}" = false ] && [ -z "$${INSTRUCT:-}" ]; then
+          if [ -n "$${THINKING:-}" ]; then
+            echo "[thinking] THINKING=$${THINKING} wins over ENABLE_THINKING=false (this compose's own name)" >&2
+          else
+            INSTRUCT=1
+          fi
+        elif [ "$${ENABLE_THINKING:-}" = true ] && [ -n "$${INSTRUCT:-}" ]; then
+          echo "[thinking] INSTRUCT=$${INSTRUCT} wins over ENABLE_THINKING=true (this compose's own name)" >&2
+        fi
+        if [ -n "$${ENABLE_THINKING:-}" ] && [ -n "$${REASONING:-}" ]; then
+          echo "[thinking] REASONING=$${REASONING} sets --reasoning itself (this compose's own name); ENABLE_THINKING=$${ENABLE_THINKING} picks the sampler row" >&2
+        fi
         if [ -n "$${INSTRUCT:-}" ]; then
           _r="$${REASONING:-off}"; _t="$${TEMP:-$${TEMPERATURE:-0.7}}"
           _p="$${TOP_P:-0.80}";    _pp="$${PRESENCE_PENALTY:-1.5}"; _mp="$${MIN_P:-0.0}"

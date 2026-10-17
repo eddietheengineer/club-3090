@@ -55,12 +55,8 @@ ENGINE_EXACT = {"PATH", "HOME", "HOSTNAME", "LD_LIBRARY_PATH", "PWD", "IFS",
 # Shrink it; never grow it silently. An entry here means a documented knob is
 # inert in production.
 KNOWN = {
-    # The qwen3.8-27b llama.cpp composes keep THINKING declared as DOCUMENTED
-    # back-compat: their sampler flip keys on INSTRUCT (thinking is already the
-    # default since the 2026-09-01 flip), and their headers say so explicitly —
-    # "THINKING=1 is now a back-compat no-op". Deliberate, and stated to users.
-    ("models/qwen3.8-27b/llama-cpp/compose/single/unsloth-iq4xs/q4kv-vision.yml", "THINKING"),
-    ("models/qwen3.8-27b/llama-cpp/compose/dual/unsloth-q8kxl/q8kv.yml", "THINKING"),
+    # (empty since 2026-10-17: the qwen3.8-27b llama.cpp composes' THINKING, once a documented
+    # back-compat no-op, now wins over ENABLE_THINKING=false, so it is read)
 }
 
 def engine_owned(name: str) -> bool:
@@ -71,12 +67,31 @@ def engine_owned(name: str) -> bool:
 sys.path.insert(0, "scripts/lib/profiles")
 from launch_knobs import MOUNTED_READERS
 
+# Every name the program itself reads from the environment counts, not only the catalogued knobs
+# MOUNTED_READERS lists: strata_config.py and maya_settings.py also read the sampler settings,
+# THINKING_BUDGET and KV, which the launch-knob catalogue doesn't cover (until 2026-10-17 this test
+# flagged them, red on master since #1723 / #1725).
+# The names come from the program's string constants (an exact NAME literal: both launchers read the
+# sampler settings in a loop over ("TEMP", ...) tuples, so no env("TEMP") call names them); a name only
+# mentioned inside a longer string (a docstring, a message) doesn't count.
+import ast
+ENV_NAME = re.compile(r"[A-Z][A-Z0-9_]+")
+
+def program_reads(reader) -> set:
+    try:
+        tree = ast.parse(io.open(reader["file"], encoding="utf-8").read())
+    except (OSError, SyntaxError):
+        return set()
+    return {n.value for n in ast.walk(tree)
+            if isinstance(n, ast.Constant) and isinstance(n.value, str) and ENV_NAME.fullmatch(n.value)}
+
 def mounted_reads(raw: str) -> set:
     code = [ln for ln in raw.splitlines() if not ln.lstrip().startswith("#")]
     names = set()
     for reader in MOUNTED_READERS:
         if any(reader["invoke"] in ln for ln in code):
             names.update(reader["knobs"])
+            names.update(program_reads(reader))
     return names
 
 # Negative controls: the rule must not excuse a forward with no (or only a commented) invoke.
@@ -84,6 +99,10 @@ _inv = MOUNTED_READERS[0]["invoke"]
 assert mounted_reads("x:\n  - |\n    " + _inv + " --engine vllm\n") >= set(MOUNTED_READERS[0]["knobs"])
 assert not mounted_reads("x:\n  - |\n    # " + _inv + " --engine vllm\n"), "a commented invoke must not count"
 assert not mounted_reads("x:\n  - |\n    exec vllm serve\n"), "no invoke must not count"
+_maya = next(r for r in MOUNTED_READERS if r["file"].endswith("maya_settings.py"))
+_got = mounted_reads("x:\n  - |\n    " + _maya["invoke"] + " maya-s\n")
+assert {"TEMP", "THINKING_BUDGET", "KV"} <= _got, f"the program's own reads must count: {sorted(_got)}"
+assert "NOT_A_MAYA_SETTING" not in _got and "MAX_TOKENS" not in _got, "a name the program doesn't read must not count"
 
 bad = []
 checked = 0

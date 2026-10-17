@@ -62,7 +62,7 @@ services:
       --cache-type-v ${KV_TYPE:-q8_0}
       --flash-attn on
       --jinja
-      --reasoning ${REASONING:-off}
+      --reasoning ${REASONING:-${ENABLE_THINKING:-false}}
       --temp ${TEMP:-${TEMPERATURE:-1.0}}
       --top-k ${TOP_K:-64}
       --top-p ${TOP_P:-0.95}

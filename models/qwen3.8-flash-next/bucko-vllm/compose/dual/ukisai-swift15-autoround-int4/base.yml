@@ -155,7 +155,10 @@ services:
       #    env var is the only control, and it is NOT deprecated on this build.
       VLLM_PREFIX_CACHE_RETENTION_INTERVAL: "${VLLM_PREFIX_CACHE_RETENTION_INTERVAL:-1600}"
       VLLM_QSA_EXACT_TOPK: "${VLLM_QSA_EXACT_TOPK:-0}"
-      MTP_DEPTH: "${MTP_DEPTH:-3}"
+      # SPEC_N (club-3090's draft-depth knob) sets it when MTP_DEPTH (bucko's own name) is unset.
+      # bucko always runs its MTP drafter: SPEC_N=0 / MTP_DEPTH=0 is refused at boot (the entrypoint
+      # says why), because vLLM needs num_speculative_tokens > 0, not "drafting off" as elsewhere.
+      MTP_DEPTH: "${MTP_DEPTH:-${SPEC_N:-3}}"
       # Fast 256K runtime switches (upstream #20, configs/fast-256k.env), ON here.
       # Upstream ships them OFF by default and bundles them with a P2P custom
       # all-reduce, which this rig cannot use (QEMU VM, no GPU P2P), so that one
@@ -193,7 +196,7 @@ services:
     # umask 0002 (group-writable cache files), the default-thinking-budget patch (it refuses
     # the boot if its anchor moved), then hand over to the image's own launcher
     # (qwen38-serve) with the same arguments. The patch refuses to boot if its anchor moved.
-    entrypoint: ["bash", "-c", "umask 0002 && python3 /etc/club3090/thinking-budget/apply.py && exec /usr/local/bin/qwen38-serve \"$$@\"", "--"]
+    entrypoint: ["bash", "-c", "case \"$${MTP_DEPTH:-}\" in ''|*[!0-9]*) echo \"[spec] MTP depth '$${MTP_DEPTH:-}' (SPEC_N or MTP_DEPTH) is not a whole number; use 1-3\" >&2; exit 1 ;; 0) echo '[spec] MTP depth 0 (SPEC_N=0 or MTP_DEPTH=0): bucko always runs its MTP drafter and vLLM needs num_speculative_tokens > 0; use 1-3' >&2; exit 1 ;; esac; umask 0002 && python3 /etc/club3090/thinking-budget/apply.py && exec /usr/local/bin/qwen38-serve \"$$@\"", "--"]
     # The image's entrypoint takes the model path as its argument.
     command: ["/models/swift-1.5-qwen3.8-flash-next-w4a16-autoround",
               "/models/qwen3.8-flash-next-w4a16-fp8ple/runtime/mtp-int4-g32"]

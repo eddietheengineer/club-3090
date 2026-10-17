@@ -173,6 +173,7 @@ services:
       # Omitting them boots clean, logs the THINKING row, and ignores INSTRUCT=1.
       # Bare form on purpose: `- VAR=${VAR:-}` sets the var EMPTY-but-present.
       - INSTRUCT
+      - ENABLE_THINKING
       - THINKING
       - REASONING
       # Reasoning knobs read by the entrypoint above. Bare form on purpose:
@@ -210,8 +211,10 @@ services:
     #   issue #1027, where instruct scored 120/150 pass@1, worst of four modes tested).
     #   INSTRUCT=1 flips reasoning AND the whole sampler back together (last-wins on
     #   repeated flags — see the q8_0 sibling header for the full rationale and the
-    #   deprecated-behaviour re-test trigger on pin bumps). THINKING=1 is now a back-compat
-    #   no-op. bench.sh sends its own fixed canonical sampler regardless.
+    #   deprecated-behaviour re-test trigger on pin bumps). ENABLE_THINKING=false (the club's
+    #   standard switch) flips the same way; THINKING=1 changes nothing on its own (thinking is
+    #   the default) except winning over ENABLE_THINKING=false. bench.sh sends its own fixed
+    #   canonical sampler regardless.
     # ⭐ THIS IS THE ONLY ENGINE OF THE THREE THAT DELIVERS THE WHOLE CARD ROW.
     # llama-server seeds every request from the CLI sampler params — server-task.cpp
     # params_from_json_cmpl(): `defaults.sampling = params_base.sampling`, then each
@@ -257,6 +260,25 @@ services:
         # emits each flag exactly once, so the deprecation cannot bite.
         # INSTRUCT wins when both INSTRUCT and THINKING are set, matching the old
         # last-wins order (the INSTRUCT line came second).
+        # ENABLE_THINKING (club-3090's standard switch: true | false) picks the same row: false
+        # selects the INSTRUCT row, true keeps the THINKING row. INSTRUCT / THINKING / REASONING
+        # are this compose's own names and win when set; a boot note says so when they disagree.
+        case "$${ENABLE_THINKING:-}" in
+          ""|true|false) ;;
+          *) echo "[thinking] ENABLE_THINKING='$${ENABLE_THINKING}' must be true or false." >&2; exit 1 ;;
+        esac
+        if [ "$${ENABLE_THINKING:-}" = false ] && [ -z "$${INSTRUCT:-}" ]; then
+          if [ -n "$${THINKING:-}" ]; then
+            echo "[thinking] THINKING=$${THINKING} wins over ENABLE_THINKING=false (this compose's own name)" >&2
+          else
+            INSTRUCT=1
+          fi
+        elif [ "$${ENABLE_THINKING:-}" = true ] && [ -n "$${INSTRUCT:-}" ]; then
+          echo "[thinking] INSTRUCT=$${INSTRUCT} wins over ENABLE_THINKING=true (this compose's own name)" >&2
+        fi
+        if [ -n "$${ENABLE_THINKING:-}" ] && [ -n "$${REASONING:-}" ]; then
+          echo "[thinking] REASONING=$${REASONING} sets --reasoning itself (this compose's own name); ENABLE_THINKING=$${ENABLE_THINKING} picks the sampler row" >&2
+        fi
         if [ -n "$${INSTRUCT:-}" ]; then
           _r="$${REASONING:-off}"; _t="$${TEMP:-$${TEMPERATURE:-0.7}}"
           _p="$${TOP_P:-0.80}";    _pp="$${PRESENCE_PENALTY:-1.5}"
