@@ -673,10 +673,18 @@ if [[ "${SETUP_BOTH_MODE:-0}" == "1" ]]; then
   export MODEL_DIR
   echo "[setup] downloading the recommended defaults into ${MODEL_DIR}: ${BOTH_MODELS[*]}"
   echo ""
+  # Each model runs in its own setup.sh; a failed one used to be ignored and this still said
+  # "✓ All recommended models downloaded" and exited 0. Collect the failures instead.
+  _both_failed=()
   for _both_model in "${BOTH_MODELS[@]}"; do
-    bash "$0" "${_both_model}"
+    bash "$0" "${_both_model}" || _both_failed+=("${_both_model}")
     echo ""
   done
+  if [[ ${#_both_failed[@]} -gt 0 ]]; then
+    echo "[setup] ✗ ${#_both_failed[@]} of ${#BOTH_MODELS[@]} downloads failed: ${_both_failed[*]}" >&2
+    echo "[setup]   Re-run the same command; finished files are skipped and partial ones resume." >&2
+    exit 1
+  fi
   echo "[setup] ✓ All recommended models downloaded."
   echo "[setup] Next: bash scripts/launch.sh"
   exit 0
@@ -938,6 +946,34 @@ _hf_download_repo() {
   else
     # Unreachable: ensure_hf_cli returned 0 so one of the above resolves.
     echo "ERROR: hf CLI unexpectedly unavailable after ensure_hf_cli." >&2
+    exit 1
+  fi
+
+  # A file over huggingface_hub's 50 GB classic-download ceiling is refused client-side ("The
+  # file is too large to be downloaded using the regular download method"), because this path
+  # forces HF_HUB_DISABLE_XET=1; retrying can't help (paulp83, #1700: ISTA's 54.8 GB shard).
+  # Ask the resilience ladder's preflight first: it reads the published sizes, moves no bytes,
+  # and says "needs-fallback" when the classic path can't serve this pull. The ladder then
+  # serves it: rung 1 (`hf download`), then single-stream resumable curl with a sha256 gate
+  # (scripts/lib/profiles/hf_fetch.py, #804). A preflight that can't run (offline, no python)
+  # changes nothing: the classic path below runs as before.
+  local fetch="${ROOT_DIR:-}/scripts/lib/profiles/hf_fetch.py" transport="" f
+  local fetch_args=("$repo" --local-dir "${dest}" "${rev_args[@]}")
+  for f in ${files}; do fetch_args+=(--include "$f"); done
+  if [[ -f "$fetch" ]] && command -v python3 >/dev/null 2>&1; then
+    transport="$(python3 "$fetch" "${fetch_args[@]}" --preflight 2>/dev/null | sed -n 's/^transport: //p' | head -1)" || transport=""
+  fi
+  if [[ "$transport" == "needs-fallback" ]]; then
+    echo "[model]   ${repo}: a file is over the hub client's 50 GB classic-download limit,"
+    echo "[model]   so this download goes through the resilience ladder (hf_fetch.py)."
+    if python3 "$fetch" "${fetch_args[@]}"; then
+      return 0
+    fi
+    {
+      echo ""
+      echo "ERROR: downloading '${repo}' through the resilience ladder failed (above)."
+      echo "       Re-run the SAME command: the curl rung resumes a partial file."
+    } >&2
     exit 1
   fi
 
