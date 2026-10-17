@@ -94,7 +94,9 @@
 #     so the requirement errs high. 26 measured no faster than 30.
 #     ⚠️ That run used upstream commit ceaa9fa (a local build) at hot cache 88; this
 #     compose runs the v0.5.0 image at hot84 (~116 MiB per slot per card lighter,
-#     upstream's figure). Not yet re-measured on this image (#1700).
+#     upstream's figure). Re-measured on this image 2026-10-16 (@paulp83, #1700,
+#     same rig, chosen by this sizer): fits, 29,290 / 29,831 MiB per card post-run;
+#     decode 124.7 / 133.7 tok/s against 120.3 / 117.7 at 30, one boot each.
 #     ⚠️ Why not the hot cache: above 88 it ran out of memory at KV allocation on
 #     that rig, because the hot cache, the resident experts and the pinned KV pool
 #     share one budget (same issue). Why not lower than 22: nobody has measured it.
