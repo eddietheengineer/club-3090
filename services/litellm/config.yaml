@@ -93,7 +93,7 @@ model_list:
       api_key: EMPTY
       allowed_openai_params: [reasoning_effort]
 
-  - model_name: deckard-40b
+  - model_name: deckard-40b  # status: deprecated
     litellm_params:
       model: openai/deckard-40b
       api_base: http://host.docker.internal:8199/v1

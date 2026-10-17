@@ -14,8 +14,9 @@
 #      + alias, gemma-12b-int8, deckard) is ABSORBED into the generated block
 #      — no route lost, correct port per route;
 #   7. non-functional statuses annotate their route `# status: <status>`
-#      (deepseek non-functional; the qwen3.8-27b dual-max experimental scene)
-#      while functional routes stay clean;
+#      (deepseek non-functional; the qwen3.8-27b dual-max experimental scene;
+#      deckard-40b, deprecated 2026-10-17 with its route kept) while functional
+#      routes stay clean;
 #   8. an engine family without /v1/responses (exllamav3) gets
 #      `use_chat_completions_api: true`; vLLM and llama.cpp don't (#1520).
 set -euo pipefail
@@ -95,8 +96,13 @@ command grep -qE "^[[:space:]]+status: ${_ds_status}\$" scripts/lib/profiles/reg
 grep -qF 'model_name: qwen3.8-27b  # status: experimental' \
   <(sed -n '/BEGIN GENERATED/,/END GENERATED/p' "$CFG") \
   || fail "experimental qwen3.8 dual-max route lacks the '# status:' annotation"
-if ! [ "$(gen_route_line deckard-40b)" = "  - model_name: deckard-40b" ]; then
-  fail "functional (production) route deckard-40b must NOT carry a '# status:' annotation"
+# deckard-40b was this test's production example until its slug was deprecated
+# (2026-10-17, route kept): it now covers the deprecated branch instead.
+if ! [ "$(gen_route_line deckard-40b)" = "  - model_name: deckard-40b  # status: deprecated" ]; then
+  fail "deprecated route deckard-40b must carry '# status: deprecated' (got '$(gen_route_line deckard-40b)')"
+fi
+if ! [ "$(gen_route_line qwen3.6-35b-a3b-autoround)" = "  - model_name: qwen3.6-35b-a3b-autoround" ]; then
+  fail "functional (production) route qwen3.6-35b-a3b-autoround must NOT carry a '# status:' annotation"
 fi
 if ! [ "$(gen_route_line gemma-4-31b)" = "  - model_name: gemma-4-31b" ]; then
   fail "functional (caveats) route gemma-4-31b must NOT carry a '# status:' annotation"

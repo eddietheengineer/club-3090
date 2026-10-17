@@ -22,7 +22,8 @@
 #   Max ctx:   131K (validated envelope; weights ~9.5 GB/card leave headroom —
 #              raise MAX_MODEL_LEN at your own risk, unprofiled)
 #   Genesis:   N/A — Genesis is Qwen3-Next-specific (this is qwen3_5)
-#   Status:    🧪 Experimental
+#   Status:    🗑️ Deprecated
+#   Caveats:   Retired by the maintainer: the Tess-4-27B weights are no longer on the reference rig, so engine pin bumps can't boot-test it
 #   Quality:   A0 baseline 106/150 (71%) think-off · 113/150 (75%) think-on
 #              (benchlocal --full, 2026-07-12) — undershoots the GGUF dual's
 #              116/117; gap is cli-40-concentrated (17/40 off vs 25/40). See
