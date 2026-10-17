@@ -7,6 +7,15 @@
 # (renumbering-proof on the classic runtime too). A new compose that copies
 # the NVIDIA line but forgets the CUDA passthrough silently regresses CDI
 # rigs — this guard reds instead.
+#
+# Composes that pick cards with device_ids instead (#1695) must fall back through
+# CUDA_VISIBLE_DEVICES: `device_ids: ['${ESTATE_GPUS:-${CUDA_VISIBLE_DEVICES:-0,1}}']`.
+# launch.sh --gpus reaches them only that way (it exports the UUIDs; docker takes UUIDs as
+# device IDs). A fixed default (['${ESTATE_GPUS:-0,1}']) ignored --gpus: on a 4-card rig
+# `--gpus 0,3` ran Strata on GPUs 0 and 1, and --gpus 1 put a single-card slug on GPU 0.
+# The device_ids form (not the NVIDIA env line above) is what these engines need: the
+# container sees only the chosen cards, so engines that number GPUs as nvidia-smi does
+# (Strata) and llama.cpp layer splits over every visible card both get the right set.
 set -euo pipefail
 export CLUB3090_CONFIG_DIR=/nonexistent/club-3090-test-config   # tests never read your real settings (#1466)
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -21,6 +30,19 @@ while IFS= read -r f; do
   fi
 done < <(grep -rlE '^\s*- NVIDIA_VISIBLE_DEVICES=' models/*/*/compose --include='*.yml' 2>/dev/null | grep -v '/_archive/' || true)
 
+# device_ids composes (#1695): every device_ids line must fall back through CUDA_VISIBLE_DEVICES.
+n_dev=0
+while IFS= read -r hit; do
+  n_dev=$((n_dev+1))
+  case "$hit" in
+    *CUDA_VISIBLE_DEVICES*) : ;;
+    *) rest="${hit#*:}"
+       echo "FAIL: ${hit%%:*}:${rest%%:*} picks cards with device_ids but ignores launch.sh --gpus; use ['\${ESTATE_GPUS:-\${CUDA_VISIBLE_DEVICES:-<default>}}'] (#1695):${rest#*:}" >&2
+       fails=$((fails+1)) ;;
+  esac
+done < <(command grep -rnE '^\s*device_ids:' models/*/*/compose --include='*.yml' 2>/dev/null | command grep -v '/_archive/' || true)
+[[ $n_dev -gt 0 ]] || { echo "FAIL: found no device_ids composes at all (the search is broken, not the tree)" >&2; fails=$((fails+1)); }
+
 # The UUID resolution (other half of #610) moved into the shared
 # scripts/lib/gpu-select.sh lib (Phase A); launch.sh must source + use it.
 # (test-gpu-select asserts the lib itself + bash/python resolver parity.)
@@ -33,4 +55,4 @@ if [[ $fails -gt 0 ]]; then
   echo "$fails GPU-mask passthrough check(s) failed" >&2
   exit 1
 fi
-echo "PASS: all NVIDIA_VISIBLE_DEVICES composes pass CUDA_VISIBLE_DEVICES through; launch.sh UUID resolution present"
+echo "PASS: all NVIDIA_VISIBLE_DEVICES composes pass CUDA_VISIBLE_DEVICES through; all ${n_dev} device_ids composes fall back through it; launch.sh UUID resolution present"

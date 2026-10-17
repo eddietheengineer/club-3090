@@ -208,7 +208,7 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              device_ids: ['${ESTATE_GPUS:-0,1,2,3,4,5,6,7}']
+              device_ids: ['${ESTATE_GPUS:-${CUDA_VISIBLE_DEVICES:-0,1,2,3,4,5,6,7}}']
               capabilities: [gpu]
     # ⚠️ LIST FORM, NOT a folded `command: >-` string — REQUIRED, not style.
     # Docker Compose's command-line parser REJECTS `(gate|up|down)` inside a

@@ -73,5 +73,5 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              device_ids: ['${ESTATE_GPUS:-0,1,2,3}']
+              device_ids: ['${ESTATE_GPUS:-${CUDA_VISIBLE_DEVICES:-0,1,2,3}}']
               capabilities: [gpu]
