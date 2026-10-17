@@ -1570,6 +1570,10 @@ up_variant() {
     # LOWERS host RAM (the CPU worker holds the tail), so the two never fight.
     # No-op on every compose without the CPU-MoE-* headers.
     resolve_cpu_moe_split     "${full_dir}/${file}"
+    # vLLM UVA expert offload (CPU_OFFLOAD_GB), from the compose's MEASURED points
+    # only (bucko on 32 GB cards, #1700). Same place and contract as the two above;
+    # a lower value only ever LOWERS host RAM. No-op without CPU-Offload-GB-Measured.
+    resolve_cpu_offload_gb    "${full_dir}/${file}"
     # CPU-offload guards: marker-scoped, no-ops on non-offload composes (#deepseek-flash)
     preflight_cpu_offload_ram "${full_dir}/${file}" || exit 1
     preflight_kv_format_hint "${full_dir}/${file}" || true

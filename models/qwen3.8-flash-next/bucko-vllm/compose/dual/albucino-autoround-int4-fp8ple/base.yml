@@ -79,6 +79,29 @@
 #     Every sibling header carries the same mismatch — flagged, not compensated
 #     for locally, because fudging one entry breaks if the gate is ever fixed.
 #     Registry `host_ram_gb` is the NOMINAL figure and must stay <= this.
+#
+# CPU-Offload-GB-Measured: 22@31130
+#   ⤷ switch.sh lowers CPU_OFFLOAD_GB from 30 to 22 when EVERY card has at least
+#     31130 MiB free at launch (a 32 GB card with little else on it); otherwise 30
+#     stands. A CPU_OFFLOAD_GB you set yourself always wins. Format and rules:
+#     resolve_cpu_offload_gb in scripts/lib/compose-meta.sh (measured points only,
+#     never extrapolated, so a 48 GB card also gets 22).
+#     SOURCE: @paulp83, 2x RTX 5090 (TR PRO 3975WX, 251 GiB RAM), bucko upstream
+#     issue #7, 2026-09-09, summarised in upstream docs/hardware.md "Community
+#     report: dual RTX 5090". 22 was the only change from bucko's defaults then:
+#     decode +12-17%, prefill +25%, peak VRAM 29.3 / 30.4 GiB per card. 31130 MiB =
+#     30.4 x 1024; his "90-93%" of 32.6 suggests the figure may be MiB/1000 (~30,400),
+#     so the requirement errs high. 26 measured no faster than 30.
+#     ⚠️ That run used upstream commit ceaa9fa (a local build) at hot cache 88; this
+#     compose runs the v0.5.0 image at hot84 (~116 MiB per slot per card lighter,
+#     upstream's figure). Re-measured on this image 2026-10-16 (@paulp83, #1700,
+#     same rig, chosen by this sizer): fits, 29,290 / 29,831 MiB per card post-run;
+#     decode 124.7 / 133.7 tok/s against 120.3 / 117.7 at 30, one boot each.
+#     ⚠️ Why not the hot cache: above 88 it ran out of memory at KV allocation on
+#     that rig, because the hot cache, the resident experts and the pinned KV pool
+#     share one budget (same issue). Why not lower than 22: nobody has measured it.
+#     Paul's own caveat: the gain may come partly from his RAM headroom, not only
+#     from VRAM placement. A lower value keeps less in host RAM, never more.
 services:
   qwen38-flash-next-ple:
     image: ${BUCKO_IMAGE:-ghcr.io/dominikbucko/qwen38-flash-next-2x3090@sha256:75adfc64ba1576b8a677f455d54891c152444e4bf43fbc37cb8f1885a8db3387}  # v0.5.0

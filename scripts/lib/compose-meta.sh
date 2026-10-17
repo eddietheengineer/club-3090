@@ -688,6 +688,117 @@ resolve_cpu_moe_split() {
   return 0
 }
 
+# --- vLLM UVA expert offload: CPU_OFFLOAD_GB from MEASURED points --------------
+# CPU_OFFLOAD_GB is how many GiB of expert weights each vLLM worker keeps in host
+# RAM (UVAOffloadConfig.cpu_offload_gb, "GiB ... per GPU"). A compose that pins it
+# is sized for one card class: bucko's 30 is a 24 GB number, and a 32 GB card left
+# ~7.5 GiB idle at it (paulp83, #1700). Unlike resolve_cpu_moe_split this is NOT a
+# fit formula, on purpose:
+#   - N GiB off the budget does not land as N GiB of VRAM. vLLM fills the budget in
+#     load order, so the trailing layers' experts become resident, and the engine's
+#     own expert cache shifts with them.
+#   - The speed response is a threshold, not a slope: on 2x 5090, 26 measured no
+#     faster than 30 and 22 was +12-17% decode (bucko upstream issue #7).
+# So the compose lists MEASURED points and the sizer only ever picks one:
+#
+#   # CPU-Offload-GB-Measured: <value>@<min free MiB on every card> [...]
+#
+# It takes the LOWEST value whose requirement every card meets, reading FREE VRAM
+# at launch (a desktop or another process on a card falls out on its own), and
+# never extrapolates past a point: a bigger card gets the lowest measured value,
+# not a guess. A CPU_OFFLOAD_GB you set (shell or settings file) always wins.
+# Lowering it only ever LOWERS host RAM, so the CPU-Offload-Host-RAM-GB gate keeps
+# pricing the worst case and never fights this. It always prints one line.
+resolve_cpu_offload_gb() {
+  local compose_file="$1"
+  [[ -f "$compose_file" ]] || return 0
+  local points; points="$(compose_meta_get "$compose_file" cpu-offload-gb-measured || true)"
+  [[ -n "$points" ]] || return 0                    # not a sized compose
+  # The compose's own default, read from the compose rather than restated in a
+  # header, so the two cannot drift.
+  local text="" default=""
+  IFS= read -r -d '' text < "$compose_file" || true
+  if [[ "$text" =~ CPU_OFFLOAD_GB:-([0-9]+) ]]; then default="${BASH_REMATCH[1]}"; fi
+  [[ -n "$default" ]] || return 0
+
+  # Test seam, as CPU_MOE_FREE_MIB: the guard reproduces the decision without a GPU.
+  local -a frees=()
+  local f
+  if [[ -n "${CPU_OFFLOAD_GB_FREE_MIB:-}" ]]; then
+    for f in ${CPU_OFFLOAD_GB_FREE_MIB}; do
+      if [[ "$f" =~ ^[0-9]+$ ]]; then frees+=("$f"); fi
+    done
+  else
+    command -v nvidia-smi >/dev/null 2>&1 || return 0
+    while read -r f; do
+      if [[ "$f" =~ ^[0-9]+$ ]]; then frees+=("$f"); fi
+    done < <(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null)
+  fi
+  (( ${#frees[@]} >= 1 )) || return 0
+  local min="${frees[0]}"
+  for f in "${frees[@]}"; do
+    if (( f < min )); then min="$f"; fi
+  done
+
+  # pick = the lowest measured value this rig meets; low = the lowest point at all.
+  local p v r pick="" pick_need="" low="" low_need=""
+  for p in $points; do
+    [[ "$p" =~ ^([0-9]+)@([0-9]+)$ ]] || continue
+    v="${BASH_REMATCH[1]}"; r="${BASH_REMATCH[2]}"
+    if [[ -z "$low" ]] || (( v < low )); then low="$v"; low_need="$r"; fi
+    if (( min >= r )) && { [[ -z "$pick" ]] || (( v < pick )); }; then pick="$v"; pick_need="$r"; fi
+  done
+  [[ -n "$low" ]] || return 0                       # header present but unparseable
+
+  local fit="$default"
+  if [[ -n "$pick" ]] && (( pick < default )); then fit="$pick"; fi
+
+  local pinned="${CPU_OFFLOAD_GB:-}"
+  if [[ -n "$pinned" ]]; then
+    echo "[cpu-offload] CPU_OFFLOAD_GB=${pinned} (YOUR value, kept). The sizer would pick ${fit} here" >&2
+    echo "              (smallest card ${min} MiB free; compose default ${default})." >&2
+    # Below the default, a value is known to fit at or ABOVE a measured point this rig
+    # meets (a higher value keeps more in host RAM, so less in VRAM), and known NOT to
+    # fit at or BELOW one it doesn't. Anything else is unmeasured.
+    if [[ "$pinned" =~ ^[0-9]+$ ]] && (( pinned < default )); then
+      local safe=0 over="" over_need=""
+      for p in $points; do
+        [[ "$p" =~ ^([0-9]+)@([0-9]+)$ ]] || continue
+        v="${BASH_REMATCH[1]}"; r="${BASH_REMATCH[2]}"
+        if (( v <= pinned && min >= r )); then safe=1; fi
+        if (( v >= pinned && min < r )); then over="$v"; over_need="$r"; fi
+      done
+      if (( safe == 0 )); then
+        if [[ -n "$over" ]]; then
+          if (( over == pinned )); then
+            echo "[cpu-offload] ⚠️  ${pinned} was measured needing ${over_need} MiB free per card, and this rig's" >&2
+          else
+            echo "[cpu-offload] ⚠️  ${pinned} keeps at least as much on the GPU as ${over}, which needed ${over_need} MiB" >&2
+            echo "              free per card, and this rig's" >&2
+          fi
+          echo "              smallest card has ${min}. Expect an out-of-memory at boot." >&2
+        else
+          echo "[cpu-offload] ⚠️  nothing measured says ${pinned} fits here (the lowest measured value, ${low}," >&2
+          echo "              needs ${low_need} MiB free per card; the smallest here has ${min}). Watch the" >&2
+          echo "              boot for an out-of-memory." >&2
+        fi
+      fi
+    fi
+    return 0
+  fi
+
+  if (( fit < default )); then
+    export CPU_OFFLOAD_GB="$fit"
+    echo "[cpu-offload] CPU_OFFLOAD_GB=${fit} (compose default ${default}): every card has at least ${pick_need} MiB" >&2
+    echo "              free (smallest ${min}), the measured point in the compose header. Set" >&2
+    echo "              CPU_OFFLOAD_GB yourself to override." >&2
+  else
+    echo "[cpu-offload] CPU_OFFLOAD_GB=${default} (compose default): the lowest measured value, ${low}, needs" >&2
+    echo "              ${low_need} MiB free on every card, and the smallest here has ${min}." >&2
+  fi
+  return 0
+}
+
 resolve_offload_residency() {
   local compose_file="$1"
   [[ -f "$compose_file" ]] || return 0
