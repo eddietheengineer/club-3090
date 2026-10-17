@@ -107,7 +107,8 @@ gpu_select_assert_placement() {
     echo "[${log_prefix}] ⚠ PLACEMENT MISMATCH: requested GPU(s) not running the model — ${miss}" >&2
     echo "[${log_prefix}]   requested: ${requested}" >&2
     echo "[${log_prefix}]   actual:    ${actual}" >&2
-    echo "[${log_prefix}]   On a CDI runtime this usually means CUDA_VISIBLE_DEVICES didn't reach the container (see docs/HARDWARE.md → Pinning specific GPUs)." >&2
+    echo "[${log_prefix}]   Either the compose fixes its cards (a device_ids with no CUDA_VISIBLE_DEVICES fallback, #1695)," >&2
+    echo "[${log_prefix}]   or, on a CDI runtime, CUDA_VISIBLE_DEVICES didn't reach the container (see docs/HARDWARE.md → Pinning specific GPUs)." >&2
   else
     echo "[${log_prefix}] ✓ placement verified — model running on the requested GPU(s)" >&2
   fi

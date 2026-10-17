@@ -210,7 +210,7 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              device_ids: ['${ESTATE_GPUS:-0,1}']
+              device_ids: ['${ESTATE_GPUS:-${CUDA_VISIBLE_DEVICES:-0,1}}']
               capabilities: [gpu]
     # ⚠️ LIST FORM, and a wrapper rather than a bare `command:` — the thread
     # resolution below cannot be expressed as compose variable substitution.

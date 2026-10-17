@@ -96,7 +96,7 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              device_ids: ["${ESTATE_GPUS:-0}"]
+              device_ids: ["${ESTATE_GPUS:-${CUDA_VISIBLE_DEVICES:-0}}"]
               capabilities: [gpu]
     volumes:
       - ../../../../../../scripts/lib/cuda-ordinals.sh:/etc/club3090/cuda-ordinals.sh:ro

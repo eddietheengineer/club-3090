@@ -359,7 +359,7 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              device_ids: ['${ESTATE_GPUS:-0,1,2,3,4,5,6,7}']
+              device_ids: ['${ESTATE_GPUS:-${CUDA_VISIBLE_DEVICES:-0,1,2,3,4,5,6,7}}']
               capabilities: [gpu]
     entrypoint: ["/bin/bash", "-c"]
     command:

@@ -159,7 +159,7 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              device_ids: ['${ESTATE_GPUS:-0}']
+              device_ids: ['${ESTATE_GPUS:-${CUDA_VISIBLE_DEVICES:-0}}']
               capabilities: [gpu]
     # ⚠️ The image ENTRYPOINT is ["/app/llama-server"]; this wrapper replaces it and
     # execs the same binary. It exists to resolve the sampler ROW in one place.
