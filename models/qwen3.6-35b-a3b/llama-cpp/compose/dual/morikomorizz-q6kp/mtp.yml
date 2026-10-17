@@ -90,7 +90,7 @@
 
 services:
   llama-cpp-hauhaucs-35ba3b:
-    image: ${LLAMACPP_IMAGE:-ghcr.io/ggml-org/llama.cpp@sha256:883915ea20a4b350e98f7284098f4d400c21e9b366e248d397cd42d90602a84c}
+    image: ${LLAMACPP_IMAGE:-ghcr.io/ggml-org/llama.cpp@sha256:e4cfff28678327b0ae7eda129e700e56a0fa55aa23db2f016256ea155c15c2b5}
     container_name: "${ESTATE_CONTAINER:-llama-cpp-hauhaucs-35ba3b}"
     restart: ${CLUB3090_RESTART:-unless-stopped}
     ports:
