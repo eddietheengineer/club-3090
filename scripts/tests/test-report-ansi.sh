@@ -22,7 +22,7 @@ fails=0
 fail() { echo "  ✗ $*" >&2; fails=$((fails + 1)); }
 ok() { echo "  ✓ $*"; }
 
-fns="$(awk '/^strip_ansi\(\) \{$/,/^}$/' "$REPORT"; awk '/^redact\(\) \{$/,/^}$/' "$REPORT")"
+fns="$(awk '/^strip_ansi\(\) \{$/,/^}$/' "$REPORT"; awk '/^redact_ips\(\) \{$/,/^}$/' "$REPORT"; awk '/^redact\(\) \{$/,/^}$/' "$REPORT")"
 [[ "$fns" == *"strip_ansi()"* && "$fns" == *"redact()"* ]] || { echo "  ✗ strip_ansi/redact not found in report.sh" >&2; exit 1; }
 
 ESC=$'\033'
