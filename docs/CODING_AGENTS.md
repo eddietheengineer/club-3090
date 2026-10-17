@@ -259,6 +259,20 @@ providers:
           qwenTemplateReasoningEffort: true
           extraBody:
             thinking_token_budget: 8192      # chat-completions wire only (see below)
+      # The Qwen3.8-Flash-Next ids (qwen3.8-flash-next, -ple, -swift15, -exl3-*,
+      # qwen3.8-flash-next-iq3_s, swift-1.5-iq3_s) get the same block, plus
+      # supportsReasoningSummary: false (see Wire format).
+      glm-5.3-flash:
+        maxTokens: 32768
+        reasoning: true
+        thinking:
+          mode: effort
+          efforts: [low, high, max]          # GLM's own levels: no medium, no way to turn thinking off
+          defaultLevel: max                  # what the GLM servers do when a request names none
+        compat:
+          supportsReasoningEffort: true
+          qwenTemplateReasoningEffort: true
+          supportsReasoningSummary: false
   # <<< club-3090 local models <<<
 ```
 
@@ -286,6 +300,15 @@ comes back empty; Claude Code's streamed turns are fine.
   through the gateway on SGLang dual-fast (no reasoning for `off`, `effort: "low"`
   for `low`), and with the same request sent straight to vLLM dual-fast. llama.cpp
   wasn't checked.
+- **The effort on a bridged route** (tabbyAPI, Project Maya). omp puts
+  `summary: "auto"` in the Responses `reasoning` object, and when a summary is
+  there LiteLLM's bridge forwards the whole object as `reasoning_effort`
+  (`{"effort": "low", "summary": "auto"}`), which tabbyAPI's string field and
+  Maya's effort parser reject. The Flash-Next and GLM overrides set
+  `supportsReasoningSummary: false`, so the bridge sends the plain level. The
+  engines that serve Responses themselves (llama.cpp, Strata, vLLM) take
+  `reasoning.effort` either way. Captured 2026-10-16 with omp 18.11.1 through
+  LiteLLM v1.100.3 in front of a logging endpoint, on native and bridged routes.
 - **The thinking budget** (`thinking_token_budget: 8192` in the provider) exists
   only on the chat-completions wire, so it doesn't reach the engine through the
   gateway; it reaches a vLLM engine only from an omp provider of your own pointed
@@ -296,9 +319,14 @@ comes back empty; Claude Code's streamed turns are fine.
 engines read; omp's plain `qwen` format would send a top-level `enable_thinking`
 that vLLM and SGLang ignore.)
 
-The Qwen3.8 override also says `reasoning: true`: the gateway only marks a route
-as reasoning-capable when its slug declares a thinking sampler profile, and omp
-sends no effort at all to a model it thinks can't reason.
+The overrides also say `reasoning: true`: the gateway only marks a route as
+reasoning-capable when its slug declares a thinking sampler profile, and omp
+sends no effort at all to a model it thinks can't reason. No Flash-Next or GLM
+slug declares one, so until 2026-10-16 (no override for them) omp sent those
+models no effort and every request ran at the server's default: xhigh for
+Flash-Next, max for GLM ([#1690](https://github.com/noonghunna/club-3090/discussions/1690)).
+Re-run `omp-setup.sh` to pick the overrides up. A model id that isn't in the
+script's lists (a slug of your own, say) still gets no effort.
 
 ### Settings for `~/.omp/agent/config.yml`
 
