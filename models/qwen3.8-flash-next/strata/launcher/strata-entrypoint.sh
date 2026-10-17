@@ -8,7 +8,7 @@
 #   REINSTALL=1          redo the setup for an existing config
 #   CONTEXT, KV          setup's context and KV format; a change from what setup was given
 #                        runs setup again at the next boot (it sizes the KV and expert cache)
-#   REASONING_EFFORT, ENABLE_THINKING, THINKING_BUDGET, SPEC_N, MAX_TOKENS,
+#   REASONING_EFFORT, ENABLE_THINKING, THINKING_BUDGET, SPEC_N,
 #   TEMP, TOP_P, TOP_K, MIN_P, PRESENCE_PENALTY, REPEAT_PENALTY
 #                        written into Strata's config at every boot by strata_config.py
 #                        (mounted next to this file; its header maps each to Strata's key).

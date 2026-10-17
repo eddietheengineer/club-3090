@@ -21,12 +21,12 @@
 #              62.5% vs 66.8% with the base draft layer). Not gate-passing yet: quality unmeasured
 #              (8-pack pending). One request at a time. Needs ~86 GB of free host RAM when the model
 #              disk is rotational (setup then keeps the 28.8 GB n-gram table in RAM; on an SSD it stays
-#              on disk), NVIDIA driver >= 580 (CUDA 13) and an AVX2 CPU; x86-64 only. Strata reasons by default and takes no
-#              server-side effort default (SC117 recommends reasoning_effort xhigh per request; the vLLM
-#              Flash-Next slugs default to low); our tooling has no thinking-budget support for it yet.
-#              No launch knobs (SPEC_N, REASONING_EFFORT, ...): Strata's settings live in the setup config
-#              on the data volume. The first start builds this model's pack on the shared data volume (~45 s
-#              when the MTP layer is already there).
+#              on disk), NVIDIA driver >= 580 (CUDA 13) and an AVX2 CPU; x86-64 only. Strata reasons by
+#              default, at the template's xhigh (what SC117 recommends; as the bucko-vllm Flash-Next slugs).
+#              Launch settings (REASONING_EFFORT, ENABLE_THINKING, THINKING_BUDGET, SPEC_N, the sampler;
+#              docs/engines/STRATA.md) are written into Strata's config at every boot. The first start
+#              builds this model's pack on the shared data volume (~45 s when the MTP layer is already
+#              there).
 #              Measured 2026-10-14 on 0.1.44.1 at 370 W: 93.9 / 105.8 decode, 1,952 / 2,302 prefill
 #              @10K/@90K, MTP acceptance 65.7% (BENCHMARKS.md, Qwen3.8-Flash-Next / Strata).
 # CPU-Offload-Host-RAM-GB: 86
@@ -73,7 +73,6 @@ services:
       ENABLE_THINKING:
       THINKING_BUDGET:
       SPEC_N:
-      MAX_TOKENS:
       TEMP:
       TOP_P:
       TOP_K:

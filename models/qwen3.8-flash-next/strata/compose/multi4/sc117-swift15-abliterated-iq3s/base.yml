@@ -24,12 +24,12 @@
 #              validated by design; Strata's layer split takes any number of cards (its
 #              docs/MULTI_GPU.md shows a 4-card split). One request at a time. Needs ~86 GB of free
 #              host RAM when the model disk is rotational (setup then keeps the 28.8 GB n-gram table in RAM; on an SSD it stays
-#              on disk), NVIDIA driver >= 580 (CUDA 13) and an AVX2 CPU; x86-64 only. Strata reasons by default and takes no
-#              server-side effort default (SC117 recommends reasoning_effort xhigh per request; the vLLM
-#              Flash-Next slugs default to low); our tooling has no thinking-budget support for it yet.
-#              No launch knobs (SPEC_N, REASONING_EFFORT, ...): Strata's settings live in the setup config
-#              on the data volume. The first start builds this model's pack on the shared data volume (~45 s
-#              when the MTP layer is already there).
+#              on disk), NVIDIA driver >= 580 (CUDA 13) and an AVX2 CPU; x86-64 only. Strata reasons by
+#              default, at the template's xhigh (what SC117 recommends; as the bucko-vllm Flash-Next slugs).
+#              Launch settings (REASONING_EFFORT, ENABLE_THINKING, THINKING_BUDGET, SPEC_N, the sampler;
+#              docs/engines/STRATA.md) are written into Strata's config at every boot. The first start
+#              builds this model's pack on the shared data volume (~45 s when the MTP layer is already
+#              there).
 #              Not measured: the dual sibling's 125.7 / 161.7 decode (0.1.44.1, 2026-10-14) is the
 #              nearest reference, not a number for four cards.
 # CPU-Offload-Host-RAM-GB: 86
@@ -74,7 +74,6 @@ services:
       ENABLE_THINKING:
       THINKING_BUDGET:
       SPEC_N:
-      MAX_TOKENS:
       TEMP:
       TOP_P:
       TOP_K:

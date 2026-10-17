@@ -18,13 +18,13 @@
 #              The first start needs the network (setup.py installs Python packages and range-reads
 #              ~5 GB of MTP tensors from Qwen/Qwen3.8-Flash-Next) and ~86 GB of free host RAM when the
 #              model disk is rotational (setup then keeps the n-gram table in RAM; less on an SSD). Host
-#              needs NVIDIA driver >= 580 (CUDA 13) and an AVX2 CPU; x86-64 only. Strata reasons by
-#              default and takes no server-side effort default (the vLLM Flash-Next slugs default to
-#              low); our tooling has no thinking-budget support for it yet. No launch knobs (SPEC_N,
-#              REASONING_EFFORT, ...): Strata's settings live in the setup config on the data volume.
-#              The FIRST start takes ~14 min on the reference rig (image pull ~2 min, MTP fetch ~10 min,
-#              MTP pack ~2 min), longer than switch.sh's 10-minute wait: give it READY_TIMEOUT=1800
-#              (or re-run switch.sh once it times out; the container keeps going). Later starts: ~30 s.
+#              needs NVIDIA driver >= 580 (CUDA 13) and an AVX2 CPU; x86-64 only. Strata reasons by default,
+#              at the template's xhigh (as the bucko-vllm Flash-Next slugs). Launch settings
+#              (REASONING_EFFORT, ENABLE_THINKING, THINKING_BUDGET, SPEC_N, the sampler;
+#              docs/engines/STRATA.md) are written into Strata's config at every boot. The FIRST start takes
+#              ~14 min on the reference rig (image pull ~2 min, MTP fetch ~10 min, MTP pack ~2 min), longer
+#              than switch.sh's 10-minute wait: give it READY_TIMEOUT=1800 (or re-run switch.sh once it
+#              times out; the container keeps going). Later starts: ~30 s.
 #              Measured 2026-10-13 on 0.1.43.1: 122.5 / 153.9 decode, 2,228 / 3,364 prefill (BENCHMARKS.md,
 #              Qwen3.8-Flash-Next / Strata).
 # CPU-Offload-Host-RAM-GB: 86
@@ -68,7 +68,6 @@ services:
       ENABLE_THINKING:
       THINKING_BUDGET:
       SPEC_N:
-      MAX_TOKENS:
       TEMP:
       TOP_P:
       TOP_K:
