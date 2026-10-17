@@ -99,6 +99,12 @@ the compose's own code:
 - `json_line`: interpolates the matched line (e.g. the `--default-chat-template-kwargs`
   item) and requires valid JSON; `strip_prefix` removes `NAME=` from an env entry.
 - `passthrough`: the compose interpolates the value into that line unchecked.
+- `program`: runs `python3 <program> <args…>` from its repo source with the probe in a clean
+  environment; the compose accepts a value when it exits 0. For readers that live in a program the
+  compose mounts and its entrypoint runs, not in compose text (the Strata recipe's
+  `launcher/strata_config.py validate`, which the entrypoint runs before setup). The compose must
+  mount the program, or the check fails. The program is listed in `MOUNTED_READERS` too, so the
+  scan counts the compose's entrypoint line as the read.
 
 A probe is a value, or a `{NAME: value}` map for dependency cases, merged over `env`.
 

@@ -60,7 +60,7 @@ STATUSES = ("first-batch", "candidate")
 #   unverified — the compose passes it through unchecked and the repo records no
 #             evidence of what the engine/template then does. Say so rather than guess.
 ENFORCED = ("boot", "request", "none", "unverified")
-CHECK_KINDS = ("shell", "json_line", "passthrough")
+CHECK_KINDS = ("shell", "json_line", "passthrough", "program")
 
 # Implied full-match patterns for the numeric types (a variant's own `pattern`
 # replaces them). These mirror the composes' shell `case` checks — see the
@@ -88,6 +88,17 @@ MOUNTED_READERS = (
             "THINKING_BUDGET_MEDIUM": "--medium",
             "THINKING_BUDGET_XHIGH": "--xhigh",
             "THINKING_BUDGETS": None,
+        },
+    },
+    {
+        # the Strata composes' entrypoint (#1695 follow-up): it runs strata_config.py, which
+        # writes these into Strata's run config at every boot and refuses a bad value (exit 1)
+        "invoke": '"/opt/club3090/strata-entrypoint.sh"',
+        "file": "models/qwen3.8-flash-next/strata/launcher/strata_config.py",
+        "knobs": {
+            "REASONING_EFFORT": None,
+            "ENABLE_THINKING": None,
+            "SPEC_N": None,
         },
     },
     {
@@ -282,6 +293,11 @@ def _variant_errors(w: str, knob: dict, v) -> list[str]:
                                     and all(isinstance(c, str) and c.startswith("/") and isinstance(h, str) and h
                                             for c, h in chk["mounts"].items())):
             errs.append(f"{cw}.mounts: a shell check's map of absolute container path -> repo-relative file")
+        if chk.get("kind") == "program":
+            if not isinstance(chk.get("program"), str) or not chk["program"].endswith(".py"):
+                errs.append(f"{cw}.program: a program check needs 'program' (the repo-relative .py the compose mounts)")
+            if not (isinstance(chk.get("args"), list) and all(isinstance(a, str) for a in chk["args"])):
+                errs.append(f"{cw}.args: a program check needs 'args' (a list of strings)")
         if chk.get("kind") in ("json_line", "passthrough") and not isinstance(chk.get("line"), str):
             errs.append(f"{cw}.line: a {chk.get('kind')} check needs 'line' (line regex)")
         if "env" in chk and not (isinstance(chk["env"], dict)

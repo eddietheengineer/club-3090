@@ -60,12 +60,26 @@ services:
       SETUP_ONLY: "${SETUP_ONLY:-0}"
       REINSTALL: "${REINSTALL:-0}"
       STRATA_START_GPUS: "${STRATA_START_GPUS:-0}"
+      # Strata run-config settings, written into its config at every boot by strata_config.py
+      # (mounted below); unset = Strata's own default. CONTEXT and KV re-run setup when changed.
+      REASONING_EFFORT:
+      ENABLE_THINKING:
+      THINKING_BUDGET:
+      SPEC_N:
+      MAX_TOKENS:
+      TEMP:
+      TOP_P:
+      TOP_K:
+      MIN_P:
+      PRESENCE_PENALTY:
+      REPEAT_PENALTY:
       # the entrypoint passes --host 0.0.0.0 and --port 8080 itself (API_KEY, when set, too)
     volumes:
       - "${MODEL_DIR:-../../../../../../models-cache}/qwen3.8-flash-next-gsq-rco-gguf/IQ3_S:/gguf:ro"
       # packs, MTP layer and config; the launchers put it under ~/.local/share/club-3090
       - "${STRATA_DATA_DIR:-${CLUB3090_DATA_DIR:-../../..}/strata-data}:/data"
       - "../../../launcher/strata-entrypoint.sh:/opt/club3090/strata-entrypoint.sh:ro"
+      - "../../../launcher/strata_config.py:/opt/club3090/strata_config.py:ro"
     deploy:
       resources:
         reservations:

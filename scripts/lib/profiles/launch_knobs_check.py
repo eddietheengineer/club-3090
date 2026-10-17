@@ -289,6 +289,21 @@ def _run_json_line(text: str, check: dict, env: dict) -> tuple[bool, str]:
     return True, "json ok"
 
 
+def _run_program(text: str, check: dict, env: dict, root: Path) -> tuple[bool, str]:
+    """A program the compose mounts and its entrypoint runs (e.g. the Strata recipe's
+    strata_config.py): run it from its repo source with the probe in a clean environment.
+    rc 0 = accepted. The compose must really mount it, or the proof is about nothing."""
+    prog = check["program"]
+    if Path(prog).name not in text or "/" + prog.rsplit("/", 2)[-2] + "/" + Path(prog).name not in text:
+        return False, f"{check['compose']} does not mount {prog}"
+    penv = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": "/nonexistent", **env}
+    p = subprocess.run(["python3", str(root / prog), *check["args"]], env=penv, capture_output=True,
+                       text=True, encoding="utf-8", timeout=60)
+    if p.returncode != 0:
+        return False, f"rc={p.returncode}: {p.stderr.strip().splitlines()[-1] if p.stderr.strip() else ''}"
+    return True, "rc=0"
+
+
 def compose_accepts(root: Path, knob_name: str, check: dict, env: dict) -> tuple[bool, str]:
     text = (root / check["compose"]).read_text(encoding="utf-8")
     kind = check["kind"]
@@ -296,6 +311,8 @@ def compose_accepts(root: Path, knob_name: str, check: dict, env: dict) -> tuple
         return _run_shell(text, check, env, root)
     if kind == "json_line":
         return _run_json_line(text, check, env)
+    if kind == "program":
+        return _run_program(text, check, env, root)
     # passthrough: the compose interpolates the value into this line verbatim and
     # validates nothing — record that the line exists and really carries the knob.
     line = _find_line(text, check["line"])
