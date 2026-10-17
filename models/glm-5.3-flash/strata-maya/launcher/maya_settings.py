@@ -21,6 +21,9 @@ SPEC_N is not one of them: Maya's --spec is documented for its DFlash2 drafter, 
 Nor is MAX_TOKENS: the server takes a default output cap only from the Chat settings its web page saves
 (maya.shared-settings.json, POST /settings), not from maya.json, whose max_tokens is the vision encoder's.
 
+A new setting here needs its key's evidence in scripts/lib/profiles/engine-config-reads.json (where the pinned
+server reads it): test-maya-config-knobs fails until it has some.
+
   maya_settings.py validate     check the settings in the environment; exit 2 with the reason on a bad one
 Python stdlib only, no Maya import: the launch-knob guard runs `validate` on the host.
 """

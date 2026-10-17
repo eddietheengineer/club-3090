@@ -261,5 +261,9 @@ print(f"""
   5. docs/UPSTREAM.md engine-pin row + a dated models/<model>/CHANGELOG.md entry.
   6. Targeted guards: test-launch-compat, test-diagnose-profile, test-patch-attribution,
      registry emit/JSON.
+  7. If {ENGINE} has an entry in engine-config-reads.json (its launcher writes the engine's
+     own config): docker pull the new image, then
+     python3 scripts/lib/profiles/engine_config_reads.py verify {ENGINE} --record
+     (test-engine-config-reads stays red until the evidence is re-checked on it).
 """)
 PY

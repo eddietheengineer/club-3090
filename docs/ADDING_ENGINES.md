@@ -205,6 +205,7 @@ Our standard knobs are catalogued in `scripts/lib/profiles/launch-knobs.json`, o
 
 - **A wrapper launcher with its own env names** (for example `MAX_LEN` instead of `MAX_MODEL_LEN`) must map each catalogued knob it supports onto them in the compose's `environment:`. Each knob it doesn't support should be listed as unsupported in the compose `Caveats:`.
 - **Hardware injection is keyed by profile `type`.** `launch_compat` exports `GPU_MEMORY_UTILIZATION` (vLLM) or `MEM_FRACTION` (SGLang). A wrapper that reads a different name needs a mapping such as `GPU_UTIL: ${GPU_UTIL:-${GPU_MEMORY_UTILIZATION:-0.93}}`.
+- **A launcher that writes the engine's own config file** (Strata's `strata_config.py`, Maya's `maya_settings.py`) needs an entry in `scripts/lib/profiles/engine-config-reads.json`: the probe value for each setting, and, for each key a setting writes, why the pinned engine reads it. `test-engine-config-reads` runs the launcher once per setting and checks every key it writes in the pinned image: read from the config object in an approved function, or listed in the engine's `--help`. A key that arrives in the file but that the engine never reads goes unnoticed by every other gate; Strata's `MAX_TOKENS` shipped that way (#1723, fixed in #1726). After a pin bump, `python3 scripts/lib/profiles/engine_config_reads.py verify <engine> --record` re-checks the evidence on the new image.
 - **The spec-decode toggle contract** (`test-spec-toggle-contract`) runs entrypoints against a stub `vllm` binary. A launcher that isn't `vllm serve` isn't exercised by it, so test `SPEC_N`/`SPEC=off` on a live boot instead.
 
 ### 5. Reasoning, effort, chat template
@@ -269,6 +270,7 @@ The compose layout, header and registry contract are the same as in [ADDING_MODE
 | `test-profiles-compat` | the profile loads, cross-references resolve, and every slug fits a canonical scenario |
 | `test-engine-label-matches-compose` | the compose image default equals `install.spec` |
 | `test-launch-knobs` | catalogued knobs reach the container through both delivery channels |
+| `test-engine-config-reads` | every key a launcher writes into the engine's own config is one the pinned engine reads (checked in the image when it's local) |
 | `test-compose-*` (above) | the compose conventions that cover any engine directory |
 | `bash scripts/preflight-add-model.sh <slug>` | scoped triage per slug |
 | full `for t in scripts/tests/*.sh; do bash "$t"; done` | authoritative before merge; baseline failures against master |

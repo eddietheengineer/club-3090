@@ -15,6 +15,9 @@ setting only reached Strata if someone edited the JSON by hand:
   PRESENCE_PENALTY       sampling.presence_penalty     >= 0
   REPEAT_PENALTY         sampling.repetition_penalty   > 0 (1 = off)
 
+A new setting here needs its key's evidence in scripts/lib/profiles/engine-config-reads.json (where the
+pinned server reads it): test-strata-config-knobs fails until it has some.
+
 MAX_TOKENS is not one of them: Strata reads no default output cap from the run config (its max_tokens
 there is the vision encoder's, serve/runconfig.py doesn't list it); a default cap comes only from the
 Chat settings its web page saves (POST /settings).
