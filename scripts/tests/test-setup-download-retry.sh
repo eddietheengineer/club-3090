@@ -134,4 +134,68 @@ command grep -q 'HF_DOWNLOAD_RETRIES' <<<"$bad" \
   || fail "case 5: the error does not name the offending variable: $bad"
 echo "  ✓ a mistyped retry knob gets a clear error, not an unbound-variable crash"
 
+# --- 6-8. a file over the 50 GB classic ceiling goes through the ladder (paulp83, #1700) ---
+# A fake hf_fetch.py under a fake ROOT_DIR: `--preflight` prints the verdict in $TMP/verdict;
+# a real run records its argv and exits with $TMP/ladder_rc.
+mkdir -p "$TMP/root/scripts/lib/profiles"
+cat > "$TMP/root/scripts/lib/profiles/hf_fetch.py" <<FAKE
+import sys
+args = sys.argv[1:]
+if "--preflight" in args:
+    print("transport: " + open("$TMP/verdict").read().strip()); sys.exit(0)
+open("$TMP/ladder_argv", "w").write(" ".join(args))
+sys.exit(int(open("$TMP/ladder_rc").read()))
+FAKE
+ladder_case() {  # <verdict> <ladder rc>
+  printf '%s' "$1" > "$TMP/verdict"; printf '%s' "$2" > "$TMP/ladder_rc"
+  printf '0' > "$TMP/failuntil"; printf '0' > "$TMP/attempts"; rm -f "$TMP/ladder_argv"
+  set +e
+  OUT="$(PATH="$TMP/bin:$PATH" MODEL_DIR="$TMP/models" ROOT_DIR="$TMP/root" HF_DOWNLOAD_RETRY_SLEEP=0 \
+    bash -c '
+      set -uo pipefail
+      source "'"$TMP"'/fn.sh"
+      ensure_hf_cli() { return 0; }
+      _hf_download_repo big/repo subdir "IQ3_S/big-00001-of-00002.gguf IQ3_S/big-00002-of-00002.gguf" abc123
+    ' 2>&1)"
+  RC=$?
+  set -e
+  ATTEMPTS="$(cat "$TMP/attempts")"
+}
+ladder_case needs-fallback 0
+[[ "$RC" -eq 0 && "$ATTEMPTS" == "0" ]] || fail "case 6: needs-fallback did not go to the ladder (rc=$RC, hf attempts=$ATTEMPTS): $OUT"
+argv="$(cat "$TMP/ladder_argv" 2>/dev/null)"
+[[ "$argv" == *"big/repo"*"--revision abc123"*"--include IQ3_S/big-00001-of-00002.gguf"*"--include IQ3_S/big-00002-of-00002.gguf"* ]] \
+  || fail "case 6: the ladder got the wrong arguments: '$argv'"
+command grep -q '50 GB' <<<"$OUT" || fail "case 6: the switch to the ladder is silent: $OUT"
+echo "  ✓ a file over 50 GB goes through the ladder (repo, revision, every file), with no doomed hf attempt"
+ladder_case needs-fallback 1
+[[ "$RC" -ne 0 && "$ATTEMPTS" == "0" ]] || fail "case 7: a failed ladder returned rc=$RC or retried hf ($ATTEMPTS): $OUT"
+command grep -qi 're-run' <<<"$OUT" || fail "case 7: the ladder failure says nothing about re-running: $OUT"
+echo "  ✓ a failed ladder exits non-zero and says to re-run (no retries of the refused classic path)"
+ladder_case classic 0
+[[ "$RC" -eq 0 && "$ATTEMPTS" == "1" && ! -f "$TMP/ladder_argv" ]] || fail "case 8: a classic pull did not take the normal path (rc=$RC, attempts=$ATTEMPTS)"
+echo "  ✓ a pull the classic path can serve takes the normal path (one hf attempt, no ladder)"
+
+# --- 9. the recommended-defaults mode reports a failed model instead of "✓ All downloaded" ---
+awk '/^if \[\[ "\$\{SETUP_BOTH_MODE:-0\}" == "1" \]\]; then$/{f=1} f{print} f&&/^fi$/{exit}' "$SETUP" > "$TMP/both.sh"
+command grep -q 'All recommended models downloaded' "$TMP/both.sh" || fail "case 9: could not extract the SETUP_BOTH_MODE block from setup.sh"
+cat > "$TMP/child.sh" <<'CHILD'
+[ "$1" = bad-model ] && exit 1
+exit 0
+CHILD
+both_case() {  # <models...> -> OUT, RC
+  set +e
+  OUT="$(SETUP_BOTH_MODE=1 MODEL_DIR="$TMP/models" bash -c 'BOTH_MODELS=("$@"); source "'"$TMP"'/both.sh"' "$TMP/child.sh" "$@" 2>&1)"
+  RC=$?
+  set -e
+}
+both_case good-model bad-model
+[[ "$RC" -ne 0 ]] || fail "case 9: a failed model still exited 0: $OUT"
+command grep -q 'bad-model' <<<"$OUT" && ! command grep -q 'All recommended models downloaded' <<<"$OUT" \
+  || fail "case 9: the failure isn't named, or it still says all were downloaded: $OUT"
+both_case good-model good-model
+[[ "$RC" -eq 0 ]] && command grep -q 'All recommended models downloaded' <<<"$OUT" \
+  || fail "case 9: an all-good run did not report success (rc=$RC): $OUT"
+echo "  ✓ the recommended-defaults mode names a failed model and exits non-zero (and still succeeds when all succeed)"
+
 echo "test-setup-download-retry: ok (club-3090#1305)"
