@@ -11,7 +11,8 @@
 #   Template:  native (GGUF-embedded, Qwen-style)
 #   Max ctx:   262144 (q4_0 KV; validated to 240K NIAH on the dual split)
 #   Genesis:   N/A — llama.cpp engine
-#   Status:    ✅ Production
+#   Status:    🗑️ Deprecated
+#   Caveats:   Retired by the maintainer: the Tess-4-27B weights are no longer on the reference rig, so engine pin bumps can't boot-test it (not booted on llama.cpp v0.7.0)
 #   Engine-profile: llama-cpp-local
 #   Quality:   core 8-pack 116/150 (77%) think-off, 117/150 (78%) think-on single
 #              draw (benchlocal --full, shipped config @ b9967 + 16K budget,

@@ -24,8 +24,9 @@
 #   Max ctx:   262144 (validated: NIAH ceiling ladder clean to ~241K,
 #              20.8 GB/card, KV pool 585K tokens, 2.2 GB margin)
 #   Genesis:   N/A — Genesis is Qwen3-Next-specific (this is qwen3_5)
-#   Status:    ⚠️ Production w/ caveats
-#   Caveats:   think-OFF 8-pack undershoots the GGUF dual tier (108/150 vs
+#   Status:    🗑️ Deprecated
+#   Caveats:   Retired by the maintainer: the Tess-4-27B weights are no longer on the reference rig, so engine pin bumps can't boot-test it
+#              Earlier caveats: think-OFF 8-pack undershoots the GGUF dual tier (108/150 vs
 #              116/150, cli-40-concentrated 19/40 vs 25/40); think-ON ties
 #              (115 vs 117, within ±5-7 noise, cli-40 25/40 = parity). Same
 #              precision-not-serving-path gap as the NVFP4 A0 arms.
