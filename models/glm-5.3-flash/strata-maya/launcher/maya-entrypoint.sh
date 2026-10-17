@@ -15,10 +15,16 @@
 #                       sent over PCIe instead of computed on the CPU), set only when non-empty: what
 #                       Maya's own `maya.sh --calibrate` tunes. Unset: the engine's own choice
 #   MAYA_CPU_LANE       the engine's STRATA_GLM_CPU_LANE (CPU threads per card), the same way
+#   REASONING_EFFORT, ENABLE_THINKING, THINKING_BUDGET, KV,
+#   TEMP, TOP_P, TOP_K, MIN_P, PRESENCE_PENALTY, REPEAT_PENALTY
+#                       written into maya.json at every boot by maya_prepare.py through maya_settings.py
+#                       (its header maps each to Maya's key); unset = the defaults below. A bad value
+#                       stops the boot before the SHA-256 check.
 #
-# The server's defaults for requests that name none: effort max (as the other GLM-5.3-Flash slugs;
-# Maya's own setup writes high), temperature 1.0 / top_p 0.95 (GLM-5.3's vendor sampling) and Maya's
-# own 32K reasoning budget. A request's own reasoning_effort / chat_template_kwargs win.
+# The server's defaults for requests that name none, with nothing set: effort max (as the other
+# GLM-5.3-Flash slugs; Maya's own setup writes high), temperature 1.0 / top_p 0.95 (GLM-5.3's vendor
+# sampling) and Maya's own 32K thinking budget. A request's own reasoning_effort / chat_template_kwargs win,
+# and so do the Chat settings saved from Maya's web page (maya.shared-settings.json next to the config).
 #
 # Its one argument is the quant (maya-s | maya-m | maya-l), fixed by the compose, never a setting, so
 # a saved value can't point a slug at another quant's pack. Each quant has its own folder on /data.
@@ -30,7 +36,7 @@ TAG="${1:?the quant (maya-s, maya-m or maya-l) is this script's argument}"
 here="$(dirname "$0")"
 
 /opt/maya/.venv/bin/python "$here/maya_prepare.py" --tag "$TAG" --context "${CONTEXT:-131072}" \
-  --gpus "${MAYA_GPUS:-0}" --effort max --verify "${VERIFY:-1}" --repack "${REPACK:-0}"
+  --gpus "${MAYA_GPUS:-0}" --verify "${VERIFY:-1}" --repack "${REPACK:-0}"
 
 if [ "${SETUP_ONLY:-0}" = "1" ]; then
   echo "[maya-recipe] setup done: /data/$TAG"

@@ -24,6 +24,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import maya_settings                                  # beside this file: club-3090's launch settings
+
 MAYA = Path("/opt/maya")
 # our quant tags -> maya.py's MODELS names
 MODELS = {"maya-s": "Maya-S-v2-IQ2_XXS", "maya-m": "Maya-M", "maya-l": "Maya-L"}
@@ -144,6 +146,7 @@ def pack(links: list[Path], d: Path, repack: bool) -> Path:
 
 def config(tag: str, d: Path, p: Path, a) -> Path:
     gpus = [int(g) for g in a.gpus.split(",") if g.strip() != ""]
+    keys, sampling, args, notes = maya_settings.settings()   # checked once already at the start of main()
     cfg = {
         "exe": str(MAYA / "build/strata"),
         "args": ["--glm-pack", str(p), "--max-context", str(a.context), "--prefill", "auto",
@@ -152,18 +155,23 @@ def config(tag: str, d: Path, p: Path, a) -> Path:
         "tokenizer": str(p / "tokenizer"),
         "model_name": "glm-5.3-flash",
         "gpu": gpus,
-        # GLM-5.3's vendor sampling, as Maya's setup writes it and as the other GLM-5.3-Flash slugs default
-        "sampling": {"temperature": 1.0, "top_p": 0.95},
-        "reasoning_effort": a.effort,
+        # GLM-5.3's vendor sampling (1.0 / 0.95, as Maya's setup writes it) unless TEMP / TOP_P / ... say otherwise
+        "sampling": sampling,
         "lib_dirs": [],
         "port": 8080,
         "host": "0.0.0.0",
         "log": str(d / "maya.log"),
         "installer": {"quant": MODELS[tag], "written_by": "club-3090 maya_prepare.py"},
     }
+    cfg.update(keys)                                  # reasoning_effort (max unless set), thinking_budget
+    cfg["args"] += args                               # --kv
+    for n in notes:
+        say(n)
     out = d / "maya.json"
     write_json(out, cfg)
-    say(f"config: {out} (GPUs {gpus}, context {a.context}, effort {a.effort})")
+    shown = ", ".join([f"{k}={v}" for k, v in keys.items()] + [f"sampling.{k}={v}" for k, v in sampling.items()]
+                      + [" ".join(args)] * bool(args))
+    say(f"config: {out} (GPUs {gpus}, context {a.context}; {shown})")
     return out
 
 
@@ -174,10 +182,13 @@ def main() -> int:
     ap.add_argument("--data", default="/data")
     ap.add_argument("--context", type=int, default=131072)
     ap.add_argument("--gpus", default="0")
-    ap.add_argument("--effort", default="max")
     ap.add_argument("--verify", default="1")
     ap.add_argument("--repack", default="0")
     a = ap.parse_args()
+    try:
+        maya_settings.settings()                      # a bad setting stops here, before the SHA-256 check and the pack
+    except maya_settings.Bad as e:
+        die(str(e))
     d = Path(a.data) / a.tag
     links = link(shards_in(Path(a.src)), d)
     if a.verify != "0":

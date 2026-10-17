@@ -385,7 +385,7 @@
    "status": "first-batch",
    "description": "Server-default thinking mode for requests that don't set their own.",
    "type": "bool",
-   "unset": "the compose default: true on the Qwen3.8 family and Nemotron, false on vllm/thinkingcap-dual-w4a8; Strata: thinking on (the template's default)",
+   "unset": "the compose default: true on the Qwen3.8 family and Nemotron, false on vllm/thinkingcap-dual-w4a8; Strata: thinking on (the template's default); Project Maya: thinking on (effort max)",
    "engines": [
     "sglang",
     "strata",
@@ -594,6 +594,50 @@
        ]
       }
      ]
+    },
+    {
+     "match": {
+      "engine": [
+       "strata"
+      ],
+      "model": [
+       "glm-5.3-flash"
+      ]
+     },
+     "enforced": "boot",
+     "values": [
+      "true",
+      "false"
+     ],
+     "spelling": {
+      "on": "true",
+      "off": "false"
+     },
+     "default": "",
+     "source": {
+      "file": "models/glm-5.3-flash/strata-maya/launcher/maya_settings.py",
+      "what": "false -> \"reasoning_effort\": \"none\" in maya.json (Maya's server closes the thinking block; wins over REASONING_EFFORT with a note); true leaves the effort; anything else stops the boot"
+     },
+     "checks": [
+      {
+       "kind": "program",
+       "compose": "models/glm-5.3-flash/strata-maya/compose/dual/maya-s/base.yml",
+       "program": "models/glm-5.3-flash/strata-maya/launcher/maya_settings.py",
+       "args": [
+        "validate"
+       ],
+       "accept": [
+        "true",
+        "false"
+       ],
+       "reject": [
+        "off",
+        "no",
+        "1",
+        "TRUE"
+       ]
+      }
+     ]
     }
    ],
    "interacts": [
@@ -643,7 +687,7 @@
    "status": "first-batch",
    "description": "Server-default reasoning effort for requests that don't send their own.",
    "type": "enum",
-   "unset": "the compose default: low (Qwen3.8 vLLM/SGLang, Inkling-Small), medium (Qwen3.8 llama.cpp), max (GLM-5.3-Flash); Strata: the template's own default (xhigh)",
+   "unset": "the compose default: low (Qwen3.8 vLLM/SGLang, Inkling-Small), medium (Qwen3.8 llama.cpp), max (GLM-5.3-Flash); Strata: the template's own default (xhigh); Project Maya: max (the launcher's default, as the other GLM-5.3-Flash slugs)",
    "engines": [
     "llamacpp",
     "sglang",
@@ -1009,6 +1053,72 @@
        "accept": [
         "low",
         "high"
+       ],
+       "reject": [
+        "minimal"
+       ]
+      }
+     ]
+    },
+    {
+     "match": {
+      "engine": [
+       "strata"
+      ],
+      "model": [
+       "glm-5.3-flash"
+      ]
+     },
+     "enforced": "boot",
+     "values": [
+      "none",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+     ],
+     "aliases": {
+      "medium": "high",
+      "xhigh": "max"
+     },
+     "default": "",
+     "source": {
+      "file": "models/glm-5.3-flash/strata-maya/launcher/maya_settings.py",
+      "what": "written into maya.json as \"reasoning_effort\" at every boot (max when unset); GLM-5.x has four levels, Off / Low / High / Max, and Maya's frontend.py EFFORT maps medium to High and xhigh to Max, so those two are written as high / max; anything else stops maya_prepare.py before the SHA-256 check"
+     },
+     "checks": [
+      {
+       "kind": "program",
+       "compose": "models/glm-5.3-flash/strata-maya/compose/dual/maya-s/base.yml",
+       "program": "models/glm-5.3-flash/strata-maya/launcher/maya_settings.py",
+       "args": [
+        "validate"
+       ],
+       "accept": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+       ],
+       "reject": [
+        "minimal",
+        "LOW",
+        "extreme"
+       ]
+      },
+      {
+       "kind": "program",
+       "compose": "models/glm-5.3-flash/strata-maya/compose/single/maya-l/base.yml",
+       "program": "models/glm-5.3-flash/strata-maya/launcher/maya_settings.py",
+       "args": [
+        "validate"
+       ],
+       "accept": [
+        "low",
+        "max"
        ],
        "reject": [
         "minimal"

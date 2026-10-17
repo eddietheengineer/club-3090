@@ -17,11 +17,12 @@
 #              GLM-5.3's template thinks by default; Maya's server closes the thinking block when a request
 #              sends enable_thinking false or reasoning_effort none (unlike the llama.cpp GLM slugs, where
 #              thinking can't be turned off). Server defaults for requests that name none: effort max (as the
-#              other GLM-5.3-Flash slugs), temperature 1.0 / top_p 0.95, Maya's own 32K reasoning budget. No
-#              launch knobs for effort or budgets. The FIRST start SHA-256-checks the shards against Maya's
-#              own table and builds Maya's pack on the data volume (minutes, once); later starts ~30 s. Maya
-#              sizes its RAM tier from free memory: drop the page cache first on a box that just read big
-#              files. Host needs NVIDIA driver >= 580 (CUDA 13) and an AVX2 CPU; x86-64 only.
+#              other GLM-5.3-Flash slugs), temperature 1.0 / top_p 0.95, Maya's own 32K reasoning budget; the
+#              launch settings change them (docs/engines/STRATA_MAYA.md). The FIRST start SHA-256-checks
+#              the shards against Maya's own table and builds Maya's pack on the data volume (minutes,
+#              once); later starts ~30 s. Maya sizes its RAM tier from free memory: drop the page cache
+#              first on a box that just read big files. Host needs NVIDIA driver >= 580 (CUDA 13) and an
+#              AVX2 CPU; x86-64 only.
 #              One card: no drafting (the MTP block needs two or more GPUs; the DFlash2 drafter
 #              is not in the image).
 #              Measured 2026-10-14 on a native v1.1.9 build with PCIE_SHARE 0.10 + CPU_LANE 16 (not re-
@@ -66,6 +67,18 @@ services:
       MAYA_GPUS: "${MAYA_GPUS:-0}"
       MAYA_PCIE_SHARE: "${MAYA_PCIE_SHARE:-}"
       MAYA_CPU_LANE: "${MAYA_CPU_LANE:-}"
+      # Maya's server defaults, written into maya.json at every boot by maya_prepare.py
+      # (launcher/maya_settings.py maps each); unset = effort max, sampling 1.0 / 0.95, Maya's 32K budget
+      REASONING_EFFORT:
+      ENABLE_THINKING:
+      THINKING_BUDGET:
+      KV:
+      TEMP:
+      TOP_P:
+      TOP_K:
+      MIN_P:
+      PRESENCE_PENALTY:
+      REPEAT_PENALTY:
       # the entrypoint passes --host 0.0.0.0 and --port 8080 itself
     volumes:
       - "${MODEL_DIR:-../../../../../../models-cache}/glm-5.3-flash-maya-gguf/Maya-L:/gguf:ro"

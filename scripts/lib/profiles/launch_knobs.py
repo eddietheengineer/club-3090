@@ -102,6 +102,16 @@ MOUNTED_READERS = (
         },
     },
     {
+        # the Project Maya composes' entrypoint: maya_prepare.py writes these into maya.json at every boot
+        # through maya_settings.py, which refuses a bad value (exit 1, before the SHA-256 check)
+        "invoke": '"/opt/club3090/maya-entrypoint.sh"',
+        "file": "models/glm-5.3-flash/strata-maya/launcher/maya_settings.py",
+        "knobs": {
+            "REASONING_EFFORT": None,
+            "ENABLE_THINKING": None,
+        },
+    },
+    {
         # the bucko-vllm composes' own default-thinking-budget patch (patches.yml
         # bucko-default-thinking-budget): reads the floor the compose declares
         "invoke": "python3 /etc/club3090/thinking-budget/apply.py",
