@@ -5,14 +5,14 @@
 # Windows zips and a Dockerfile, so we build that Dockerfile at the release's commit and publish
 # the result (an image-provenance exception, docs/ADDING_ENGINES.md). One change goes in first:
 # portable.py makes it build ggml's CPU code for an AVX2 baseline, as upstream's own ready-made
-# engines are, instead of for the build machine's CPU. Strata releases about daily; CI runs this
-# on a schedule (.github/workflows/strata-image.yml) and a maintainer can run it by hand:
+# engines are, instead of for the build machine's CPU. Strata releases about daily; the maintainer
+# runs this on the reference rig for the release we want (GitHub CI built it until 2026-10-17):
 #
 #   bash models/qwen3.8-flash-next/strata/image/build.sh                    # newest release: build + check, no push
 #   bash models/qwen3.8-flash-next/strata/image/build.sh --tag v0.1.43.1 --push
 #   bash models/qwen3.8-flash-next/strata/image/build.sh --tag v0.1.43.1 --verify <image>   # checks only
 #
-# Faster builds, opt-in (build_opts.py; neither changes what is compiled). CI passes --jobs 4, never --ccache:
+# Faster builds, opt-in (build_opts.py; neither changes what is compiled). A push takes --jobs, never --ccache:
 #   --jobs N   compile with N jobs instead of setup.py's half the CPU threads (any build, --push too)
 #   --ccache   reuse compiled objects from earlier builds through a BuildKit cache mount; the image
 #              then carries the ccache package, so it can't be pushed
@@ -32,7 +32,10 @@
 #        hashes and the version inside the binary match the tree, as setup.py compares them;
 #      - every library resolves except the host driver's (libcuda, libnvidia-*);
 #      - setup.py --help still offers every flag our compose recipe passes;
-#   5. with --push: push :<tag> and :sha-<commit7>, print the digest; the workflow attests it.
+#   5. with --push: push :<tag> and :sha-<commit7>, then print the digest and the facts the pin PR
+#      cites. A push needs a clean recipe folder at a commit on origin/master, checked before
+#      anything else runs (scripts/lib/image-push-guard.sh), so the recipe labels name the code
+#      that built the image. Rig pushes carry no signed provenance attestation (CI's did).
 #
 # A new image is NOT a new pin. The strata engine profile moves to one only after a rig boot
 # and verify-full (engine-pin-bump.sh), so a bad release never reaches a launch.
@@ -71,9 +74,17 @@ die() { echo "[strata-image] ERROR: $*" >&2; exit 1; }
 [[ -z "$JOBS" || "$JOBS" =~ ^[1-9][0-9]*$ ]] || die "--jobs needs a positive number, not '$JOBS'"
 [[ "$CCACHE" != 1 || "$PUSH" != 1 ]] \
   || die "--ccache is for builds on a rig: its image carries the ccache package, so it isn't the published recipe. Push a build without --ccache."
-out() { [[ -n "${GITHUB_OUTPUT:-}" ]] && echo "$1" >> "$GITHUB_OUTPUT"; return 0; }
-
 here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../../../scripts/lib/image-push-guard.sh
+source "$here/../../../../scripts/lib/image-push-guard.sh"
+if [[ "$PUSH" == 1 ]]; then
+  why="$(image_push_guard "$here")" || die "not pushing: $why"
+fi
+# Test seam (scripts/tests/test-image-push-guard.sh): stop once the guard has had its say.
+if [[ "${IMAGE_PUSH_GUARD_ONLY:-0}" == 1 ]]; then
+  if [[ "$PUSH" == 1 ]]; then say "push guard passed"; else say "push guard not applied (no --push)"; fi
+  exit 0
+fi
 recipe_commit="$(git -C "$here" rev-parse HEAD 2>/dev/null || echo unknown)"
 
 # ── checks on a built image (step 4) ────────────────────────────────────────────────
@@ -184,13 +195,11 @@ commit="$(awk -v t="refs/tags/$TAG^{}" '$2 == t {print $1}' <<<"$refs")"
 [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || die "tag $TAG not found at $REPO_URL"
 short="${commit:0:7}"
 say "release $TAG = commit $commit"
-out "tag=$TAG"; out "commit=$commit"
 
 # ── 2. already published? ─────────────────────────────────────────────────────────
 if [[ "$FORCE" != 1 ]]; then
   if probe="$(docker buildx imagetools inspect "$IMAGE:$TAG" 2>&1)"; then
     say "$IMAGE:$TAG is already published; nothing to do (--force rebuilds)"
-    out "skipped=true"
     exit 0
   fi
   command grep -q -i 'not found' <<<"$probe" \
@@ -250,13 +259,5 @@ docker push -q "$IMAGE:sha-$short" >/dev/null
 digest="$(docker buildx imagetools inspect "$IMAGE:$TAG" --format '{{json .Manifest.Digest}}' | tr -d '"')"
 [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || die "could not read the pushed digest (got '$digest')"
 say "pushed $IMAGE:$TAG and :sha-$short = $IMAGE@$digest"
-out "digest=$digest"
-if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
-  {
-    echo "### strata-club3090 $TAG"
-    echo
-    echo "- Upstream commit \`$commit\` · llama.cpp \`${llama:0:7}\` · archs \`$CUDA_ARCHITECTURES\` · vision \`$BUILD_VISION\` · CPU baseline AVX2 (portable)"
-    echo "- Image \`$IMAGE@$digest\` (also \`:$TAG\`, \`:sha-$short\`)"
-    echo "- All image checks passed. **Not pinned:** the strata engine profile moves to it only after a rig boot + verify-full (\`engine-pin-bump.sh\`)."
-  } >> "$GITHUB_STEP_SUMMARY"
-fi
+say "for the pin PR: Strata $TAG, upstream ${commit:0:8}, recipe ${recipe_commit:0:8}, llama.cpp ${llama:0:7}, archs $CUDA_ARCHITECTURES, vision $BUILD_VISION${opts_label:+, $opts_label}"
+say "not pinned: the strata engine profile moves to it only after a rig boot + verify-full (engine-pin-bump.sh)"

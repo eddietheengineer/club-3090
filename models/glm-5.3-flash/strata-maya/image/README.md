@@ -9,8 +9,7 @@ so this image is an exception to the image-provenance contract
 | File | What it does |
 |---|---|
 | [`Dockerfile`](Dockerfile) | Ours: compiles the engine the way `maya.py` does and installs the server's Python packages. |
-| [`build.sh`](build.sh) | Resolves a release, builds it, checks the image, pushes with `--push`. CI and a maintainer run the same script. |
-| [`../../../../.github/workflows/strata-maya-image.yml`](../../../../.github/workflows/strata-maya-image.yml) | Runs `build.sh --push` daily and on demand, then attests the image's provenance. |
+| [`build.sh`](build.sh) | Resolves a release, builds it, checks the image, pushes with `--push` (the maintainer runs it on the rig; see Publishing). |
 
 ## What the image is
 
@@ -62,19 +61,40 @@ same open question).
 | `serve/server.py --help` and `tools/iq_pack.py --help` still offer every flag the launcher passes; the expert profile is there | a release renaming a flag that every launch depends on |
 | llama.cpp's `gguf-py` imports the way Maya's tools look for it, and `iq_pack.py` indexes the release's 12 MB synthetic GLM-5 model (`data/glm5-synth.gguf`; it carries no tokenizer, so the check wants the index and dense weights) | a pack builder that can't run in the image (the first local build lacked `gguf-py` and failed exactly there) |
 
-None needs a GPU, so they run on CI. **A published image is not a pin.** The `strata-maya` engine
+None needs a GPU, so they run on any build machine. **A published image is not a pin.** The `strata-maya` engine
 profile moves to a new digest only after a rig boot and verify-full (`engine-pin-bump.sh`).
 
 ## Run it by hand
 
 ```bash
 bash models/glm-5.3-flash/strata-maya/image/build.sh                       # newest release: build + check
-bash models/glm-5.3-flash/strata-maya/image/build.sh --tag v1.1.11 --push  # what CI runs (plus --jobs 4)
+bash models/glm-5.3-flash/strata-maya/image/build.sh --tag v1.1.11 --push --jobs 32  # publish (see below)
 bash models/glm-5.3-flash/strata-maya/image/build.sh --tag v1.1.11 --verify ghcr.io/noonghunna/strata-maya-club3090:v1.1.11
 CUDA_ARCHITECTURES=86 STRATA_MAYA_IMAGE=strata-maya-local \
   bash models/glm-5.3-flash/strata-maya/image/build.sh --tag v1.1.11 --jobs 16 --force   # a quick local build for one card
 ```
 
 A local image name needs `--force`: the "already published?" probe can't tell an unpublished local
-name from a registry error. **The published image stays CI-built** (provenance attestation); local
-builds are for testing.
+name from a registry error.
+
+## Publishing a release
+
+The maintainer builds and pushes each release we take from the reference rig (GitHub CI built it until
+2026-10-17), from a clean checkout of master:
+
+```bash
+git switch master && git pull
+bash models/glm-5.3-flash/strata-maya/image/build.sh --tag <vX.Y.Z> --push --jobs 32
+```
+
+- **The push guard** ([`scripts/lib/image-push-guard.sh`](../../../../scripts/lib/image-push-guard.sh)) refuses `--push`
+  when the recipe folder has uncommitted or untracked changes, or when HEAD isn't on `origin/master`. The image's
+  recipe labels (`org.opencontainers.image.revision`, `club3090.recipe`) then name the code that built it. Without
+  it, a rig build was once labelled with its worktree's base commit while it ran an uncommitted edit.
+- **No provenance attestation.** CI's runs signed one through GitHub's own identity token; a rig push can't.
+  The labels (upstream commit, llama.cpp pin, archs, CPU baseline, recipe commit) are the record.
+- **The rig needs a GHCR login with push rights** (`docker login ghcr.io`, a token with `write:packages`).
+- Nothing builds new releases automatically any more: run it when we want a release.
+- The first push from the rig uploads every layer (the rig's layers have other digests than CI's);
+  later pushes upload only the layers that changed.
+- After the push, `build.sh` prints the digest and a line of facts for the pin PR.
