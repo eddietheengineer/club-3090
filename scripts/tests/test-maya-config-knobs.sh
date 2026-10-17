@@ -5,7 +5,9 @@
 #   1. no settings: effort max, sampling 1.0 / 0.95, no thinking_budget / --kv (Maya's own);
 #   2. each setting lands on Maya's key; medium / xhigh become high / max; ENABLE_THINKING=false wins;
 #   3. the config is rewritten from scratch each time, so a setting removed is gone;
-#   4. a bad value exits 2 from `validate` and stops maya_prepare.py's main() before any shard work.
+#   4. a bad value exits 2 from `validate` and stops maya_prepare.py's main() before any shard work;
+#   5. every key a setting writes has evidence that the pinned Maya reads it (engine_config_reads.py check:
+#      a new setting needs an entry in engine-config-reads.json).
 set -uo pipefail
 export PYTHONDONTWRITEBYTECODE=1   # the launcher folder is mounted into the container: leave no __pycache__
 export CLUB3090_CONFIG_DIR=/nonexistent/club-3090-test-config   # tests never read your real settings (#1466)
@@ -71,6 +73,9 @@ done
 err="$(env $(clean) REASONING_EFFORT=minimal python3 "$L/maya_prepare.py" --tag maya-s --src "$work/nowhere" --data "$work" 2>&1)"; r=$?
 [[ $r -ne 0 && "$err" == *REASONING_EFFORT* && "$err" != *"first shard"* ]] \
   && ok "maya_prepare.py stops on it before looking at the shards" || bad "main(): rc=$r $err"
+
+echo "== 5. the pinned engine reads every key a setting writes (engine-config-reads.json; no docker)"
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/lib/profiles/engine_config_reads.py check --engine strata-maya || rc=1
 
 if [[ "$rc" -eq 0 ]]; then echo "test-maya-config-knobs: ok"; else echo "test-maya-config-knobs: FAILED" >&2; fi
 exit "$rc"

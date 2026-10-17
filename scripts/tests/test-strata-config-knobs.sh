@@ -9,7 +9,9 @@
 #   4. needs-setup: only a CONTEXT / KV that differs from what setup was given asks for a new setup
 #      (CONTEXT unset means the entrypoint's 131072);
 #   5. a bad value exits 2 with the reason, for each setting (the launch-knob catalogue's
-#      domain checks run the same `validate`).
+#      domain checks run the same `validate`);
+#   6. every key a setting writes has evidence that the pinned Strata reads it (engine_config_reads.py check:
+#      a new setting needs an entry in engine-config-reads.json).
 set -uo pipefail
 export CLUB3090_CONFIG_DIR=/nonexistent/club-3090-test-config   # tests never read your real settings (#1466)
 export PYTHONUTF8="${PYTHONUTF8:-1}"
@@ -86,6 +88,9 @@ for probe in REASONING_EFFORT=minimal ENABLE_THINKING=off THINKING_BUDGET=-1 SPE
   [[ $r -eq 2 && "$err" == *"${probe%%=*}"* ]] && ok "$probe refused" || bad "$probe: rc=$r $err"
 done
 run REASONING_EFFORT=max SPEC_N=8 KV=k8v4 CONTEXT=262144 >/dev/null && ok "valid values pass" || bad "valid values refused"
+
+echo "== 6. the pinned engine reads every key a setting writes (engine-config-reads.json; no docker)"
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/lib/profiles/engine_config_reads.py check --engine strata || rc=1
 
 if [[ "$rc" -eq 0 ]]; then echo "test-strata-config-knobs: ok"; else echo "test-strata-config-knobs: FAILED" >&2; fi
 exit "$rc"

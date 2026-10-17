@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Does the pinned engine READ every key our launchers write into its config? (gate: test-engine-config-reads)
+"""Does the pinned engine READ every key a launch setting writes into its config? (gate: test-engine-config-reads)
 
 Why this exists: #1723 wrote Strata's MAX_TOKENS into the run config as `max_tokens`. Strata reads that key only
 in its vision encoder class, so the setting did nothing, and every gate passed: test-launch-knobs proves a value
@@ -8,7 +8,8 @@ max_tokens of its own ran 1,514 tokens.
 
 The manifest (engine-config-reads.json) has one entry per engine whose launcher writes the engine's own config.
 
-  check            no docker. Runs the real launcher code with no settings, then once per setting, and diffs the
+  check [--engine E]  no docker (also run by test-strata-config-knobs / test-maya-config-knobs, the tests a
+                   launcher edit runs). Runs the real launcher code with no settings, then once per setting, and diffs the
                    configs (args compared as flag -> value). Fails when a setting writes a key the entry has no
                    evidence for; when the entry has evidence for a key no setting writes; when a setting the
                    program reads writes nothing and isn't declared setup-only; when the entry's verified image
@@ -29,9 +30,16 @@ The manifest (engine-config-reads.json) has one entry per engine whose launcher 
   format           rewrite the manifest in its canonical layout (check requires it)
   engines / pin ENGINE             for the test script
 
-Not covered: values (Maya's `--kv q4_0` is in --help, and its GLM path runs it as fp16: the launcher refuses
-it), and settings the entrypoint hands to the engine's setup rather than writing into the config (Strata's
-CONTEXT / KV -> setup.py), which an entry declares as setup_only.
+Not covered:
+  - values (Maya's `--kv q4_0` is in --help, and its GLM path runs it as fp16: the launcher refuses it);
+  - settings the entrypoint hands to the engine's setup rather than writing into the config (Strata's CONTEXT /
+    KV -> setup.py), which an entry declares as setup_only;
+  - keys a launcher writes whatever the settings say: only what a setting CHANGES is diffed. Strata's launcher
+    only overlays settings on setup's output, so that is all of it; Maya's writes the whole maya.json, and its
+    fixed keys (exe, port, installer, ...) are not checked;
+  - a setting the program reads other than through env("X") / _env("X") (os.environ directly, or a value the
+    shell entrypoint passes as an argument, like Maya's CONTEXT, which its entry lists by hand): the coverage
+    check can't see it, so a new one goes unnoticed until someone adds it to `settings`.
 """
 from __future__ import annotations
 
@@ -169,18 +177,20 @@ def program_settings(entry: dict) -> set[str]:
     return names
 
 
-def check(manifest: dict) -> list[str]:
+def check(manifest: dict, only: str | None = None) -> list[str]:
     problems = []
-    if MANIFEST.read_text(encoding="utf-8") != canonical(manifest):
+    if only is None and MANIFEST.read_text(encoding="utf-8") != canonical(manifest):
         problems.append(f"{MANIFEST.name} isn't in its canonical layout. Fix: python3 scripts/lib/profiles/engine_config_reads.py format")
     sys.path.insert(0, str(ROOT / "scripts/lib/profiles"))
     import launch_knobs   # noqa: E402 — the knob scanner's MOUNTED_READERS
     covered = {p for e in manifest["engines"].values() for p in e["programs"]} | set(manifest.get("not_config_writers", {}))
-    for reader in launch_knobs.MOUNTED_READERS:
+    for reader in launch_knobs.MOUNTED_READERS if only is None else ():
         if reader["file"] not in covered:
             problems.append(f"{reader['file']} (a MOUNTED_READERS program) has no engine-config-reads entry: add one, or "
                             f"list it under not_config_writers with the reason it writes no engine config")
     for name, e in manifest["engines"].items():
+        if only is not None and name != only:
+            continue
         try:
             pin = profile_pin(e)
         except Fail as exc:
@@ -380,12 +390,17 @@ def main(argv: list[str]) -> int:
     cmd = argv[1:2]
     manifest = load_manifest()
     if cmd == ["check"]:
-        problems = check(manifest)
+        only = argv[3] if argv[2:3] == ["--engine"] and len(argv) == 4 else None
+        if len(argv) > 2 and (only is None or only not in manifest["engines"]):
+            print(f"usage: engine_config_reads.py check [--engine {'|'.join(manifest['engines'])}]", file=sys.stderr)
+            return 64
+        problems = check(manifest, only)
         for p in problems:
             print(f"  ✗ {p}")
         if not problems:
-            n = sum(len(e["reads"]) for e in manifest["engines"].values())
-            print(f"  ✓ check: {len(manifest['engines'])} engines, {n} written keys, each with evidence; pins match")
+            engines = [n for n in manifest["engines"] if only in (None, n)]
+            n = sum(len(manifest["engines"][e]["reads"]) for e in engines)
+            print(f"  ✓ check: {', '.join(engines)}: {n} keys the settings write, each with evidence; pin matches the verified image")
         return 1 if problems else 0
     if cmd == ["verify"] and len(argv) >= 3 and argv[2] in manifest["engines"]:
         return verify(manifest, argv[2], "--record" in argv[3:])
@@ -400,7 +415,7 @@ def main(argv: list[str]) -> int:
     if cmd == ["pin"] and len(argv) == 3 and argv[2] in manifest["engines"]:
         print(profile_pin(manifest["engines"][argv[2]]))
         return 0
-    print("usage: engine_config_reads.py check | verify ENGINE [--record] | selftest | format | engines | pin ENGINE",
+    print("usage: engine_config_reads.py check [--engine E] | verify ENGINE [--record] | selftest | format | engines | pin ENGINE",
           file=sys.stderr)
     return 64
 

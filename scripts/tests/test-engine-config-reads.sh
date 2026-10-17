@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Gate: does the pinned engine READ every key our launchers write into its config?
+# Gate: does the pinned engine READ every key a launch setting writes into its config?
 # (scripts/lib/profiles/engine_config_reads.py; evidence in engine-config-reads.json)
 #
 # THE CLASS THIS CATCHES. #1723 wrote Strata's MAX_TOKENS into the run config as `max_tokens`; Strata reads
@@ -15,7 +15,9 @@
 #      ⚠️ An image that isn't local can't be checked: the skip is printed, never silent, and step 2 still
 #      holds the pin to the last verified one, so a pin bump stays red until someone runs
 #      `verify <engine> --record` on the new image.
-# Not covered (engine_config_reads.py says why): values, and settings handed to the engine's setup.
+# Step 2 also runs inside test-strata-config-knobs / test-maya-config-knobs, the tests a launcher edit runs.
+# Not covered (engine_config_reads.py says why): values; settings handed to the engine's setup; keys a launcher
+# writes whatever the settings say (Maya's fixed maya.json keys); a setting read other than through env("X").
 set -uo pipefail
 export CLUB3090_CONFIG_DIR=/nonexistent/club-3090-test-config   # tests never read your real settings (#1466)
 export PYTHONUTF8="${PYTHONUTF8:-1}"
