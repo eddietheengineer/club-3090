@@ -137,6 +137,11 @@ club_config_load "${REPO_ROOT}"
 
 HOST_SHORT="$(hostname -s 2>/dev/null || echo unknown)"
 USER_NAME="${USER:-$(whoami 2>/dev/null || echo unknown)}"
+# This machine's own addresses, masked by redact() whatever range they are in (a public one
+# included): the saved LANIP (the address setup-ai-studio.sh shows in its URLs, printed in the
+# Settings section) and every IPv4 `hostname -I` lists. Private ranges are masked by pattern too.
+REDACT_IPS="$( { printf '%s\n' "${LANIP:-}"; hostname -I 2>/dev/null | tr ' ' '\n'; } \
+  | command grep -E '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' | command grep -v -E '^(127\.|0\.0\.0\.0$)' | sort -u | tr '\n' ' ')"
 
 # strip_ansi — drop terminal escape sequences (colour, cursor, charset, OSC titles).
 # The report is Markdown for a file or an issue, but the tools it embeds (verify-*,
@@ -150,11 +155,24 @@ strip_ansi() {
   LC_ALL=C sed -E -e 's|\x1b\[[0-9;?]*[ -/]*[@-~]||g' -e 's|\x1b\][^\x07]*\x07||g' -e 's|\x1b[()][A-Za-z0-9]||g'
 }
 
+# redact_ips — mask LAN and private IPv4 addresses: this machine's own (REDACT_IPS), then any
+# address in 10/8, 172.16/12, 192.168/16 or 100.64/10 (Tailscale / CGNAT). Loopback, 0.0.0.0 and
+# dotted version strings (0.1.44.1, v10.0.0.1) are left alone: an address must not touch a
+# letter, digit, underscore or dot on either side.
+redact_ips() {
+  local ip expr=() private
+  private='s/(^|[^0-9A-Za-z_.])(10(\.[0-9]{1,3}){3}|192\.168(\.[0-9]{1,3}){2}|172\.(1[6-9]|2[0-9]|3[01])(\.[0-9]{1,3}){2}|100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])(\.[0-9]{1,3}){2})([^0-9A-Za-z_.]|$)/\1<LAN_IP>\9/g'
+  for ip in ${REDACT_IPS:-}; do expr+=(-e "s/(^|[^0-9A-Za-z_.])${ip//./\\.}([^0-9A-Za-z_.]|\$)/\1<LAN_IP>\2/g"); done
+  # each expression twice: a match consumes the character after it, so the next address in
+  # "10.0.0.1,10.0.0.2" has no boundary left in the same pass
+  LC_ALL=C sed -E "${expr[@]}" "${expr[@]}" -e "$private" -e "$private"
+}
+
 redact() {
   if [[ $REDACT -eq 1 ]]; then
     # Mask the literal MODEL_DIR value first (if exported) so an arbitrary models
     # path — /data/..., /srv/... — is caught before the prefix rules below.
-    { if [[ -n "${MODEL_DIR:-}" ]]; then sed -e "s|${MODEL_DIR}|<MODEL_DIR>|g"; else cat; fi; } | strip_ansi | sed \
+    { if [[ -n "${MODEL_DIR:-}" ]]; then sed -e "s|${MODEL_DIR}|<MODEL_DIR>|g"; else cat; fi; } | strip_ansi | redact_ips | sed \
       -e "s|/home/${USER_NAME}|~|g" \
       -e "s|/root|~|g" \
       -e "s|${HOST_SHORT}|<HOST>|g" \
