@@ -289,13 +289,24 @@ def _run_json_line(text: str, check: dict, env: dict) -> tuple[bool, str]:
     return True, "json ok"
 
 
+def _mounts(root: Path, compose: str, text: str, prog: str) -> bool:
+    """The compose bind-mounts `prog` (repo-relative), as the file itself or a folder that holds it."""
+    want = (root / prog).resolve()
+    base = (root / compose).parent
+    for m in re.finditer(r"""^\s*-\s*["']?([^"'\s:$]+):/""", text, re.M):
+        src = (base / m.group(1)).resolve()
+        if src == want or src in want.parents:
+            return True
+    return False
+
+
 def _run_program(text: str, check: dict, env: dict, root: Path) -> tuple[bool, str]:
     """A program the compose mounts and its entrypoint runs (e.g. the Strata recipe's
     strata_config.py): run it from its repo source with the probe in a clean environment.
     rc 0 = accepted. The compose must really mount it, or the proof is about nothing."""
     prog = check["program"]
-    if Path(prog).name not in text or "/" + prog.rsplit("/", 2)[-2] + "/" + Path(prog).name not in text:
-        return False, f"{check['compose']} does not mount {prog}"
+    if not _mounts(root, check["compose"], text, prog):
+        return False, f"{check['compose']} does not mount {prog} (the file or a folder holding it)"
     penv = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": "/nonexistent", **env}
     p = subprocess.run(["python3", str(root / prog), *check["args"]], env=penv, capture_output=True,
                        text=True, encoding="utf-8", timeout=60)
