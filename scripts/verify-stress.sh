@@ -1815,7 +1815,19 @@ with open('${cal_req}', 'w') as f:
       pass "ceiling ladder: all ${rung_count} rungs passed — fillable to ${last_pass_tokens} tok (${last_pass_pct}% of n_ctx=${n_ctx})"
     fi
     # VRAM margin check on the deepest successful rung
-    if [[ "$vram_after_all" -gt 0 && "$vram_after_all" -lt "$vram_margin_mb" ]]; then
+    if [[ "${ENGINE_KIND:-}" == "strata" && "$vram_after_all" -gt 0 ]]; then
+      # Strata and Project Maya fill free VRAM with their expert cache at load and keep only
+      # --vram-reserve-mib free (700 MiB by default), with the KV for the whole context already
+      # allocated: free VRAM is below the threshold before the ladder starts, so the absolute
+      # check would measure that setting, not context headroom. Measured on the reference rig
+      # 2026-10-17 (Strata ISTA dual): 435 / 309 MiB free idle, 383 / 263 after a 64K fill.
+      # The ladder's own drop is the number that means something here.
+      if [[ "$vram_before_all" -gt 0 ]]; then
+        echo "    VRAM: ${vram_before_all} → ${vram_after_all} MB (Δ -$(( vram_before_all - vram_after_all )) MB across ladder). Strata keeps only its --vram-reserve-mib free by design (its expert cache takes the rest), so the ${vram_margin_mb} MB margin check doesn't apply"
+      else
+        echo "    VRAM: ${vram_after_all} MB free at ceiling. Strata keeps only its --vram-reserve-mib free by design (its expert cache takes the rest), so the ${vram_margin_mb} MB margin check doesn't apply"
+      fi
+    elif [[ "$vram_after_all" -gt 0 && "$vram_after_all" -lt "$vram_margin_mb" ]]; then
       printf "    \033[33m⚠\033[0m VRAM margin thin at ceiling: %s MB free < %s MB threshold\n" "$vram_after_all" "$vram_margin_mb"
       echo "      Recall succeeded at ${last_pass_pct}% fill, but sustained agent load also carries"
       echo "      prompt-cache + context-checkpoint overhead (~292 MiB, see #197)."
