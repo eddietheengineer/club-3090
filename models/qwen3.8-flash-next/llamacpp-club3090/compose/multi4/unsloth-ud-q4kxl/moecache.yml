@@ -192,6 +192,7 @@ services:
       # ⚠️ BARE FORM ON PURPOSE — `- VAR=${X:-}` would forward an EMPTY string and
       # defeat the `${VAR:-default}` fallbacks in the entrypoint above.
       - THINKING
+      - ENABLE_THINKING
       - SPEC
       - SPEC_N
       - NGRAM_N_MIN
@@ -274,6 +275,25 @@ services:
         # still win in BOTH branches.
         # ⚠️ `--reasoning off` is what passes enable_thinking:false to the
         #    template; it is the engine-supported control, not a kwargs hack.
+        # ENABLE_THINKING (club-3090's standard switch: true | false) picks the same row: true
+        # selects the thinking row, false keeps the instruct row. THINKING / REASONING are this
+        # compose's own names and win when set; a boot note says so when they disagree.
+        case "$${ENABLE_THINKING:-}" in
+          ""|true|false) ;;
+          *) echo "[thinking] ENABLE_THINKING='$${ENABLE_THINKING}' must be true or false." >&2; exit 1 ;;
+        esac
+        if [ "$${ENABLE_THINKING:-}" = true ]; then
+          if [ -z "$${THINKING:-}" ]; then
+            THINKING=1
+          elif [ "$${THINKING}" = 0 ]; then
+            echo "[thinking] THINKING=0 wins over ENABLE_THINKING=true (this compose's own name)" >&2
+          fi
+        elif [ "$${ENABLE_THINKING:-}" = false ] && [ -n "$${THINKING:-}" ] && [ "$${THINKING}" != 0 ]; then
+          echo "[thinking] THINKING=$${THINKING} wins over ENABLE_THINKING=false (this compose's own name)" >&2
+        fi
+        if [ -n "$${ENABLE_THINKING:-}" ] && [ -n "$${REASONING:-}" ]; then
+          echo "[thinking] REASONING=$${REASONING} sets --reasoning itself (this compose's own name); ENABLE_THINKING=$${ENABLE_THINKING} picks the sampler row" >&2
+        fi
         if [ -n "$${THINKING:-}" ] && [ "$${THINKING}" != "0" ]; then
           _reason="$${REASONING:-on}"
           _temp="$${TEMP:-1.0}"; _topp="$${TOP_P:-0.95}"; _pres="$${PRESENCE_PENALTY:-0.0}"

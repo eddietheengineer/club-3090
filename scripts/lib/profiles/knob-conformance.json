@@ -238,15 +238,6 @@
    ]
   },
   {
-   "compose": "models/gemma-4-12b/llama-cpp/compose/single/unsloth-q8kxl/base.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ],
-   "reads_instead": {
-    "ENABLE_THINKING": "REASONING"
-   }
-  },
-  {
    "compose": "models/gemma-4-12b/vllm/compose/dual/bf16/mtp.yml",
    "knobs": [
     "ENABLE_THINKING"
@@ -287,15 +278,6 @@
    "knobs": [
     "ENABLE_THINKING"
    ]
-  },
-  {
-   "compose": "models/mimo-v2.6-9b/llama-cpp/compose/single/bartowski-q8/full-vision.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ],
-   "reads_instead": {
-    "ENABLE_THINKING": "THINKING"
-   }
   },
   {
    "compose": "models/qwen-agentworld-35b-a3b/vllm/compose/dual/cyankiwi-awq-int4/fp8.yml",
@@ -352,15 +334,6 @@
    ]
   },
   {
-   "compose": "models/qwen3.6-35b-a3b/llama-cpp/compose/dual/morikomorizz-q6kp/mtp.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ],
-   "reads_instead": {
-    "ENABLE_THINKING": "REASONING"
-   }
-  },
-  {
    "compose": "models/qwen3.6-35b-a3b/vllm/compose/dual/autoround-int4/fp8.yml",
    "knobs": [
     "ENABLE_THINKING"
@@ -393,14 +366,12 @@
   {
    "compose": "models/qwen3.8-27b/llama-cpp-prism/compose/single/prism-ternary-mtp/mtp.yml",
    "knobs": [
-    "ENABLE_THINKING",
     "THINKING_BUDGETS",
     "THINKING_BUDGET_LOW",
     "THINKING_BUDGET_MEDIUM",
     "THINKING_BUDGET_XHIGH"
    ],
    "reads_instead": {
-    "ENABLE_THINKING": "REASONING",
     "THINKING_BUDGETS": "REASONING_BUDGET",
     "THINKING_BUDGET_LOW": "REASONING_BUDGET",
     "THINKING_BUDGET_MEDIUM": "REASONING_BUDGET",
@@ -410,14 +381,12 @@
   {
    "compose": "models/qwen3.8-27b/llama-cpp-prism/compose/single/prism-ternary-pq2/ternary.yml",
    "knobs": [
-    "ENABLE_THINKING",
     "THINKING_BUDGETS",
     "THINKING_BUDGET_LOW",
     "THINKING_BUDGET_MEDIUM",
     "THINKING_BUDGET_XHIGH"
    ],
    "reads_instead": {
-    "ENABLE_THINKING": "REASONING",
     "THINKING_BUDGETS": "REASONING_BUDGET",
     "THINKING_BUDGET_LOW": "REASONING_BUDGET",
     "THINKING_BUDGET_MEDIUM": "REASONING_BUDGET",
@@ -427,14 +396,12 @@
   {
    "compose": "models/qwen3.8-27b/llama-cpp/compose/dual/unsloth-q8kxl/q8kv.yml",
    "knobs": [
-    "ENABLE_THINKING",
     "THINKING_BUDGETS",
     "THINKING_BUDGET_LOW",
     "THINKING_BUDGET_MEDIUM",
     "THINKING_BUDGET_XHIGH"
    ],
    "reads_instead": {
-    "ENABLE_THINKING": "THINKING",
     "THINKING_BUDGETS": "REASONING_BUDGET",
     "THINKING_BUDGET_LOW": "REASONING_BUDGET",
     "THINKING_BUDGET_MEDIUM": "REASONING_BUDGET",
@@ -444,14 +411,12 @@
   {
    "compose": "models/qwen3.8-27b/llama-cpp/compose/single/unsloth-iq4xs/q4kv-vision.yml",
    "knobs": [
-    "ENABLE_THINKING",
     "THINKING_BUDGETS",
     "THINKING_BUDGET_LOW",
     "THINKING_BUDGET_MEDIUM",
     "THINKING_BUDGET_XHIGH"
    ],
    "reads_instead": {
-    "ENABLE_THINKING": "THINKING",
     "THINKING_BUDGETS": "REASONING_BUDGET",
     "THINKING_BUDGET_LOW": "REASONING_BUDGET",
     "THINKING_BUDGET_MEDIUM": "REASONING_BUDGET",
@@ -473,14 +438,12 @@
    "knobs": [
     "ENABLE_THINKING",
     "REASONING_EFFORT",
-    "SPEC_N",
     "THINKING_BUDGETS",
     "THINKING_BUDGET_LOW",
     "THINKING_BUDGET_MEDIUM",
     "THINKING_BUDGET_XHIGH"
    ],
    "reads_instead": {
-    "SPEC_N": "MTP_DEPTH",
     "THINKING_BUDGETS": "THINKING_TOKEN_BUDGET",
     "THINKING_BUDGET_LOW": "THINKING_TOKEN_BUDGET",
     "THINKING_BUDGET_MEDIUM": "THINKING_TOKEN_BUDGET",
@@ -492,14 +455,12 @@
    "knobs": [
     "ENABLE_THINKING",
     "REASONING_EFFORT",
-    "SPEC_N",
     "THINKING_BUDGETS",
     "THINKING_BUDGET_LOW",
     "THINKING_BUDGET_MEDIUM",
     "THINKING_BUDGET_XHIGH"
    ],
    "reads_instead": {
-    "SPEC_N": "MTP_DEPTH",
     "THINKING_BUDGETS": "THINKING_TOKEN_BUDGET",
     "THINKING_BUDGET_LOW": "THINKING_TOKEN_BUDGET",
     "THINKING_BUDGET_MEDIUM": "THINKING_TOKEN_BUDGET",
@@ -537,45 +498,33 @@
   {
    "compose": "models/qwen3.8-flash-next/llamacpp-club3090/compose/dual/unsloth-ud-q4kxl/moecache.yml",
    "knobs": [
-    "ENABLE_THINKING",
     "REASONING_EFFORT",
     "THINKING_BUDGETS",
     "THINKING_BUDGET_LOW",
     "THINKING_BUDGET_MEDIUM",
     "THINKING_BUDGET_XHIGH"
-   ],
-   "reads_instead": {
-    "ENABLE_THINKING": "THINKING"
-   }
+   ]
   },
   {
    "compose": "models/qwen3.8-flash-next/llamacpp-club3090/compose/multi4/unsloth-ud-q4kxl/moecache.yml",
    "knobs": [
-    "ENABLE_THINKING",
     "REASONING_EFFORT",
     "THINKING_BUDGETS",
     "THINKING_BUDGET_LOW",
     "THINKING_BUDGET_MEDIUM",
     "THINKING_BUDGET_XHIGH"
-   ],
-   "reads_instead": {
-    "ENABLE_THINKING": "THINKING"
-   }
+   ]
   },
   {
    "compose": "models/qwen3.8-flash-next/llamacpp-club3090/compose/multi8/unsloth-ud-q4kxl/moecache.yml",
    "knobs": [
-    "ENABLE_THINKING",
     "REASONING_EFFORT",
     "THINKING_BUDGETS",
     "THINKING_BUDGET_LOW",
     "THINKING_BUDGET_MEDIUM",
     "THINKING_BUDGET_XHIGH"
-   ],
-   "reads_instead": {
-    "ENABLE_THINKING": "THINKING"
-   }
+   ]
   }
  ],
- "not_wired_ceiling": 108
+ "not_wired_ceiling": 96
 }
