@@ -208,8 +208,9 @@ This is the "free 30 GB of disk" moment.
 
 ### Strata
 
-- Pinned by digest to `ghcr.io/noonghunna/strata-club3090`, which our CI builds from each upstream release
-  (`.github/workflows/strata-image.yml`, recipe in `models/qwen3.8-flash-next/strata/image/`). A published
+- Pinned by digest to `ghcr.io/noonghunna/strata-club3090`, which the maintainer builds on the reference rig
+  from each upstream release we take (`build.sh --tag <vX.Y.Z> --push` from a clean master checkout; the push
+  guard refuses anything else; recipe in `models/qwen3.8-flash-next/strata/image/`). A published
   image is not a pin: boot one `strata/` slug of each model family on the new digest (an ISTA slug and a Swift
   one: a release can break one family's setup and not the other's), run `verify-full` on each, then
   `scripts/engine-pin-bump.sh strata ghcr.io/noonghunna/strata-club3090@sha256:<digest>` and update
@@ -222,9 +223,9 @@ This is the "free 30 GB of disk" moment.
 
 ### strata-maya
 
-- Pinned by digest to `ghcr.io/noonghunna/strata-maya-club3090`, which our CI builds from each Project Maya
-  release with our own Dockerfile (`.github/workflows/strata-maya-image.yml`, recipe in
-  `models/glm-5.3-flash/strata-maya/image/`). A published image is not a pin: boot a dual and a single
+- Pinned by digest to `ghcr.io/noonghunna/strata-maya-club3090`, which the maintainer builds on the reference
+  rig from each Project Maya release we take, with our own Dockerfile (`build.sh --tag <vX.Y.Z> --push` from a
+  clean master checkout; recipe in `models/glm-5.3-flash/strata-maya/image/`). A published image is not a pin: boot a dual and a single
   `strata-maya/` slug on the new digest, run `verify-full` on each (its MTP check reads Maya's drafts from the
   engine log through `strata_metrics.py --container`), then
   `scripts/engine-pin-bump.sh strata-maya ghcr.io/noonghunna/strata-maya-club3090@sha256:<digest>` and update

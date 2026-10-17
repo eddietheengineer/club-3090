@@ -7,10 +7,9 @@ engine, so this image is an exception to the image-provenance contract
 
 | File | What it does |
 |---|---|
-| [`build.sh`](build.sh) | Resolves a release, builds it, checks the image, pushes with `--push`. CI and a maintainer run the same script. |
+| [`build.sh`](build.sh) | Resolves a release, builds it, checks the image, pushes with `--push` (the maintainer runs it on the rig; see Publishing). |
 | [`portable.py`](portable.py) | The one change to upstream's Dockerfile (below). |
-| [`build_opts.py`](build_opts.py) | Opt-in build speedups: `--jobs` (CI passes `--jobs 4`) and `--ccache` (rigs only) (below). |
-| [`../../../../.github/workflows/strata-image.yml`](../../../../.github/workflows/strata-image.yml) | Runs `build.sh --push` daily and on demand, then attests the image's provenance. |
+| [`build_opts.py`](build_opts.py) | Opt-in build speedups: `--jobs` and `--ccache` (test builds only: a push refuses it) (below). |
 
 ## What we change, and why
 
@@ -84,7 +83,7 @@ is already published, giving it a new digest. `CUDA_ARCHITECTURES`, `BUILD_VISIO
 ### Faster builds on a rig
 
 Two opt-in flags, applied by [`build_opts.py`](build_opts.py) after `portable.py`. Neither changes what
-is compiled. CI passes `--jobs 4` (its runners have 4 vCPUs, and `setup.py` would use 2), never `--ccache`.
+is compiled. A push takes `--jobs`, never `--ccache`.
 
 - **`--jobs N`** compiles with N jobs. `setup.py` passes `-j` (half the CPU threads) on the command
   line, where `CMAKE_BUILD_PARALLEL_LEVEL` can't override it, so the build step rewrites that
@@ -114,16 +113,33 @@ The compile step includes downloading llama.cpp before compiling, which took 18â
   183 s, checks included, with the apt and pip layers already cached; a plain build took 15m45s. Those
   two releases are consecutive, so a build after a bigger change to Strata's own sources will miss more.
 
-CI: the workflow builds the newest release once a day, and on demand from the Actions tab
-(`Run workflow`, with an optional tag). When two releases land on the same day, only the newer one is
-built, which is fine because we only need the release we pin. A failed run emails whoever last edited
-the schedule.
+## Publishing a release
+
+The maintainer builds and pushes each release we take from the reference rig (GitHub CI built it until
+2026-10-17), from a clean checkout of master:
+
+```bash
+git switch master && git pull
+bash models/qwen3.8-flash-next/strata/image/build.sh --tag <vX.Y.Z> --push --jobs 32
+```
+
+- **The push guard** ([`scripts/lib/image-push-guard.sh`](../../../../scripts/lib/image-push-guard.sh)) refuses `--push`
+  when the recipe folder has uncommitted or untracked changes, or when HEAD isn't on `origin/master`. The image's
+  recipe labels (`org.opencontainers.image.revision`, `club3090.recipe`) then name the code that built it. Without
+  it, a rig build was once labelled with its worktree's base commit while it ran an uncommitted edit.
+- **No provenance attestation.** CI's runs signed one through GitHub's own identity token; a rig push can't.
+  The labels (upstream commit, llama.cpp pin, archs, CPU baseline, recipe commit) are the record.
+- **The rig needs a GHCR login with push rights** (`docker login ghcr.io`, a token with `write:packages`).
+- Nothing builds new releases automatically any more: run it when we want a release.
+- The first push from the rig uploads every layer (the rig's layers have other digests than CI's);
+  later pushes upload only the layers that changed.
+- After the push, `build.sh` prints the digest and a line of facts for the pin PR.
 
 ## From a new image to a pin
 
 A published image is not a pin. To move the strata engine profile to a new release:
 
-1. Take the digest from the run's summary (or `docker buildx imagetools inspect ghcr.io/noonghunna/strata-club3090:<tag>`).
+1. Take the digest `build.sh --push` printed (or `docker buildx imagetools inspect ghcr.io/noonghunna/strata-club3090:<tag>`).
 2. Boot one strata slug of each model family on the rig with that digest (an ISTA slug and a Swift one: a
    release can break one family's setup and not the other's), then run `verify-full` on each. On the first
    start, the engine log should say the engine is reused (`engine already built for this PC`), with no cmake run.
@@ -137,6 +153,6 @@ A published image is not a pin. To move the strata engine profile to a new relea
 - **Never delete a pinned digest.** Old tags can be pruned, but any digest an engine profile, a release or a
   user's saved setting may still name has to stay pullable.
 - **When `portable.py` refuses**, read upstream's new Dockerfile, move the edits to the new text, and run
-  the build by hand once before letting CI publish.
+  a test build (no `--push`) once before publishing.
 - **When the flag check fails**, `../launcher/strata-entrypoint.sh` (both composes mount it) needs the new spelling first;
   update both together.

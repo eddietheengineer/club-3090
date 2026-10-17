@@ -4,13 +4,13 @@
 # Project Maya (github.com/mw00/project-maya, MIT) is a fork of Strata for GLM-5.3-Flash. It
 # publishes no image, no Dockerfile and no Linux engine (its setup compiles on the user's PC), so
 # we build each release with our own Dockerfile (next to this script) and publish the result (an
-# image-provenance exception, docs/ADDING_ENGINES.md). Maya releases several times a day; CI runs
-# this on a schedule (.github/workflows/strata-maya-image.yml) and a maintainer can run it by hand:
+# image-provenance exception, docs/ADDING_ENGINES.md). Maya releases several times a day; the
+# maintainer runs this on the reference rig for the release we want (GitHub CI built it until 2026-10-17):
 #
 #   bash models/glm-5.3-flash/strata-maya/image/build.sh                    # newest release: build + check, no push
 #   bash models/glm-5.3-flash/strata-maya/image/build.sh --tag v1.1.11 --push
 #   bash models/glm-5.3-flash/strata-maya/image/build.sh --tag v1.1.11 --verify <image>   # checks only
-#   --jobs N   compile with N jobs (default: half the CPU threads, as maya.py does); CI passes 4
+#   --jobs N   compile with N jobs (default: half the CPU threads, as maya.py does)
 #
 # Steps; any failure stops the run:
 #   1. resolve the release tag to its commit (git ls-remote, annotated tags peeled) and build
@@ -27,7 +27,10 @@
 #      - serve/server.py and tools/iq_pack.py still offer every flag our launcher passes, and
 #        the expert profile the configs name is there;
 #      - gguf-py imports and the pack builder indexes the release's synthetic GLM-5 model;
-#   5. with --push: push :<tag> and :sha-<commit7>, print the digest; the workflow attests it.
+#   5. with --push: push :<tag> and :sha-<commit7>, then print the digest and the facts the pin PR
+#      cites. A push needs a clean recipe folder at a commit on origin/master, checked before
+#      anything else runs (scripts/lib/image-push-guard.sh), so the recipe labels name the code
+#      that built the image. Rig pushes carry no signed provenance attestation (CI's did).
 #
 # A new image is NOT a new pin. The strata-maya engine profile moves to one only after a rig boot
 # and verify-full (engine-pin-bump.sh), so a bad release never reaches a launch.
@@ -61,9 +64,17 @@ done
 say() { echo "[maya-image] $*"; }
 die() { echo "[maya-image] ERROR: $*" >&2; exit 1; }
 [[ -z "$JOBS" || "$JOBS" =~ ^[1-9][0-9]*$ ]] || die "--jobs needs a positive number, not '$JOBS'"
-out() { [[ -n "${GITHUB_OUTPUT:-}" ]] && echo "$1" >> "$GITHUB_OUTPUT"; return 0; }
-
 here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../../../scripts/lib/image-push-guard.sh
+source "$here/../../../../scripts/lib/image-push-guard.sh"
+if [[ "$PUSH" == 1 ]]; then
+  why="$(image_push_guard "$here")" || die "not pushing: $why"
+fi
+# Test seam (scripts/tests/test-image-push-guard.sh): stop once the guard has had its say.
+if [[ "${IMAGE_PUSH_GUARD_ONLY:-0}" == 1 ]]; then
+  if [[ "$PUSH" == 1 ]]; then say "push guard passed"; else say "push guard not applied (no --push)"; fi
+  exit 0
+fi
 recipe_commit="$(git -C "$here" rev-parse HEAD 2>/dev/null || echo unknown)"
 
 # ── checks on a built image (step 4) ────────────────────────────────────────────────
@@ -164,13 +175,11 @@ commit="$(awk -v t="refs/tags/$TAG^{}" '$2 == t {print $1}' <<<"$refs")"
 [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || die "tag $TAG not found at $REPO_URL"
 short="${commit:0:7}"
 say "release $TAG = commit $commit"
-out "tag=$TAG"; out "commit=$commit"
 
 # ── 2. already published? ─────────────────────────────────────────────────────────
 if [[ "$FORCE" != 1 ]]; then
   if probe="$(docker buildx imagetools inspect "$IMAGE:$TAG" 2>&1)"; then
     say "$IMAGE:$TAG is already published; nothing to do (--force rebuilds)"
-    out "skipped=true"
     exit 0
   fi
   command grep -q -i 'not found' <<<"$probe" \
@@ -226,13 +235,5 @@ docker push -q "$IMAGE:sha-$short" >/dev/null
 digest="$(docker buildx imagetools inspect "$IMAGE:$TAG" --format '{{json .Manifest.Digest}}' | tr -d '"')"
 [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || die "could not read the pushed digest (got '$digest')"
 say "pushed $IMAGE:$TAG and :sha-$short = $IMAGE@$digest"
-out "digest=$digest"
-if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
-  {
-    echo "### strata-maya-club3090 $TAG"
-    echo
-    echo "- Upstream commit \`$commit\` · llama.cpp \`${llama:0:7}\` · archs \`$CUDA_ARCHITECTURES\` · text only · CPU baseline AVX2 (portable)"
-    echo "- Image \`$IMAGE@$digest\` (also \`:$TAG\`, \`:sha-$short\`)"
-    echo "- All image checks passed. **Not pinned:** the strata-maya engine profile moves to it only after a rig boot + verify-full (\`engine-pin-bump.sh\`)."
-  } >> "$GITHUB_STEP_SUMMARY"
-fi
+say "for the pin PR: Project Maya $TAG, upstream ${commit:0:8}, recipe ${recipe_commit:0:8}, llama.cpp ${llama:0:7}, archs $CUDA_ARCHITECTURES, text only"
+say "not pinned: the strata-maya engine profile moves to it only after a rig boot + verify-full (engine-pin-bump.sh)"
