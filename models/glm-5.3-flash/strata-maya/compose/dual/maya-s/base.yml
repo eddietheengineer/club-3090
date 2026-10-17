@@ -18,11 +18,14 @@
 #              sends enable_thinking false or reasoning_effort none (unlike the llama.cpp GLM slugs, where
 #              thinking can't be turned off). Server defaults for requests that name none: effort max (as the
 #              other GLM-5.3-Flash slugs), temperature 1.0 / top_p 0.95, Maya's own 32K reasoning budget; the
-#              launch settings change them (docs/engines/STRATA_MAYA.md). The FIRST start SHA-256-checks
-#              the shards against Maya's own table and builds Maya's pack on the data volume (minutes,
-#              once); later starts ~30 s. Maya sizes its RAM tier from free memory: drop the page cache
-#              first on a box that just read big files. Host needs NVIDIA driver >= 580 (CUDA 13) and an
-#              AVX2 CPU; x86-64 only.
+#              launch settings change them (docs/engines/STRATA_MAYA.md). The FIRST start SHA-256-checks the
+#              shards against Maya's own table and builds Maya's pack on the data volume (minutes, once);
+#              later starts ~30 s from a warm page cache. From a hard disk with a cold cache every start
+#              reads the whole pack (930-1,010 s for Maya-L and Maya-M on a community rig), longer than
+#              switch.sh's 10-minute wait: give it READY_TIMEOUT=1800 (or re-run switch.sh once it times
+#              out; the container keeps loading). Maya sizes its RAM tier from free memory: drop the page
+#              cache first on a box that just read big files. Host needs NVIDIA driver >= 580 (CUDA 13) and
+#              an AVX2 CPU; x86-64 only.
 #              Measured 2026-10-15 on this image (v1.1.11, bench.sh on its own boot, engine defaults): 48.80
 #              / 51.03 decode (narrative / code), 1,136 / 1,209 prefill @10K / @90K (BENCHMARKS.md,
 #              GLM-5.3-Flash / Project Maya).
