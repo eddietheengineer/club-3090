@@ -1,5 +1,5 @@
 {
- "_doc": "Which standard launch knobs each live compose must read, and the declared exceptions. Checked by scripts/lib/profiles/knob_conformance.py (run by test-launch-knobs); its docstring has the rules.",
+ "_doc": "Which standard launch knobs each live compose must read, and the declared exceptions. Checked by scripts/lib/profiles/knob_conformance.py (run by test-launch-knobs); its docstring has the rules. not_wired.reads_instead is a related setting found by name, not proof it means the same: check what it does before mapping the knob onto it.",
  "knobs": {
   "REASONING_EFFORT": {
    "applies": "model",

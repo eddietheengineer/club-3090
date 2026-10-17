@@ -16,8 +16,10 @@ unsupported in the compose Caveats; nothing checked it. This does, from knob-con
   unsupported  a capability claim: the knob can't work on these engines / models. Needs `why` and a
                `source` (a repo file and a literal it contains), and matches by engine id and model, so a new
                compose of the same pair inherits it.
-  not_wired    backlog: these exact compose paths could take the knob and don't (`reads_instead` names what
-               they read instead). It only shrinks: the number of (compose, knob) pairs must equal
+  not_wired    backlog: these exact compose paths could take the knob and don't. `reads_instead` is a RELATED
+               setting the compose reads, found by its name and checked to be read (not a comment); it is
+               not proof of the same meaning (llama.cpp's REASONING_BUDGET is one cap for every request, not
+               per-effort budgets), so read what it does before mapping the knob onto it. It only shrinks: the number of (compose, knob) pairs must equal
                not_wired_ceiling, so a new entry needs the ceiling raised in the same change (visible in
                review), and wiring one needs it lowered.
 
@@ -25,6 +27,9 @@ Fails on: an applicable knob a compose neither reads nor covers; an entry that i
 knob now, is gone, or the knob no longer applies; an unsupported entry that excuses nothing); a knob or model
 with no classification, or a classification for one that doesn't exist; an unsupported entry whose source
 doesn't contain its literal; a reads_instead name the compose doesn't contain; the ceiling off by any amount.
+
+Loose spots, none hit by a current entry: reads_env drops a line from ` #` on (a quoted `#` in a value is
+cut), and counts a bare `NAME:` key anywhere in the file (a `labels:` key too).
 
 Scope: curated, non-deprecated slugs from `registry-emit.sh --json` (what the resolver sees); the local layer is
 the user's own. Commands: check | gaps (prints entries for uncovered gaps, as a starting point) | selftest.
