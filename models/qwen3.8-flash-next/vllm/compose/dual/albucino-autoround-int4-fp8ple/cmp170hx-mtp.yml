@@ -37,9 +37,9 @@
 #              image was not published yet), report.sh --full PASS (verify-full incl. vision
 #              4/4, verify-stress ladder to 240,659 tokens, soak-continuous 0 MiB growth /
 #              100% retention, bench-agentic). bench.sh: 126.3 / 171.6 narr/code, prefill
-#              5,171 @10K / 7,546 @90K, peak 63.2 / 62.2 GB, KV pool 2.06M tokens (fp8).
-#              v0.31.0, same day: 126.1 / 174.0, 5,159 / 7,557, pool 2.23M (graph memory
-#              not reserved then). Quality on v0.31.0 (#1737): pass@1 of 150 instruct 123,
+#              5,171 @10K / 7,546 @90K, peak 63.2 / 62.2 GB, KV pool 2.23M tokens (fp8;
+#              2.06M on the first boot with a cold kernel cache). v0.31.0, same day:
+#              126.1 / 174.0, 5,159 / 7,557, pool 2.23M. Quality on v0.31.0 (#1737): pass@1 of 150 instruct 123,
 #              low 122, medium 128, xhigh 130.
 #   Best for:  c=1..8 long-context agent serving on 2x 64 GB sm_80 cards without P2P,
 #              with the PLE table on NVMe instead of ~48 GiB of pinned host RAM

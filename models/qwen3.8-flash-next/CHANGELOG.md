@@ -69,8 +69,8 @@ image (the v0.32.0 Docker image was not published yet; same torch, CUDA and Pyth
 `report.sh --full` PASS: verify-full incl. vision 4/4, verify-stress ladder to 240,659
 tokens, soak-continuous 0 MiB growth, bench-agentic. `bench.sh`: 126.3 / 171.6 narr/code,
 prefill 5,171 @10K / 7,546 @90K, the same as v0.31.0 within noise; decode at 90K depth 148
-vs 129 tok/s (one sample each). KV pool 2.06M tokens: CUDA-graph memory is now reserved at
-boot (the 2.23M on v0.31.0 ran with the graph estimate off).
+vs 129 tok/s (one sample each). KV pool 2.23M tokens, as on v0.31.0 (the first boot on a
+cold kernel cache got 2.06M: 1.4 GiB more non-torch memory on stage 0).
 
 Quality (`quality-test.sh --full`, benchlocal-cli v0.11.0, on v0.31.0, thinking budget
 65,536 at every effort), pass@1 / pass@3 of 150: instruct 123 / 131, low 122 / 135, medium
