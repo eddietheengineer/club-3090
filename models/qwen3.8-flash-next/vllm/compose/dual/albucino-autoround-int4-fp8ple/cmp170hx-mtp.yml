@@ -1,13 +1,13 @@
 # ===========================================================================
 # Profile (at-a-glance):
-#   Model:     Qwen3.8-Flash-Next (stock vLLM image + overlays)
+#   Model:     Qwen3.8-Flash-Next (stock vLLM v0.32.0 image + overlays; engine vllm-flash-next)
 #   Topology:  Dual CMP 170HX 64 GB (sm_80), TP=2 or PP=2 (PARALLEL=tp|pp)
 #   Overlays:  qwen4exp-pp-ple-rank0 (stock refuses PP>1 for this model)
 #              qwen4exp-mtp-pp (stock MTP asserts under PP>1)
 #              qwen4exp-mtp-draft-head (DRAFT_HEAD=1: INT4 lm_head for the MTP drafter only)
-#              qwen4exp-ple-mmap (PLE_PLACEMENT=nvme only; v0.31.0 port)
-#              qwen4exp-ple-fp8-bytecopy (FP8 PLE in pinned RAM on sm_80/86)
-#              qwen4exp-qsa-fp8kv-ampere (FP8 KV on sm_80/86; e4m3 decoded in the kernel)
+#              qwen4exp-ple-mmap (PLE_PLACEMENT=nvme only; v0.32.0 port)
+#              qwen4exp-qsa-fp8kv-ampere (FP8 KV on sm_80/86: e4m3 decoded in the QSA kernel,
+#              fused QSA prepare off because it writes the cache in fp8e4nv)
 #              vllm-pr48375-mamba-drop-eagle-block (MTP x prefix-cache recurrent state)
 #              w4a8-int8-act + w4a8-inc-moe (W4A8=1 only; INT8-activation Marlin for
 #              AutoRound dense linears + MoE experts; off by default, see RESULTS)
@@ -20,20 +20,20 @@
 #   Drafter:   MTP n=3 by default (SPEC_N=0 off), drafting through an INT4 g128 copy of
 #              lm_head (DRAFT_HEAD=1, built on first boot). The albucino checkpoint carries no MTP head,
 #              so DRAFT_SUBDIR points at its separate draft (runtime/mtp-int4-g32: INT4 g32
-#              routed experts, compressed-tensors target "RoutedExperts", a stock 0.31 class)
+#              routed experts, compressed-tensors target "RoutedExperts", a stock class)
 #   KV:        fp8_e4m3 via overlay qwen4exp-qsa-fp8kv-ampere (stock fails to compile the
-#              QSA kernel on sm_80/86: no fp8e4nv in Triton). Measured 2026-10-17, PP=2:
+#              QSA kernels on sm_80/86: no fp8e4nv in Triton). Measured 2026-10-17 (v0.31.0), PP=2:
 #              pool 1.03M -> 1.80M tokens vs bf16; decode -2..-3%, prefill -7..-12%;
 #              needle 6K/42K/96K pass. KV_CACHE_DTYPE=auto for bf16.
 #   Vision:    on by default (VISION=0 for --language-model-only); verify-full vision 4/4
 #   Max ctx:   262K
 #   Status:    🧪 Experimental
-#   Caveats:   measured on ONE rig (2x CMP 170HX 64 GB, Gen2 x8, no P2P, 175 W). Eleven
-#              overlays on the stock image, one of them a port pinned to v0.31.0 (ple-mmap).
+#   Caveats:   measured on ONE rig (2x CMP 170HX 64 GB, Gen2 x8, no P2P, 175 W). Ten
+#              overlays on the stock image, one of them a port pinned to v0.32.0 (ple-mmap).
 #              No KV offload to RAM: it does not start under PP=2 (vLLM bug, see RESULTS).
 #              GPU_MEMORY_UTILIZATION 0.95 leaves ~2.7 GB per 64 GB card; 24 GB cards
 #              cannot hold the weights. Launch: switch.sh --force (🧪).
-#   Validated: 2026-10-18, report.sh --full PASS (verify-full incl. vision 4/4, verify-stress
+#   Validated: 2026-10-18 on v0.31.0, report.sh --full PASS (verify-full incl. vision 4/4, verify-stress
 #              ladder to 240,657 tokens, soak-continuous 0 MiB growth / 100% retention,
 #              bench, bench-agentic). bench.sh: 126.1 / 174.0 narr/code, prefill 5,159
 #              @10K / 7,557 @90K, peak 62.8 / 62.2 GB, KV pool 2.23M tokens (fp8).
@@ -48,7 +48,7 @@
 #
 # Purpose: find the best stock-vLLM layout for Flash-Next on 2x CMP 170HX 64 GB.
 #
-# RESULTS (2026-10-17, albucino W4A16+FP8PLE, MTP draft mtp-int4-g32, 175 W cap,
+# RESULTS (2026-10-17, vLLM v0.31.0, albucino W4A16+FP8PLE, MTP draft mtp-int4-g32, 175 W cap,
 # PCIe Gen2 x8 each, no P2P; decode = bench.sh decode_TPS, agg = 512-tok streams):
 #   layout            narr/code   pf@10K/90K   c=1/c=4/c=8 agg     KV pool (fp8)
 #   PP=2 PLE ram      120/165     5109/7443    106/213/317         1.80M tok
@@ -63,7 +63,7 @@
 #   KV_OFFLOAD_GB fails under PP=2: per-stage KV layouts differ, so the shared
 #   /dev/shm region size disagrees ('Timed out waiting for mmap file...'). vLLM bug.
 #
-# RESULTS 2 (2026-10-18, 175 W, sparkDash protocol: greedy, thinking off, 400 forced tokens,
+# RESULTS 2 (2026-10-18, vLLM v0.31.0, 175 W, sparkDash protocol: greedy, thinking off, 400 forced tokens,
 # aggregate tok/s at c=1/2/4/8; same protocol as AlexBrandes/cmp170hx-qwen38-flash-next):
 #   arm                          code              prose             json              KV pool
 #   PP=2 nvme (RESULTS above)    189/292/479/668   148/218/358/514   164/281/483/745   1.80M
@@ -110,7 +110,7 @@
 #     0.31.0). Needs a port before it can be an arm here.
 #
 # KV offload (OffloadingConnector) is not wired: it does not start under PP=2 (RESULTS),
-#   and the QSA backend declares supports_kv_connector() = False on 0.31.0 and 0.32.0rc3,
+#   and the QSA backend declares supports_kv_connector() = False (0.31.0 through 0.32.0),
 #   so nobody has shown the connector round-trips QSA state. Revisit with a cache-hit +
 #   output-match test once vLLM sizes the shared region per stage.
 #
@@ -121,7 +121,7 @@
 #   rm -f "$f"
 services:
   vllm-qwen38-flash-next-cmp-exp:
-    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.31.0}
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.32.0}
     container_name: "${ESTATE_CONTAINER:-vllm-qwen38-flash-next-cmp-exp}"
     user: "0:${DOCKER_GID:-1000}"
     restart: ${CLUB3090_RESTART:-unless-stopped}
@@ -145,7 +145,6 @@ services:
       - ${CLUB3090_ENGINE_CACHE_DIR:-../../../cache}/triton:/root/.triton/cache
       - ../../../patches/qwen4exp-pp-ple-rank0:/etc/club3090/pp-ple-rank0:ro
       - ../../../patches/qwen4exp-ple-mmap:/etc/club3090/ple-mmap:ro
-      - ../../../patches/qwen4exp-ple-fp8-bytecopy:/etc/club3090/ple-fp8-bytecopy:ro
       - ../../../patches/qwen4exp-mtp-pp:/etc/club3090/mtp-pp:ro
       - ../../../patches/qwen4exp-mtp-draft-head:/etc/club3090/mtp-draft-head:ro
       - ${CLUB3090_ENGINE_CACHE_DIR:-../../../cache}/draft-head:/draft-head
@@ -155,7 +154,7 @@ services:
       - ../../../patches/w4a8-inc-moe:/etc/club3090/w4a8-moe:ro
       - ../../../../../qwen3.8-27b/vllm/patches/qwen38-reasoning-effort-template/chat_template.jinja:/etc/club3090/chat_template.jinja:ro
       # Reasoning budget chosen by effort: the engine-neutral module + the two vLLM hooks
-      # (shared with the Qwen3.8-27B composes; anchors are model-agnostic, v0.31.0)
+      # (shared with the Qwen3.8-27B composes; anchors are model-agnostic, checked on v0.31.0 and v0.32.0)
       - ../../../../../../scripts/lib/effort_budget.py:/etc/club3090/effort_budget.py:ro
       - ../../../../../qwen3.8-27b/vllm/patches/vllm-effort-budget:/etc/club3090/effort-budget:ro
       - ../../../../../qwen3.8-27b/vllm/patches/vllm-default-thinking-budget:/etc/club3090/default-thinking-budget:ro
@@ -254,9 +253,8 @@ services:
         fi
         bash /etc/club3090/mtp-draft-head/install.sh || exit 1
         bash /etc/club3090/pr48375/install.sh || exit 1
-        # Triton has no fp8e4nv on sm_80/86: the stock pinned-RAM PLE kernel cannot read an FP8 table.
-        bash /etc/club3090/ple-fp8-bytecopy/install.sh || exit 1
-        # FP8 KV on sm_80/86: QSA kernel reads the cache as bytes and decodes e4m3 (halt95/Merlin).
+        # FP8 KV on sm_80/86: QSA kernel reads the cache as bytes and decodes e4m3 (halt95/Merlin);
+        # the fused QSA prepare, which writes the cache in fp8e4nv, is turned off there.
         bash /etc/club3090/qsa-fp8kv/install.sh || exit 1
         if [ -z "$${VLLM_MARLIN_INPUT_DTYPE:-}" ] && [ "$${W4A8:-0}" = "1" ]; then
           export VLLM_MARLIN_INPUT_DTYPE=int8

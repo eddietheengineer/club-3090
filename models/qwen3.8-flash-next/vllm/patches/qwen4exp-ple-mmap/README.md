@@ -25,7 +25,7 @@ Constraints: ETP=1, so **PP only, not TP** (pair with `qwen4exp-pp-ple-rank0`). 
 ships it. The file is the table in the checkpoint's storage dtype: 51.2 GB for an FP8 PLE
 (albucino), ~102 GB for BF16.
 
-**Provenance.** Port to stock vLLM v0.31.0 of Minachist's `flash-next-vllm.patch` (its
+**Provenance.** Port to stock vLLM (first v0.31.0, now v0.32.0) of Minachist's `flash-next-vllm.patch` (its
 ngram_embedding hunks only), `decode-01-ple-host-gather`, `decode-02-model-state-hook`,
 `ttft-01-ple-page-prefetch` and `decode-06-ple-gather-advise` (Apache-2.0),
 `huggingface.co/Minachist/Qwen3.8-Flash-Next-INT4-Mixed-AutoRound`, `vllm-patch/`.
@@ -34,6 +34,10 @@ dropped; the mmap class reuses the common base classes), added the missing impor
 Co-authored-by: Minachist <84688797+aiueonicked@users.noreply.github.com>
 
 **Versions.** One diff per vLLM version (`ple-mmap-v<version>.diff`); the installer refuses
-any other version. v0.32.0rc3: 2 hunks fail, needs a re-port.
+any other version. Today: `ple-mmap-v0.32.0.diff` only (the slug's engine, `vllm-flash-next`).
+The v0.32.0 port follows upstream's new prefetch interface: `start_prefetch(ngram_ids)` lost
+its `hidden_states` argument, the forward now calls `finalize_prefetch(total_tokens)` (which
+replaces the mmap class's `forward(hidden_states)`), and PLE embeddings take a
+`reduce_results` argument. Two hunks were re-anchored (imports, backend selection).
 
-Status: 🧪 experiment (dual CMP 170HX). Not yet in `scripts/lib/profiles/patches.yml`.
+Status: 🧪 experiment (dual CMP 170HX); row `qwen4exp-ple-mmap` in `scripts/lib/profiles/patches.yml`.

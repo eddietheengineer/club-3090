@@ -25,7 +25,8 @@ Unset, the patched code behaves exactly like stock.
 c=1/c=8 aggregate code 189/668 -> 200/754, json 164/745 -> 186/809, prose
 148/514 -> 158/546 tok/s. Acceptance unchanged. KV pool 1.80M -> 1.76M tokens.
 
-**Credit.** Port of AlexBrandes/vllm commit 14457f89e (Apache-2.0) to stock v0.31.0.
+**Credit.** Port of AlexBrandes/vllm commit 14457f89e (Apache-2.0) to stock v0.31.0; applies
+unchanged to v0.32.0.
 `quantize_lm_head.py` is from AlexBrandes/cmp170hx-qwen38-flash-next (MIT), unmodified
 apart from its header.
 

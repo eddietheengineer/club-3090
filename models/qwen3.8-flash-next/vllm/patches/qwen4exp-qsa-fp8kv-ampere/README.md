@@ -18,9 +18,16 @@ finite codes, subnormals included. K is then cast to BF16 for the QK dot and V s
 for the PV dot, exactly as the stock FP8 path does. Stock's host-folded K/V scales are
 untouched. sm_89+ keeps the native path.
 
-Only this kernel reads the main KV cache. It is written by vLLM's CUDA
+Only this kernel reads the main KV cache. On v0.31.0 it is written by vLLM's CUDA
 `reshape_and_cache_flash`, and the QSA indexer caches are a separate setting
 (`indexer_kv_dtype`, BF16 by default) that this overlay does not touch.
+
+**Second edit (v0.32.0+).** vllm#57097 fuses the main QK-norm/RoPE/gate and the K/V cache
+write into the QSA pre-indexer launch (`ops/qsa_prepare.py`). With an FP8 cache it views the
+cache as `float8_e4m3fn` and converts with `.to(tl.float8e4nv)`, the same compile failure on
+the write side. Below sm_89 with FP8 KV the overlay sets `use_fused_qsa_prepare = False`
+(`models/qwen4_exp/nvidia/qsa.py`), so the write goes back to `reshape_and_cache_flash` as on
+v0.31.0. The edit is skipped on builds without the fused prepare.
 
 **Provenance.** The decode is halt95's (Merlin engine, `github.com/halt95/qwen38-flash-next-3090s`,
 Apache-2.0, `patches/0001-qsa-FP8-E4M3-KV-reader-for-sm_86-with-static-K-V-sca.patch`),
@@ -31,4 +38,4 @@ Co-authored-by: halt95 <halt95@users.noreply.github.com>
 **Not included.** Merlin's static per-layer K/V scale calibration (`VLLM_QSA_KV_SCALES`).
 Stock runs FP8 KV at scale 1.0 unless the checkpoint carries scales.
 
-**Applies to** v0.31.0 and v0.32.0rc3 (anchor-checked; the installer refuses otherwise).
+**Applies to** v0.31.0, v0.32.0rc3 and v0.32.0 (anchor-checked; the installer refuses otherwise).

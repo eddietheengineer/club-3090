@@ -17,6 +17,12 @@ finite codes, subnormals included (fp16 subnormals are not flushed on sm_80/86).
 kernel's K/V scale handling is unchanged (stock folds them on the host). sm_89+ keeps
 the stock native-fp8 path.
 
+Second edit, vLLM builds with the fused QSA prepare (v0.32.0+, vllm#57097): that launch
+writes the main K/V cache from Triton and converts to fp8e4nv itself, the same compile
+failure on the write side. Below sm_89 with an FP8 KV cache, `use_fused_qsa_prepare` is
+turned off (models/qwen4_exp/nvidia/qsa.py), so the cache write takes the unfused CUDA
+`reshape_and_cache` path that v0.31.0 used. Builds without the fused prepare skip this edit.
+
 Decode by halt95 (Merlin, github.com/halt95/qwen38-flash-next-3090s, Apache-2.0,
 patches/0001-qsa-FP8-E4M3-KV-reader-for-sm_86-with-static-K-V-sca.patch), ported to the
 stock v0.31.0 kernel by club-3090. Co-authored-by: halt95 <halt95@users.noreply.github.com>
@@ -34,6 +40,22 @@ from pathlib import Path
 TAG = "[qwen4exp-qsa-fp8kv-ampere]"
 MARKER = "# [club3090 qwen4exp-qsa-fp8kv-ampere]"
 TARGET = Path("models/qwen4_exp/nvidia/ops/qsa.py")
+ATTN_TARGET = Path("models/qwen4_exp/nvidia/qsa.py")
+ATTN_ANCHOR = (
+    "        self.use_fused_qsa_prepare = (\n"
+    "            self.use_fused_qk_norm_rope_gate and self.indexer.use_fused_pre_indexer\n"
+    "        )\n"
+)
+ATTN_REPLACEMENT = (
+    "        self.use_fused_qsa_prepare = (\n"
+    "            self.use_fused_qk_norm_rope_gate and self.indexer.use_fused_pre_indexer\n"
+    "        )\n"
+    f"        {MARKER} the fused prepare converts to fp8e4nv: sm_89+ only\n"
+    "        if self.kv_cache_dtype in (\"fp8\", \"fp8_e4m3\") and not (\n"
+    "            current_platform.has_device_capability(89)\n"
+    "        ):\n"
+    "            self.use_fused_qsa_prepare = False\n"
+)
 
 HELPERS = f'''{MARKER} Triton has fp8e4nv only on sm_89+.
 @lru_cache(maxsize=1)
@@ -86,18 +108,53 @@ def die(msg: str) -> None:
     sys.exit(1)
 
 
+def _write(path: Path, text: str) -> None:
+    tmp = path.with_suffix(".py.club3090.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    try:
+        py_compile.compile(str(tmp), doraise=True)
+    except py_compile.PyCompileError as exc:
+        tmp.unlink(missing_ok=True)
+        die(f"patched file does not compile: {exc}")
+    tmp.replace(path)
+
+
+def patch_fused_prepare(root: Path, mode: str) -> str:
+    """Turn the fused QSA prepare off for FP8 KV below sm_89. Returns a status word."""
+    path = root / ATTN_TARGET
+    if not path.is_file():
+        die(f"{ATTN_TARGET} not found")
+    text = path.read_text(encoding="utf-8")
+    if "use_fused_qsa_prepare" not in text:
+        return "absent"            # older vLLM: no fused K/V write
+    if MARKER in text:
+        if ATTN_REPLACEMENT not in text:
+            die(f"{ATTN_TARGET} carries the marker but not the expected edit")
+        return "present"
+    if mode == "verify":
+        die(f"{ATTN_TARGET} is not patched")
+    if text.count(ATTN_ANCHOR) != 1:
+        die(f"anchor 'self.use_fused_qsa_prepare = (' found {text.count(ATTN_ANCHOR)} times in {ATTN_TARGET} (expected 1)")
+    if "from vllm.platforms import current_platform\n" not in text:
+        die(f"{ATTN_TARGET} no longer imports current_platform")
+    _write(path, text.replace(ATTN_ANCHOR, ATTN_REPLACEMENT))
+    return "applied"
+
+
 def main(mode: str) -> None:
     spec = importlib.util.find_spec("vllm")
     if spec is None or not spec.origin:
         die("the vllm package is not importable")
-    path = Path(spec.origin).resolve().parent / TARGET
+    root = Path(spec.origin).resolve().parent
+    fused = patch_fused_prepare(root, mode)
+    path = root / TARGET
     if not path.is_file():
         die(f"{TARGET} not found")
     text = path.read_text(encoding="utf-8")
     if MARKER in text:
         if "_club_decode_e4m3_fp16(values)" not in text or text.count("FP8_AS_BYTES=fp8_bytes") != 2:
             die(f"{TARGET} carries the marker but not the expected edits")
-        print(f"{TAG} already applied")
+        print(f"{TAG} already applied (fused prepare edit: {fused})")
         return
     if mode == "verify":
         die(f"{TARGET} is not patched")
@@ -109,15 +166,8 @@ def main(mode: str) -> None:
     if len(LAUNCH_RE.findall(text)) != 2:
         die("expected 2 kernel launches passing IS_FP8=is_fp8")
     text = LAUNCH_RE.sub(lambda m: f"{m.group(1)}IS_FP8=is_fp8,\n{m.group(1)}FP8_AS_BYTES=fp8_bytes,\n", text)
-    tmp = path.with_suffix(".py.club3090.tmp")
-    tmp.write_text(text, encoding="utf-8")
-    try:
-        py_compile.compile(str(tmp), doraise=True)
-    except py_compile.PyCompileError as exc:
-        tmp.unlink(missing_ok=True)
-        die(f"patched file does not compile: {exc}")
-    tmp.replace(path)
-    print(f"{TAG} applied: FP8 KV read as bytes + e4m3 decode below sm_89")
+    _write(path, text)
+    print(f"{TAG} applied: FP8 KV read as bytes + e4m3 decode below sm_89 (fused prepare edit: {fused})")
 
 
 if __name__ == "__main__":

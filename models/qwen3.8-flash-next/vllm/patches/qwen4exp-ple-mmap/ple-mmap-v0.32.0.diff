@@ -1,5 +1,5 @@
 Qwen3.8-Flash-Next: PLE table memory-mapped from a file on NVMe, with host-side gather,
-page prefetch and gather-advise. Ported to stock vLLM v0.31.0 by club-3090 from
+page prefetch and gather-advise. Ported to stock vLLM v0.32.0 by club-3090 from
 Minachist's vllm-patch (Apache-2.0), huggingface.co/Minachist/Qwen3.8-Flash-Next-INT4-Mixed-AutoRound:
 flash-next-vllm.patch (ngram_embedding hunks), decode-01-ple-host-gather,
 decode-02-model-state-hook, ttft-01-ple-page-prefetch, decode-06-ple-gather-advise.
@@ -7,10 +7,9 @@ Co-authored-by: Minachist <84688797+aiueonicked@users.noreply.github.com>
 
 Apply from the directory that contains the `vllm` package: patch -p1 < this-file
 diff --git a/vllm/models/qwen4_exp/nvidia/model_state.py b/vllm/models/qwen4_exp/nvidia/model_state.py
-index 2461685..1b03411 100644
 --- a/vllm/models/qwen4_exp/nvidia/model_state.py
 +++ b/vllm/models/qwen4_exp/nvidia/model_state.py
-@@ -27,6 +27,7 @@ class Qwen4ExpModelState(MambaHybridModelState):
+@@ -27,6 +27,7 @@
          super().__init__(vllm_config, model, encoder_cache, device)
          config = self.model_config.hf_text_config
          self.uses_ngram_embedding = bool(config.ple_layer_ids)
@@ -18,7 +17,7 @@ index 2461685..1b03411 100644
          if not self.uses_ngram_embedding:
              self.ngram_context_len = 0
              self.ngram_eos_token_id = 0
-@@ -64,6 +65,46 @@ class Qwen4ExpModelState(MambaHybridModelState):
+@@ -64,6 +65,46 @@
              device=self.device,
          )
  
@@ -65,7 +64,7 @@ index 2461685..1b03411 100644
      def _prepare_ngram_context(
          self,
          input_batch: InputBatch,
-@@ -106,10 +147,19 @@ class Qwen4ExpModelState(MambaHybridModelState):
+@@ -106,10 +147,19 @@
          query_start_loc[: num_reqs_padded + 1].copy_(input_batch.query_start_loc)
          # Represent unused capacity as trailing zero-length requests.
          query_start_loc[num_reqs_padded + 1 :].copy_(input_batch.query_start_loc[-1])
@@ -86,7 +85,7 @@ index 2461685..1b03411 100644
          return model_inputs
  
      def prepare_dummy_inputs(
-@@ -141,6 +191,14 @@ class Qwen4ExpModelState(MambaHybridModelState):
+@@ -141,6 +191,14 @@
              query_start_loc=query_start_loc,
              ngram_context=ngram_context,
          )
@@ -102,7 +101,6 @@ index 2461685..1b03411 100644
  
  
 diff --git a/vllm/models/qwen4_exp/nvidia/ngram_embedding.py b/vllm/models/qwen4_exp/nvidia/ngram_embedding.py
-index 0b6fd65..f75d105 100644
 --- a/vllm/models/qwen4_exp/nvidia/ngram_embedding.py
 +++ b/vllm/models/qwen4_exp/nvidia/ngram_embedding.py
 @@ -2,8 +2,14 @@
@@ -119,16 +117,16 @@ index 0b6fd65..f75d105 100644
 +import numpy as np
  import torch
  from torch import nn
- 
-@@ -13,6 +19,7 @@ from vllm.model_executor.layers.quantization.base_config import (
-     QuantizationConfig,
- )
+ from transformers import Qwen4ExpTextConfig
+@@ -17,6 +23,7 @@
+ from vllm.model_executor.layers.quantization.utils.fp8_utils import is_fp8
  from vllm.model_executor.models.utils import AutoWeightsLoader
+ from vllm.models.common.ops.sequence_parallel import sp_reduce_scatter, sp_shard
 +from vllm.triton_utils import triton
- from vllm.transformers_utils.configs.qwen4_exp import (
-     Qwen4ExpTextConfig,
- )
-@@ -40,6 +47,610 @@ __all__ = [
+ 
+ from ..common.ngram_embedding import (
+     Qwen4ExpPLEDeviceEmbedding,
+@@ -41,6 +48,613 @@
  ]
  
  
@@ -427,6 +425,7 @@ index 0b6fd65..f75d105 100644
 +        num_ngram_heads: int = 1,
 +        max_total_tokens: int = 0,
 +        data_parallel_rank: int = 0,
++        reduce_results: bool = True,
 +    ) -> None:
 +        self._mmap_path = os.environ.get(_PLE_MMAP_PATH_ENV, "").strip()
 +        if not self._mmap_path:
@@ -449,6 +448,7 @@ index 0b6fd65..f75d105 100644
 +            num_ngram_heads=num_ngram_heads,
 +            max_total_tokens=max_total_tokens,
 +            data_parallel_rank=data_parallel_rank,
++            reduce_results=reduce_results,
 +        )
 +        if self.tp_size != 1:
 +            raise RuntimeError(
@@ -500,6 +500,11 @@ index 0b6fd65..f75d105 100644
 +        storage_dtype = _PLE_STORAGE_TORCH_DTYPES[self.weight.dtype.itemsize]
 +        self._host_stage_np = self._host_stage.view(storage_dtype).numpy()
 +        self._output_dim = num_ngram_heads * self.embedding_dim
++        # Read by the inherited pinned start_prefetch()/_finalize_prefetch().
++        self._row_bytes = self.embedding_dim * self.weight.element_size()
++        self._prefetch_rows = max_total_tokens * self.etp_data_parallel_size
++        self._num_ngram_heads = num_ngram_heads
++        self._prefetch_alloc_lock = threading.Lock()
 +
 +        # Created after allocate_embedding_weight() has mapped the file, since
 +        # the prefetcher needs its address. Each token has num_ngram_heads rows.
@@ -715,31 +720,27 @@ index 0b6fd65..f75d105 100644
 +            output=self._prefetch_buffer[: gathered_ids.shape[0]],
 +        )
 +
-+    def start_prefetch(
-+        self,
-+        hidden_states: torch.Tensor,
-+        ngram_ids: torch.Tensor,
-+    ) -> None:
++    def start_prefetch(self, ngram_ids: torch.Tensor) -> None:
 +        """Old in-forward path. Does nothing when host_gather() is used."""
 +        if self.prefetch_from_model_state:
 +            return
-+        super().start_prefetch(hidden_states, ngram_ids)
++        super().start_prefetch(ngram_ids)
 +
-+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
++    def finalize_prefetch(self, total_tokens: int) -> torch.Tensor:
 +        """Return a view of the rows host_gather() wrote.
 +
 +        With ETP=1 the all-reduce and DP row selection in _finalize_prefetch do
 +        nothing, so only the flatten(-2) remains.
 +        """
 +        if not self.prefetch_from_model_state:
-+            return super().forward(hidden_states)
-+        return self._prefetch_buffer[: hidden_states.shape[0]].flatten(-2)
++            return super().finalize_prefetch(total_tokens)
++        return self._prefetch_buffer[:total_tokens].flatten(-2)
 +
 +
  class Qwen4ExpNGramEmbedding(nn.Module):
      _MASK64 = (1 << 64) - 1
      _SPLITMIX_GAMMA = 0x9E3779B97F4A7C15
-@@ -208,11 +819,12 @@ class Qwen4ExpNGramEmbedding(nn.Module):
+@@ -211,11 +825,12 @@
          if params_dtype is None:
              params_dtype = torch.get_default_dtype()
          engram_config = get_current_vllm_config().engram_config
@@ -754,12 +755,12 @@ index 0b6fd65..f75d105 100644
 +            embedding_cls = Qwen4ExpPLEPinnedHostEmbedding
 +        else:
 +            embedding_cls = Qwen4ExpPLEDeviceEmbedding
-         self.ngram_embedding = embedding_cls(
-             padded_vocab_size,
-             self.head_dim,
-@@ -363,6 +975,27 @@ class Qwen4ExpNGramEmbedding(nn.Module):
-         ngram_ids = self.compute_ngram_ids(input_ids, query_start_loc, ngram_context)
-         return self.ngram_embedding(ngram_ids).flatten(-2)
+         # A TP reduce-scatter covers all vocabulary owners only when ETP=TP.
+         self.use_reduce_scatter = (
+             self.use_sequence_parallel
+@@ -392,6 +1007,27 @@
+             return embeddings
+         return self._sp_shard_embeddings(embeddings)
  
 +    def host_gather(
 +        self,
@@ -784,8 +785,8 @@ index 0b6fd65..f75d105 100644
 +
      def start_prefetch(
          self,
-         hidden_states: torch.Tensor,
-@@ -374,6 +1007,10 @@ class Qwen4ExpNGramEmbedding(nn.Module):
+         input_ids: torch.Tensor,
+@@ -402,6 +1038,10 @@
          embedding = self.ngram_embedding
          if not embedding.supports_prefetch:
              return
@@ -796,9 +797,9 @@ index 0b6fd65..f75d105 100644
          ngram_ids = self.compute_ngram_ids(
              input_ids,
              query_start_loc,
-@@ -382,6 +1019,51 @@ class Qwen4ExpNGramEmbedding(nn.Module):
+@@ -410,6 +1050,51 @@
          )
-         embedding.start_prefetch(hidden_states, ngram_ids)
+         embedding.start_prefetch(ngram_ids)
  
 +    # Look-ahead page prefetch (mmap backend only).
 +    _ple_hash_np: "tuple[np.ndarray, np.ndarray, np.ndarray] | None" = None
@@ -848,7 +849,7 @@ index 0b6fd65..f75d105 100644
      def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
          """Load hash buffers and checkpoint-split embedding rows."""
          persistent_buffers = {
-@@ -445,6 +1127,10 @@ class Qwen4ExpNGramEmbedding(nn.Module):
+@@ -473,4 +1158,8 @@
  
          if regular_weights:
              loaded.update(AutoWeightsLoader(self).load_weights(regular_weights))
@@ -857,5 +858,3 @@ index 0b6fd65..f75d105 100644
 +            finalize()
 +        self._ple_hash_np = None    # hash buffers changed
          return loaded
- 
- 

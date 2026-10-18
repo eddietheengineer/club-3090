@@ -1,0 +1,81 @@
+schema_version: 1
+id: vllm-flash-next
+display_name: vLLM Flash-Next v0.32.0 (stock image + Qwen4Exp overlays)
+type: vllm
+# #1365: the compose env var this engine's image is injected as.
+image_env: VLLM_IMAGE
+
+stability: experimental
+lineage:
+  relation: "patched"
+  base: "vllm"
+  base_version: "0.32.0"
+  source: "https://github.com/vllm-project/vllm"
+  source_ref: "5df63a7203cdb9328d824a27b682e77c7b9928be"
+  chain: []
+  delta: "our Qwen4Exp overlays (models/qwen3.8-flash-next/vllm/patches/): PP with PLE on rank 0, MTP under PP, mmap PLE, FP8 KV on sm_80/86, INT4 MTP draft head, W4A8 MoE fixes"
+install:
+  method: docker_image
+  spec: vllm/vllm-openai:v0.32.0
+min_sm: 8.0
+supported_model_families:
+  - qwen4exp
+features:
+  int8_per_token_head: false
+  turboquant_3bit_nc: false
+  marlin_pad_sub_tile_n: false
+  qwen3_coder_tool_parser: false
+supported_kv_formats:
+  - bf16
+  - fp8_e4m3              # QSA reads/writes it below sm_89 only through qwen4exp-qsa-fp8kv-ampere
+supported_drafters:
+  - mtp
+supported_weight_formats:
+  - bf16
+  - autoround
+required_overlays: []
+vendored_overlays:
+  - id: qwen4exp-pp-ple-rank0
+    pr_url: null
+    upstream_status: local
+    upstream_merged_in_version: null
+    local_status: vendored
+    delivery: install_script
+    purpose: "Stock refuses --pipeline-parallel-size > 1 for any PLE model; allows it when every PLE layer sits on rank 0, and keeps per-rank KV groups. Port of Minachist's patch (Apache-2.0)."
+  - id: qwen4exp-mtp-pp
+    pr_url: null
+    upstream_status: local
+    upstream_merged_in_version: null
+    local_status: vendored
+    delivery: install_script
+    purpose: "The Qwen4ExpMTP drafter asserts under PP > 1; it now branches on whether hidden states were passed. Port of Minachist's patch (Apache-2.0)."
+  - id: qwen4exp-ple-mmap
+    pr_url: null
+    upstream_status: local
+    upstream_merged_in_version: null
+    local_status: vendored
+    delivery: install_script
+    purpose: "PLE table memory-mapped from NVMe with a host gather before the forward (host RAM ~19 GB instead of ~83 GB). Port of Minachist's patch to v0.32.0; one diff per vLLM version."
+  - id: qwen4exp-qsa-fp8kv-ampere
+    pr_url: null
+    upstream_status: local
+    upstream_merged_in_version: null
+    local_status: vendored
+    delivery: install_script
+    purpose: "FP8 e4m3 KV below sm_89: the QSA kernel reads the cache as bytes and decodes e4m3 (halt95/Merlin), and the fused QSA prepare (vllm#57097), which writes the cache in fp8e4nv, is turned off."
+  - id: qwen4exp-mtp-draft-head
+    pr_url: null
+    upstream_status: local
+    upstream_merged_in_version: null
+    local_status: vendored
+    delivery: install_script
+    purpose: "The MTP drafter keeps its own W4A16 lm_head instead of sharing the target's BF16 head. Port of AlexBrandes/vllm 14457f89e."
+  - id: w4a8-inc-moe
+    pr_url: null
+    upstream_status: local
+    upstream_merged_in_version: null
+    local_status: vendored
+    delivery: install_script
+    purpose: "Four vLLM bugs that make W4A8 (INT8 activations) answer '!!!!' on AutoRound MoE models. Opt-in W4A8=1."
+required_genesis: false
+notes: "Per-model patched engine for Qwen3.8-Flash-Next (family qwen4exp) on the stock vllm/vllm-openai release image. It exists so this model can move to a newer vLLM than `vllm-stable` without repointing that overlay-free engine's ~24 slugs (ADDING_ENGINES.md: a second profile when slugs must stay on different builds). The overlays are mounted and applied at boot by the slug's compose; this profile records their provenance. ⚠️ The version is in install.spec only. Bumping it means re-checking every overlay: the ple-mmap port is one diff per vLLM version and refuses any other version; the others are anchor-checked and refuse the boot on drift. Retired on v0.32.0: qwen4exp-ple-fp8-bytecopy (upstream vllm#60142 copies FP8 PLE rows as bytes)."
