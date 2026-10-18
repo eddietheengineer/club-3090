@@ -461,6 +461,7 @@ while IFS='|' read -r slug reg_gb; do
     *dual-exl3-305-cpumoe)  f="$EXL3_305" ;;
     *dual-exl3-405-cpumoe)  f="$EXL3_405" ;;
     *qwen3.8-flash-next-ple-dual)     f="models/qwen3.8-flash-next/bucko-vllm/compose/dual/albucino-autoround-int4-fp8ple/base.yml" ;;
+    *qwen38-flash-next-dual-cmp170hx) f="models/qwen3.8-flash-next/vllm/compose/dual/albucino-autoround-int4-fp8ple/cmp170hx-mtp.yml" ;;
     *qwen3.8-flash-next-swift15-dual) f="models/qwen3.8-flash-next/bucko-vllm/compose/dual/ukisai-swift15-autoround-int4/base.yml" ;;
     *qwen3.8-flash-next-swift15-abliterated-iq3s-multi4) f="models/qwen3.8-flash-next/strata/compose/multi4/sc117-swift15-abliterated-iq3s/base.yml" ;;
     *qwen3.8-flash-next-swift15-abliterated-iq3s-dual)   f="models/qwen3.8-flash-next/strata/compose/dual/sc117-swift15-abliterated-iq3s/base.yml" ;;

@@ -401,7 +401,8 @@
       "model": [
        "qwen3.8-27b",
        "thinkingcap-qwen3.8-27b",
-       "nemotron-3-puzzle-75b"
+       "nemotron-3-puzzle-75b",
+       "qwen3.8-flash-next"
       ]
      },
      "enforced": "boot",
@@ -931,7 +932,8 @@
       ],
       "model": [
        "qwen3.8-27b",
-       "thinkingcap-qwen3.8-27b"
+       "thinkingcap-qwen3.8-27b",
+       "qwen3.8-flash-next"
       ],
       "compose_contains": "qwen38-reasoning-effort-template/chat_template.jinja"
      },
@@ -1642,7 +1644,8 @@
       ],
       "model": [
        "qwen3.8-27b",
-       "thinkingcap-qwen3.8-27b"
+       "thinkingcap-qwen3.8-27b",
+       "qwen3.8-flash-next"
       ]
      },
      "enforced": "boot",
@@ -1776,7 +1779,8 @@
       ],
       "model": [
        "qwen3.8-27b",
-       "thinkingcap-qwen3.8-27b"
+       "thinkingcap-qwen3.8-27b",
+       "qwen3.8-flash-next"
       ]
      },
      "enforced": "boot",
@@ -1910,7 +1914,8 @@
       ],
       "model": [
        "qwen3.8-27b",
-       "thinkingcap-qwen3.8-27b"
+       "thinkingcap-qwen3.8-27b",
+       "qwen3.8-flash-next"
       ]
      },
      "enforced": "boot",
@@ -2043,7 +2048,8 @@
       ],
       "model": [
        "qwen3.8-27b",
-       "thinkingcap-qwen3.8-27b"
+       "thinkingcap-qwen3.8-27b",
+       "qwen3.8-flash-next"
       ]
      },
      "enforced": "boot",
