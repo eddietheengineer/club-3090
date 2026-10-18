@@ -105,7 +105,7 @@ without budgets is `THINKING_BUDGETS=off`.
 
 ## Selftest
 
-`bash selftest.sh [image]` (default `vllm/vllm-openai:v0.31.0`), no GPU, no network: install twice
+`bash selftest.sh [image]` (default `vllm/vllm-openai:v0.32.0`), no GPU, no network: install twice
 (second a byte-identical no-op), the AST placement check plus a moved-hook positive control, the
 glue against vLLM's real `ChatCompletionRequest` / `_effective_chat_template_kwargs` /
 `to_sampling_params` and the Anthropic converter, the module's own `test-effort-budget.sh`, and

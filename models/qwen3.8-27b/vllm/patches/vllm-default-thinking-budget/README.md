@@ -119,7 +119,7 @@ nothing; the positive controls (an open think block past the budget, also with d
 
 ## Selftest
 
-`bash selftest.sh [image]` (default `vllm/vllm-openai:v0.31.0`), no GPU, no network: the compose's
+`bash selftest.sh [image]` (default `vllm/vllm-openai:v0.32.0`), no GPU, no network: the compose's
 own `shell-env` line exports the floor, install twice (second a byte-identical no-op), the AST
 placement check plus a positive control, `selftest_floor.py` (floor / explicit wins / trace replay /
 msgpack round trip / Responses / completions / an unhooked chat request / V2-kernel inertness with
