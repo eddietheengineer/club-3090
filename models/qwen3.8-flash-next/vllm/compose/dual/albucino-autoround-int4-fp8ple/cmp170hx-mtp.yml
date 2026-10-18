@@ -4,14 +4,17 @@
 #   Topology:  Dual CMP 170HX 64 GB (sm_80), TP=2 or PP=2 (PARALLEL=tp|pp)
 #   Overlays:  qwen4exp-pp-ple-rank0 (stock refuses PP>1 for this model)
 #              qwen4exp-mtp-pp (stock MTP asserts under PP>1)
+#              qwen4exp-mtp-draft-head (DRAFT_HEAD=1: INT4 lm_head for the MTP drafter only)
 #              qwen4exp-ple-mmap (PLE_PLACEMENT=nvme only; v0.31.0 port)
 #              qwen4exp-ple-fp8-bytecopy (FP8 PLE in pinned RAM on sm_80/86)
 #              qwen4exp-qsa-fp8kv-ampere (FP8 KV on sm_80/86; e4m3 decoded in the kernel)
 #              vllm-pr48375-mamba-drop-eagle-block (MTP x prefix-cache recurrent state)
-#              w4a8-int8-act (W4A8=1 only; INT8-activation Marlin for AutoRound)
+#              w4a8-int8-act + w4a8-inc-moe (W4A8=1 only; INT8-activation Marlin for
+#              AutoRound dense linears + MoE experts; off by default, see RESULTS)
 #              qwen38-reasoning-effort-template (Flash-Next's upstream template is
 #              byte-identical to Qwen3.8-27B's, md5 519239a4…, so the club patch applies)
-#   Drafter:   MTP n=3 by default (SPEC_N=0 off). The albucino checkpoint carries no MTP head,
+#   Drafter:   MTP n=3 by default (SPEC_N=0 off), drafting through an INT4 g128 copy of
+#              lm_head (DRAFT_HEAD=1, built on first boot). The albucino checkpoint carries no MTP head,
 #              so DRAFT_SUBDIR points at its separate draft (runtime/mtp-int4-g32: INT4 g32
 #              routed experts, compressed-tensors target "RoutedExperts", a stock 0.31 class)
 #   KV:        fp8_e4m3 via overlay qwen4exp-qsa-fp8kv-ampere (stock fails to compile the
@@ -22,8 +25,8 @@
 #   Max ctx:   262K
 #   Status:    🧪 Experimental
 #   Caveats:   not a registry slug yet (no switch.sh / spec-sweep path); measured on ONE rig
-#              (2x CMP 170HX 64 GB, Gen2 x8, no P2P). Seven overlays on the stock image, two
-#              of them ports pinned to v0.31.0 (ple-mmap). KV offload to RAM does not
+#              (2x CMP 170HX 64 GB, Gen2 x8, no P2P). Nine overlays on the stock image, one
+#              of them a port pinned to v0.31.0 (ple-mmap). KV offload to RAM does not
 #              start under PP=2 (vLLM bug, see RESULTS). No soak run yet.
 #   Best for:  c=1..8 long-context agent serving on 2x 64 GB sm_80 cards without P2P,
 #              with the PLE table on NVMe instead of ~48 GiB of pinned host RAM
@@ -45,6 +48,29 @@
 #   block size 3232'. n=3 is the default.
 #   KV_OFFLOAD_GB fails under PP=2: per-stage KV layouts differ, so the shared
 #   /dev/shm region size disagrees ('Timed out waiting for mmap file...'). vLLM bug.
+#
+# RESULTS 2 (2026-10-18, 175 W, sparkDash protocol: greedy, thinking off, 400 forced tokens,
+# aggregate tok/s at c=1/2/4/8; same protocol as AlexBrandes/cmp170hx-qwen38-flash-next):
+#   arm                          code              prose             json              KV pool
+#   PP=2 nvme (RESULTS above)    189/292/479/668   148/218/358/514   164/281/483/745   1.80M
+#   + DRAFT_HEAD=1               200/302/474/754   158/227/378/546   186/323/534/809   1.76M
+#   + PP split 26,22  <- default 186/312/502/695   163/238/397/620   192/330/550/840   1.99M
+#   + W4A8=1 (fixed)             185/314/524/802   158/230/395/588   186/322/550/896   1.95M
+#   (AlexBrandes, bf16 KV, n=5:  226/363/560/840   157/212/385/567   198/320/537/873)
+#   Old sampled sweep (3K prompts, temp 0.6, cold): c=1/4/8 102/246/318 (was 103/205/317).
+#   DRAFT_HEAD: the drafter's 248K x 2560 head read drops ~4x; acceptance unchanged.
+#   SPEC_N=4/5 (5 needs BLOCK_SIZE=3360 with fp8 KV): faster only on predictable text
+#   (count-to-200 c=8 1192 at n=5), prose worse, KV pool smaller; sampled thinking-on
+#   runs tie n=3 vs n=4. n=3 stays. Split 27,21: no faster, pool 1.81M.
+#   W4A8: stock outputs '!!!!' on this model (4 vLLM MoE bugs, fixed by w4a8-inc-moe).
+#   Fixed: GSM8K 386/400 vs 388/400 W4A16, prefill +6-9%, decode +15% code / -3..5%
+#   prose, GSM8K c=8 wall time 280 s vs 257 s. Off by default.
+#   LONG_PREFILL_TOKEN_THRESHOLD: a 35K prompt arriving beside 3 decoders stalls them
+#   (4096: 1.1 s max gap, TTFT 5.4 s | 1600: 0.7 s, 6.2 s | 560: 0.35 s, 8.5 s), but
+#   below 4096 a burst of 8 cold 3K prompts loses 16% aggregate (318 -> 266). Default
+#   4096; lower it for smoother streams. Mixed steps are slow on this hardware with or
+#   without piecewise graphs (PLE ram + stock compile measured the same).
+#   Host tuning (16 KB readahead, drop_caches + compact_memory before boot): no effect.
 # Arms (one boot each):
 #   PARALLEL      tp | pp | dp                  TP=2, PP=2, or DP=2 (needs EP=1 for the MoE split)
 #   EP             0 | 1                        --enable-expert-parallel (tp or dp only)
@@ -106,9 +132,12 @@ services:
       - ../../../patches/qwen4exp-ple-mmap:/etc/club3090/ple-mmap:ro
       - ../../../patches/qwen4exp-ple-fp8-bytecopy:/etc/club3090/ple-fp8-bytecopy:ro
       - ../../../patches/qwen4exp-mtp-pp:/etc/club3090/mtp-pp:ro
+      - ../../../patches/qwen4exp-mtp-draft-head:/etc/club3090/mtp-draft-head:ro
+      - ${CLUB3090_ENGINE_CACHE_DIR:-../../../cache}/draft-head:/draft-head
       - ../../../patches/qwen4exp-qsa-fp8kv-ampere:/etc/club3090/qsa-fp8kv:ro
       - ../../../../../qwen3.6-27b/vllm/patches/vllm-pr48375-mamba-drop-eagle-block:/etc/club3090/pr48375:ro
       - ../../../../../qwen3.6-27b/vllm/patches/w4a8-int8-act:/etc/club3090/w4a8:ro
+      - ../../../patches/w4a8-inc-moe:/etc/club3090/w4a8-moe:ro
       - ../../../../../qwen3.8-27b/vllm/patches/qwen38-reasoning-effort-template/chat_template.jinja:/etc/club3090/chat_template.jinja:ro
       - ${PLE_TABLE_DIR:-../../../ple-tables}:/ple
     environment:
@@ -124,6 +153,16 @@ services:
       - SPEC_N=${SPEC_N:-3}
       - DRAFT_SUBDIR=${DRAFT_SUBDIR:-qwen38-flash-next-mtp-dl/runtime/mtp-int4-g32}
       - MAX_NUM_SEQS=${MAX_NUM_SEQS:-8}
+      # DRAFT_HEAD=1: the MTP drafter projects through an INT4 (g128) copy of lm_head
+      # instead of the target's BF16 one (overlay qwen4exp-mtp-draft-head). Built on the
+      # first boot from the draft's lm_head.weight into <engine cache>/draft-head.
+      - DRAFT_HEAD=${DRAFT_HEAD:-1}
+      # KV block size override (tokens). Empty = vLLM's choice (1600; 3200 with fp8 KV).
+      # MTP n=5 needs a block divisible by 12 (QSA ring), e.g. 1680.
+      - BLOCK_SIZE=${BLOCK_SIZE:-}
+      # Layers per PP stage, e.g. 26,22 (the last stage also runs MTP and lm_head).
+      - VLLM_PP_LAYER_PARTITION=${VLLM_PP_LAYER_PARTITION:-26,22}
+      - MAMBA_SSM_DTYPE=${MAMBA_SSM_DTYPE:-}
       - KV_OFFLOAD_GB=${KV_OFFLOAD_GB:-}
       # W4A8: INT8 activations on Marlin (dense INT4 linears). OFF by default here
       # until an A/B on this model (MoE-heavy; most INT4 weight is routed experts).
@@ -137,7 +176,7 @@ services:
       - PREFIX_MATCH_UNIT=${PREFIX_MATCH_UNIT:-16}
       # --enable-mamba-shared-prefix-checkpoint: also checkpoint recurrent state where an
       # MTP sibling forks from a shared prefix. Needs MTP + PREFIX_MATCH_UNIT < block.
-      - SHARED_PREFIX_CKPT=${SHARED_PREFIX_CKPT:-0}
+      - SHARED_PREFIX_CKPT=${SHARED_PREFIX_CKPT:-1}
       - KV_CACHE_DTYPE=${KV_CACHE_DTYPE:-fp8_e4m3}
       - VLLM_MARLIN_INPUT_DTYPE
       - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
@@ -165,6 +204,11 @@ services:
         bash /etc/club3090/pp-ple-rank0/install.sh || exit 1
         # Stock MTP asserts under PP>1 (branches on the global PP rank).
         bash /etc/club3090/mtp-pp/install.sh || exit 1
+        if [ "$${DRAFT_HEAD:-0}" = "1" ] && [ "$${SPEC_N:-0}" -gt 0 ]; then
+          export DRAFT_HEAD_SOURCE="/models/$${DRAFT_SUBDIR:-$${MODEL_SUBDIR}}"
+          export VLLM_MTP_DRAFT_HEAD_PATH="/draft-head/$$(echo "$${DRAFT_SUBDIR:-$${MODEL_SUBDIR}}" | tr '/' '_')-w4a16-g128.safetensors"
+        fi
+        bash /etc/club3090/mtp-draft-head/install.sh || exit 1
         bash /etc/club3090/pr48375/install.sh || exit 1
         # Triton has no fp8e4nv on sm_80/86: the stock pinned-RAM PLE kernel cannot read an FP8 table.
         bash /etc/club3090/ple-fp8-bytecopy/install.sh || exit 1
@@ -174,6 +218,8 @@ services:
           export VLLM_MARLIN_INPUT_DTYPE=int8
         fi
         bash /etc/club3090/w4a8/install.sh || exit 1
+        # w4a8-int8-act fixes the dense Marlin linears; w4a8-inc-moe fixes the MoE experts.
+        bash /etc/club3090/w4a8-moe/install.sh || exit 1
         echo "[w4a8] VLLM_MARLIN_INPUT_DTYPE=$${VLLM_MARLIN_INPUT_DTYPE:-<unset -> W4A16>} (W4A8=$${W4A8:-0})" >&2
         case "$${PARALLEL}" in
           tp) PAR_ARGS=(--tensor-parallel-size 2 --pipeline-parallel-size 1) ;;
@@ -222,6 +268,10 @@ services:
         PMU_ARGS=()
         [ -z "$${PREFIX_MATCH_UNIT:-}" ] || PMU_ARGS=(--prefix-match-unit "$${PREFIX_MATCH_UNIT}")
         [ "$${SHARED_PREFIX_CKPT:-0}" != "1" ] || PMU_ARGS+=(--enable-mamba-shared-prefix-checkpoint)
+        EXTRA_ARGS=()
+        [ -z "$${BLOCK_SIZE:-}" ] || EXTRA_ARGS+=(--block-size "$${BLOCK_SIZE}")
+        [ -z "$${MAMBA_SSM_DTYPE:-}" ] || EXTRA_ARGS+=(--mamba-ssm-cache-dtype "$${MAMBA_SSM_DTYPE}")
+        [ -n "$${VLLM_PP_LAYER_PARTITION:-}" ] || unset VLLM_PP_LAYER_PARTITION
         OFFLOAD_ARGS=()
         if [ -n "$${KV_OFFLOAD_GB:-}" ]; then
           case "$${PYTORCH_CUDA_ALLOC_CONF:-}" in
@@ -230,9 +280,9 @@ services:
           python3 -c 'import os, sys; t = float(sys.argv[1]); s = os.statvfs("/dev/shm"); free = s.f_bavail * s.f_frsize / (1 << 30); t <= free or sys.exit("[kv-offload] KV_OFFLOAD_GB=%s but host /dev/shm has %.1f GiB free" % (sys.argv[1], free))' "$${KV_OFFLOAD_GB}"
           OFFLOAD_ARGS=(--kv-offloading-size "$${KV_OFFLOAD_GB}" --kv-offloading-backend native)
         fi
-        echo "[exp] model=$${MODEL_SUBDIR} parallel=$${PARALLEL} ep=$${EP:-0} ple=$${PLE_PLACEMENT} compile=$${COMPILE} vision=$${VISION} spec_n=$${SPEC_N:-0} kv_offload=$${KV_OFFLOAD_GB:-off} prefix_match_unit=$${PREFIX_MATCH_UNIT:-default} shared_prefix_ckpt=$${SHARED_PREFIX_CKPT:-0} kv=$${KV_CACHE_DTYPE:-fp8_e4m3}" >&2
+        echo "[exp] model=$${MODEL_SUBDIR} parallel=$${PARALLEL} ep=$${EP:-0} ple=$${PLE_PLACEMENT} compile=$${COMPILE} vision=$${VISION} spec_n=$${SPEC_N:-0} kv_offload=$${KV_OFFLOAD_GB:-off} prefix_match_unit=$${PREFIX_MATCH_UNIT:-default} shared_prefix_ckpt=$${SHARED_PREFIX_CKPT:-0} kv=$${KV_CACHE_DTYPE:-fp8_e4m3} draft_head=$${VLLM_MTP_DRAFT_HEAD_PATH:-off} block=$${BLOCK_SIZE:-auto} pp_split=$${VLLM_PP_LAYER_PARTITION:-auto} ssm=$${MAMBA_SSM_DTYPE:-auto}" >&2
         exec vllm serve "/models/$${MODEL_SUBDIR}" --disable-custom-all-reduce "$$@" \
-          "$${PAR_ARGS[@]}" "$${PLE_ARGS[@]}" "$${COMPILE_ARGS[@]}" "$${PMU_ARGS[@]}" "$${VISION_ARGS[@]}" "$${SPEC_ARGS[@]}" "$${OFFLOAD_ARGS[@]}"
+          "$${PAR_ARGS[@]}" "$${PLE_ARGS[@]}" "$${COMPILE_ARGS[@]}" "$${PMU_ARGS[@]}" "$${VISION_ARGS[@]}" "$${SPEC_ARGS[@]}" "$${OFFLOAD_ARGS[@]}" "$${EXTRA_ARGS[@]}"
       - --
     command:
       - --served-model-name
