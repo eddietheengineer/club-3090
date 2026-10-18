@@ -43,8 +43,11 @@
 #              state freed mid-request) can make a follow-up miss its whole prompt in the
 #              prefix cache, and PREFIX_MATCH_UNIT=16 makes nearly every prompt end mid-block;
 #              read from the source, not reproduced here. Launch: switch.sh --force (🧪).
-#   Validated: 2026-10-18 on v0.32.0 (vLLM's release wheel in the v0.31.0 image; the Docker
-#              image was not published yet), report.sh --full PASS (verify-full incl. vision
+#   Validated: 2026-10-18 on the official vllm/vllm-openai:v0.32.0 image (sha256:befccf0e…),
+#              this compose: verify-full PASS incl. vision 4/4; bench.sh 122.9 / 170.9 narr/code,
+#              prefill 5,147 @10K / 7,610 @90K, peak 63.2 / 62.4 GB, KV pool 2.23M tokens (stock
+#              clocks, 175 W). Earlier the same day on v0.32.0 (vLLM's release wheel in the v0.31.0
+#              image, before the Docker image was published), report.sh --full PASS (verify-full incl. vision
 #              4/4, verify-stress ladder to 240,659 tokens, soak-continuous 0 MiB growth /
 #              100% retention, bench-agentic). bench.sh: 126.3 / 171.6 narr/code, prefill
 #              5,171 @10K / 7,546 @90K, peak 63.2 / 62.2 GB, KV pool 2.23M tokens (fp8;

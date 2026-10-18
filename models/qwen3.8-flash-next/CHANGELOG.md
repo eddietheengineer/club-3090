@@ -94,6 +94,10 @@ Quality (`quality-test.sh --full`, benchlocal-cli v0.11.0, on v0.31.0, thinking 
   (default 1, as the fixed `HF_HUB_OFFLINE=1` was), `PROMPT_TOKENS_DETAILS_ARG`,
   `MAMBA_CACHE_MODE` (default align) and `MAMBA_BLOCK_SIZE`.
 - `--disable-custom-all-reduce` dropped: PP=2 runs TP=1 per stage, so there is no all-reduce.
+- Booted on the published `vllm/vllm-openai:v0.32.0` image (`sha256:befccf0e…`) at stock
+  clocks, 175 W: verify-full PASS incl. vision 4/4; `bench.sh` 122.9 / 170.9 narr/code,
+  prefill 5,147 @10K / 7,610 @90K, peak 63.2 / 62.4 GB, KV pool 2,232,041 tokens. Within
+  noise of the earlier wheel-in-v0.31.0-image run.
 - `docs/UPSTREAM.md`: the overlay rows now name the upstream PRs that cover them (vllm#60234,
   #58815, #49039 / #61405 / #48926 / #59895, #50653), and a row for vllm#61281, the prefix-cache
   miss under concurrent prefills that `--prefix-match-unit 16` makes likely (read from the
