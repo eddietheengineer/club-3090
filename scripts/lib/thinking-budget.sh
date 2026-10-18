@@ -20,7 +20,7 @@
 #               + --reasoning-parser <name>
 #
 # What each engine does WITHOUT its prerequisite (read from the pinned images,
-# vLLM v0.31.0 / SGLang v0.5.21 — scripts/lib/profiles/engines/*-stable.yml):
+# vLLM v0.32.0 / SGLang v0.5.21 — scripts/lib/profiles/engines/*-stable.yml):
 #   llama.cpp  nothing to send — the harness cannot set a boot flag per request,
 #              and a compose-shipped `--reasoning-budget "${REASONING_BUDGET:--1}"`
 #              boots UNBOUNDED (-1) with the flag visibly present. Presence of the
