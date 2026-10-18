@@ -760,6 +760,14 @@ Expert-offloaded MoE on the [`llamacpp-club3090`](docs/engines/LLAMACPP_CLUB3090
 
 ⚠️ **Owed before bucko's slugs move off 🐣:** 8-pack quality on the albucino slug (Swift-1.5's xhigh 8-pack, 2026-10-07: 126/150 pass@1), verify-stress, soak-continuous.
 
+**On stock vLLM (`vllm-stable`, v0.31.0) with volume-mounted overlays (🧪)** — `vllm/qwen38-flash-next-dual-cmp170hx`, for two 64 GB sm_80 cards: PP=2 (26/22 layer split), the FP8 PLE table mmap'd from NVMe (host RAM ~19 GB), FP8 e4m3 KV (pool 2.23M tokens at 0.95), MTP3 through albucino's compact draft with an INT4 draft head, vision on. Canonical bench (3 warm + 5 measured, `bench.sh`), one boot. Layout A/B and the sparkDash concurrency numbers: [#1735](https://github.com/noonghunna/club-3090/discussions/1735).
+
+| Compose | Rig | KV | Max ctx | Narr / Code TPS | PP tok/s | Peak VRAM | Date | Notes |
+| --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
+| `vllm/compose/dual/albucino-autoround-int4-fp8ple/cmp170hx-mtp.yml` (`vllm/qwen38-flash-next-dual-cmp170hx`), shipped defaults | @henrykrinkle01 (2× CMP 170HX 64 GB, PCIe gen2 x8 + x8, no P2P, 175 W cap) | fp8_e4m3 | 262144 | **126.10 / 173.98** (CV 1.3% / 2.5%) | **5,159** @10K (CV 1.3%) · 7,557 @90K (n=1) | 62,808 / 62,202 MiB | 2026-10-18 | Decode @90K depth 129.4 (n=1); MTP AL 2.83 across the window (verify-full 2.78); leak delta 0 MiB. `report.sh --full` PASS on the same config: verify-full incl. vision 4/4, verify-stress ladder to 240,657 tokens (91%) with 2.1 GB free per card, soak-continuous PASS (25 turns, 0 MiB growth, 100% retention), bench-agentic PASS. Aggregate decode at c=8 (sparkDash protocol, greedy, 400 forced tokens): code 695, prose 620, json 840. Not comparable with the 3090 rows: different cards, link and power. Soak: PASS |
+
+⚠️ **Owed before this slug moves off 🧪:** 8-pack quality in both reasoning modes, a second rig.
+
 **On the [`exllamav3`](docs/engines/EXLLAMAV3.md) engine (🐣)** — turboderp's official exl3 quants on ExLlamaV3 1.5.0 + TabbyAPI (our `tabbyapi-club3090` build of upstream's own Dockerfile, pinned by digest), layer-split over two cards, the experts that don't fit computed on the CPU (`MOE_SPLIT` sets how many per layer), MTP with a dynamic draft of up to 4, Q4 KV at 204800, the n-gram table in host RAM. Canonical bench (3 warm + 5 measured, `bench.sh`).
 
 | Compose | Rig | KV | Max ctx | Narr / Code TPS | PP tok/s | Peak VRAM | Date | Notes |

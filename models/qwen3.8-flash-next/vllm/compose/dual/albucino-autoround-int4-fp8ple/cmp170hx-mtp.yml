@@ -13,6 +13,10 @@
 #              AutoRound dense linears + MoE experts; off by default, see RESULTS)
 #              qwen38-reasoning-effort-template (Flash-Next's upstream template is
 #              byte-identical to Qwen3.8-27B's, md5 519239a4…, so the club patch applies)
+#              vllm-effort-budget + vllm-default-thinking-budget (reasoning budget by
+#              effort: low 4096 / medium 16384 / xhigh 32768, as on the Qwen3.8-27B slugs)
+#   Sampler:   follows ENABLE_THINKING (model card rows): thinking temp 1.0 top_p 0.95,
+#              instruct temp 0.7 top_p 0.8; TEMP/TOP_P/... override
 #   Drafter:   MTP n=3 by default (SPEC_N=0 off), drafting through an INT4 g128 copy of
 #              lm_head (DRAFT_HEAD=1, built on first boot). The albucino checkpoint carries no MTP head,
 #              so DRAFT_SUBDIR points at its separate draft (runtime/mtp-int4-g32: INT4 g32
@@ -21,13 +25,18 @@
 #              QSA kernel on sm_80/86: no fp8e4nv in Triton). Measured 2026-10-17, PP=2:
 #              pool 1.03M -> 1.80M tokens vs bf16; decode -2..-3%, prefill -7..-12%;
 #              needle 6K/42K/96K pass. KV_CACHE_DTYPE=auto for bf16.
-#   Vision:    off by default (VISION=1 to keep the tower)
+#   Vision:    on by default (VISION=0 for --language-model-only); verify-full vision 4/4
 #   Max ctx:   262K
 #   Status:    🧪 Experimental
-#   Caveats:   not a registry slug yet (no switch.sh / spec-sweep path); measured on ONE rig
-#              (2x CMP 170HX 64 GB, Gen2 x8, no P2P). Nine overlays on the stock image, one
-#              of them a port pinned to v0.31.0 (ple-mmap). KV offload to RAM does not
-#              start under PP=2 (vLLM bug, see RESULTS). No soak run yet.
+#   Caveats:   measured on ONE rig (2x CMP 170HX 64 GB, Gen2 x8, no P2P, 175 W). Eleven
+#              overlays on the stock image, one of them a port pinned to v0.31.0 (ple-mmap).
+#              KV offload to RAM does not start under PP=2 (vLLM bug, see RESULTS).
+#              GPU_MEMORY_UTILIZATION 0.95 leaves ~2.7 GB per 64 GB card; 24 GB cards
+#              cannot hold the weights. Launch: switch.sh --force (🧪).
+#   Validated: 2026-10-18, report.sh --full PASS (verify-full incl. vision 4/4, verify-stress
+#              ladder to 240,657 tokens, soak-continuous 0 MiB growth / 100% retention,
+#              bench, bench-agentic). bench.sh: 126.1 / 174.0 narr/code, prefill 5,159
+#              @10K / 7,557 @90K, peak 62.8 / 62.2 GB, KV pool 2.23M tokens (fp8).
 #   Best for:  c=1..8 long-context agent serving on 2x 64 GB sm_80 cards without P2P,
 #              with the PLE table on NVMe instead of ~48 GiB of pinned host RAM
 # ---------------------------------------------------------------------------
@@ -85,10 +94,13 @@
 #   KV_CACHE_DTYPE fp8_e4m3 | auto (bf16)
 #   KV_OFFLOAD_GB  unset | <GiB>                RAM prefix-cache tier (OffloadingConnector);
 #                                               fails under PP=2 on v0.31.0, see RESULTS
-#   MODEL_SUBDIR   which checkpoint under MODEL_DIR
+#   MODEL_SUBDIR   which checkpoint under MODEL_DIR (default: where `setup.sh` puts the
+#                  albucino weights, qwen3.8-flash-next-w4a16-fp8ple; DRAFT_SUBDIR its
+#                  runtime/mtp-int4-g32). PLE_TABLE_DIR defaults to <club data dir>/ple-tables:
+#                  put it on NVMe.
 #
 # Checkpoints that load on stock v0.31.0 (read from the source, 2026-10-17):
-#   qwen38-flash-next  albucino W4A16 + FP8 PLE (AutoRound/INC). Loads as-is.
+#   qwen3.8-flash-next-w4a16-fp8ple  albucino W4A16 + FP8 PLE (AutoRound/INC). Loads as-is.
 #   Minachist INT4-Mixed: NOT as-is. Its BF16 PLE + compressed-tensors body hits
 #     NotImplementedError in Qwen4ExpPLEEmbeddingMethod, and its INT8 embed / lm_head /
 #     hyper-connection mixers need Minachist's flash-next-vllm.patch (13 hunks fail on
@@ -116,7 +128,7 @@ services:
       memlock: -1
       stack: 67108864
     ports:
-      - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8160}}:8000"
+      - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8196}}:8000"
     deploy:
       resources:
         reservations:
@@ -139,9 +151,14 @@ services:
       - ../../../../../qwen3.6-27b/vllm/patches/w4a8-int8-act:/etc/club3090/w4a8:ro
       - ../../../patches/w4a8-inc-moe:/etc/club3090/w4a8-moe:ro
       - ../../../../../qwen3.8-27b/vllm/patches/qwen38-reasoning-effort-template/chat_template.jinja:/etc/club3090/chat_template.jinja:ro
-      - ${PLE_TABLE_DIR:-../../../ple-tables}:/ple
+      # Reasoning budget chosen by effort: the engine-neutral module + the two vLLM hooks
+      # (shared with the Qwen3.8-27B composes; anchors are model-agnostic, v0.31.0)
+      - ../../../../../../scripts/lib/effort_budget.py:/etc/club3090/effort_budget.py:ro
+      - ../../../../../qwen3.8-27b/vllm/patches/vllm-effort-budget:/etc/club3090/effort-budget:ro
+      - ../../../../../qwen3.8-27b/vllm/patches/vllm-default-thinking-budget:/etc/club3090/default-thinking-budget:ro
+      - ${PLE_TABLE_DIR:-${CLUB3090_DATA_DIR:-../../../../../..}/ple-tables}:/ple
     environment:
-      - MODEL_SUBDIR=${MODEL_SUBDIR:-qwen38-flash-next}
+      - MODEL_SUBDIR=${MODEL_SUBDIR:-qwen3.8-flash-next-w4a16-fp8ple}
       - PARALLEL=${PARALLEL:-pp}
       - EP=${EP:-0}
       - PLE_PLACEMENT=${PLE_PLACEMENT:-nvme}
@@ -149,9 +166,9 @@ services:
       - CUDAGRAPH_SIZES=${CUDAGRAPH_SIZES:-}
       - VLLM_PLE_MMAP_REBUILD=${VLLM_PLE_MMAP_REBUILD:-0}
       - VLLM_PLE_PREFETCH=${VLLM_PLE_PREFETCH:-1}
-      - VISION=${VISION:-0}
+      - VISION=${VISION:-1}
       - SPEC_N=${SPEC_N:-3}
-      - DRAFT_SUBDIR=${DRAFT_SUBDIR:-qwen38-flash-next-mtp-dl/runtime/mtp-int4-g32}
+      - DRAFT_SUBDIR=${DRAFT_SUBDIR:-qwen3.8-flash-next-w4a16-fp8ple/runtime/mtp-int4-g32}
       - MAX_NUM_SEQS=${MAX_NUM_SEQS:-8}
       # DRAFT_HEAD=1: the MTP drafter projects through an INT4 (g128) copy of lm_head
       # instead of the target's BF16 one (overlay qwen4exp-mtp-draft-head). Built on the
@@ -164,8 +181,8 @@ services:
       - VLLM_PP_LAYER_PARTITION=${VLLM_PP_LAYER_PARTITION:-26,22}
       - MAMBA_SSM_DTYPE=${MAMBA_SSM_DTYPE:-}
       - KV_OFFLOAD_GB=${KV_OFFLOAD_GB:-}
-      # W4A8: INT8 activations on Marlin (dense INT4 linears). OFF by default here
-      # until an A/B on this model (MoE-heavy; most INT4 weight is routed experts).
+      # W4A8: INT8 activations on Marlin (dense linears + MoE experts). Off by default:
+      # GSM8K equal, prefill +6-9%, decode mixed (RESULTS 2).
       - W4A8=${W4A8:-0}
       # Prefix-cache match granularity (tokens). Must divide every prefix-cacheable KV
       # group block size and be a multiple of each per-state compression (QSA: 4).
@@ -179,6 +196,22 @@ services:
       - SHARED_PREFIX_CKPT=${SHARED_PREFIX_CKPT:-1}
       - KV_CACHE_DTYPE=${KV_CACHE_DTYPE:-fp8_e4m3}
       - VLLM_MARLIN_INPUT_DTYPE
+      # The entrypoint picks the model-card sampler row from ENABLE_THINKING (thinking:
+      # temp 1.0 top_p 0.95; instruct: temp 0.7 top_p 0.8). Explicit TEMP/TOP_P win.
+      - ENABLE_THINKING=${ENABLE_THINKING:-true}
+      - TEMP=${TEMP:-}
+      - TEMPERATURE=${TEMPERATURE:-}
+      - TOP_P=${TOP_P:-}
+      - TOP_K=${TOP_K:-}
+      - MIN_P=${MIN_P:-}
+      - PRESENCE_PENALTY=${PRESENCE_PENALTY:-}
+      - REPEAT_PENALTY=${REPEAT_PENALTY:-}
+      # Reasoning budget by effort; unset = 4096 / 16384 / 32768 (low / medium / xhigh),
+      # THINKING_BUDGETS=off for none. Bare on purpose: unset stays unset.
+      - THINKING_BUDGET_LOW
+      - THINKING_BUDGET_MEDIUM
+      - THINKING_BUDGET_XHIGH
+      - THINKING_BUDGETS
       - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
       - CUDA_VISIBLE_DEVICES
       - HF_HUB_OFFLINE=1
@@ -221,6 +254,23 @@ services:
         # w4a8-int8-act fixes the dense Marlin linears; w4a8-inc-moe fixes the MoE experts.
         bash /etc/club3090/w4a8-moe/install.sh || exit 1
         echo "[w4a8] VLLM_MARLIN_INPUT_DTYPE=$${VLLM_MARLIN_INPUT_DTYPE:-<unset -> W4A16>} (W4A8=$${W4A8:-0})" >&2
+        # Reasoning budget chosen by effort (models/qwen3.8-27b/vllm/patches/vllm-effort-budget).
+        # A request's own thinking_token_budget wins; the boot log carries one [effort-budget] v1 line.
+        _eb="$$(python3 /etc/club3090/effort_budget.py shell-env --engine vllm --default-effort "${REASONING_EFFORT:-low}" --low 4096 --medium 16384 --xhigh 32768)" || exit 1; eval "$$_eb"
+        bash /etc/club3090/effort-budget/install.sh || exit 1
+        bash /etc/club3090/default-thinking-budget/install.sh || exit 1
+        # Sampler follows the reasoning mode (the model card's two rows, as on the other
+        # Qwen3.8 composes). presence_penalty is listed for intent only: vLLM's
+        # --override-generation-config drops it, so it stays a client-side parameter.
+        _temp="$${TEMP:-$${TEMPERATURE:-}}"
+        if [ "$${ENABLE_THINKING:-true}" = "true" ]; then
+          : "$${_temp:=1.0}" "$${TOP_P:=0.95}" "$${PRESENCE_PENALTY:=0.0}"
+          echo "[sampler] thinking row (ENABLE_THINKING=true): temp=$$_temp top_p=$${TOP_P} presence=$${PRESENCE_PENALTY}" >&2
+        else
+          : "$${_temp:=0.7}" "$${TOP_P:=0.80}" "$${PRESENCE_PENALTY:=1.5}"
+          echo "[sampler] instruct row (ENABLE_THINKING=false): temp=$$_temp top_p=$${TOP_P} presence=$${PRESENCE_PENALTY}" >&2
+        fi
+        SAMPLER_ARGS=(--override-generation-config "{\"temperature\":$$_temp,\"top_p\":$${TOP_P},\"top_k\":$${TOP_K:-20},\"min_p\":$${MIN_P:-0.0},\"presence_penalty\":$${PRESENCE_PENALTY},\"repetition_penalty\":$${REPEAT_PENALTY:-1.0}}")
         case "$${PARALLEL}" in
           tp) PAR_ARGS=(--tensor-parallel-size 2 --pipeline-parallel-size 1) ;;
           pp) PAR_ARGS=(--tensor-parallel-size 1 --pipeline-parallel-size 2) ;;
@@ -249,7 +299,8 @@ services:
         if [ "$${SPEC_N:-0}" -gt 0 ]; then
           _draft=""
           if [ -n "$${DRAFT_SUBDIR:-}" ]; then
-            [ -f "/models/$${DRAFT_SUBDIR}/config.json" ] || { echo "[spec] draft /models/$${DRAFT_SUBDIR} not found (DRAFT_SUBDIR= to use the checkpoint's own head)" >&2; exit 1; }
+            # (checked only when the checkpoint itself is mounted; vLLM reports a missing one)
+            [ ! -d "/models/$${MODEL_SUBDIR}" ] || [ -f "/models/$${DRAFT_SUBDIR}/config.json" ] || { echo "[spec] draft /models/$${DRAFT_SUBDIR} not found (DRAFT_SUBDIR= to use the checkpoint's own head)" >&2; exit 1; }
             _draft=",\"model\":\"/models/$${DRAFT_SUBDIR}\""
           fi
           SPEC_ARGS=(--speculative-config "{\"method\":\"mtp\",\"num_speculative_tokens\":$${SPEC_N}$${_draft}}")
@@ -282,7 +333,7 @@ services:
         fi
         echo "[exp] model=$${MODEL_SUBDIR} parallel=$${PARALLEL} ep=$${EP:-0} ple=$${PLE_PLACEMENT} compile=$${COMPILE} vision=$${VISION} spec_n=$${SPEC_N:-0} kv_offload=$${KV_OFFLOAD_GB:-off} prefix_match_unit=$${PREFIX_MATCH_UNIT:-default} shared_prefix_ckpt=$${SHARED_PREFIX_CKPT:-0} kv=$${KV_CACHE_DTYPE:-fp8_e4m3} draft_head=$${VLLM_MTP_DRAFT_HEAD_PATH:-off} block=$${BLOCK_SIZE:-auto} pp_split=$${VLLM_PP_LAYER_PARTITION:-auto} ssm=$${MAMBA_SSM_DTYPE:-auto}" >&2
         exec vllm serve "/models/$${MODEL_SUBDIR}" --disable-custom-all-reduce "$$@" \
-          "$${PAR_ARGS[@]}" "$${PLE_ARGS[@]}" "$${COMPILE_ARGS[@]}" "$${PMU_ARGS[@]}" "$${VISION_ARGS[@]}" "$${SPEC_ARGS[@]}" "$${OFFLOAD_ARGS[@]}" "$${EXTRA_ARGS[@]}"
+          "$${PAR_ARGS[@]}" "$${PLE_ARGS[@]}" "$${COMPILE_ARGS[@]}" "$${PMU_ARGS[@]}" "$${VISION_ARGS[@]}" "$${SPEC_ARGS[@]}" "$${OFFLOAD_ARGS[@]}" "$${EXTRA_ARGS[@]}" "$${SAMPLER_ARGS[@]}"
       - --
     command:
       - --served-model-name
@@ -292,7 +343,7 @@ services:
       - --max-model-len
       - "${MAX_MODEL_LEN:-262144}"
       - --gpu-memory-utilization
-      - "${GPU_MEMORY_UTILIZATION:-0.90}"
+      - "${GPU_MEMORY_UTILIZATION:-0.95}"
       - --max-num-seqs
       - "${MAX_NUM_SEQS:-8}"
       - --max-num-batched-tokens

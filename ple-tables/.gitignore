@@ -1,0 +1,4 @@
+# Qwen3.8-Flash-Next PLE table files (51 GB each), written on first boot when
+# CLUB3090_DATA_DIR is unset. Never commit them.
+*
+!.gitignore

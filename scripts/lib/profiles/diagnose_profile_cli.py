@@ -86,6 +86,12 @@ def hardware_for_entry(entry: dict[str, Any], profiles) -> tuple[list, bool, str
         hardware_id = "rtx-5090"
     else:
         hardware_id = "rtx-3090"
+    supported_sm = entry.get("supported_sm")
+    if supported_sm and float(profiles.hardware[hardware_id].sm) not in [float(x) for x in supported_sm]:
+        # e.g. supported_sm [8.0]: test on the largest card of a supported SM instead
+        fits = [hw for hw in profiles.hardware.values() if float(hw.sm) in [float(x) for x in supported_sm]]
+        if fits:
+            hardware_id = max(fits, key=lambda hw: (hw.vram_gb, hw.id)).id
     if world_size <= 0:
         world_size = 1
     hardware = [profiles.hardware[hardware_id] for _ in range(world_size)]
