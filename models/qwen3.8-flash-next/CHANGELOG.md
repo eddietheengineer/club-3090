@@ -47,3 +47,31 @@ for `qwen4exp` on sm_80+ (the overlay above); a `2x-cmp-170hx-64gb` canonical sc
 
 Known gaps: `KV_OFFLOAD_GB` does not start under PP=2 (vLLM OffloadingConnector bug);
 measured on one rig only.
+
+## 2026-10-18 — `vllm/qwen38-flash-next-dual-cmp170hx` moves to vLLM v0.32.0 (engine `vllm-flash-next`)
+
+The slug leaves `vllm-stable` (still v0.31.0, overlay-free, used by ~24 other slugs) for a
+per-model patched engine, `vllm-flash-next`, pinned to the stock `vllm/vllm-openai:v0.32.0`.
+
+Overlays:
+
+- `qwen4exp-ple-mmap`: re-ported to v0.32.0 (`ple-mmap-v0.32.0.diff`). Upstream's PLE
+  prefetch interface changed (`start_prefetch(ngram_ids)`, `finalize_prefetch(total_tokens)`,
+  a `reduce_results` argument).
+- `qwen4exp-qsa-fp8kv-ampere`: also turns off v0.32.0's fused QSA prepare (vllm#57097) for
+  FP8 KV below sm_89. That launch writes the cache through an `fp8e4nv` cast, which Triton
+  can't compile on Ampere; the write goes back to `reshape_and_cache_flash`.
+- `qwen4exp-ple-fp8-bytecopy`: retired. vllm#60142, in v0.32.0, is the same fix.
+- The rest apply unchanged.
+
+Measured 2026-10-18 at 175 W, with vLLM's v0.32.0 release wheel installed into the v0.31.0
+image (the v0.32.0 Docker image was not published yet; same torch, CUDA and Python).
+`report.sh --full` PASS: verify-full incl. vision 4/4, verify-stress ladder to 240,659
+tokens, soak-continuous 0 MiB growth, bench-agentic. `bench.sh`: 126.3 / 171.6 narr/code,
+prefill 5,171 @10K / 7,546 @90K, the same as v0.31.0 within noise; decode at 90K depth 148
+vs 129 tok/s (one sample each). KV pool 2.06M tokens: CUDA-graph memory is now reserved at
+boot (the 2.23M on v0.31.0 ran with the graph estimate off).
+
+Quality (`quality-test.sh --full`, benchlocal-cli v0.11.0, on v0.31.0, thinking budget
+65,536 at every effort), pass@1 / pass@3 of 150: instruct 123 / 131, low 122 / 135, medium
+128 / 139, xhigh 130 / 141. Analysis and raw cards: #1737.
