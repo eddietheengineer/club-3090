@@ -2,7 +2,7 @@
 
 Dated history for Qwen3.8-Flash-Next configs in this repo. Append-only — add a new entry, don't rewrite past ones.
 
-## 2026-10-18 — first slug on stock vLLM: `vllm/qwen38-flash-next-dual-cmp170hx` (🧪)
+## 2026-10-18 — first slug on stock vLLM: `vllm/qwen38-flash-next-dual` (🧪)
 
 Flash-Next on our own `vllm-stable` pin (`vllm/vllm-openai:v0.31.0`), no custom image, for
 **2× CMP 170HX 64 GB** (sm_80, the A100's chip). Port 8196. Findings: discussion #1735;
@@ -48,10 +48,9 @@ for `qwen4exp` on sm_80+ (the overlay above); a `2x-cmp-170hx-64gb` canonical sc
 Known gaps: `KV_OFFLOAD_GB` does not start under PP=2 (vLLM OffloadingConnector bug);
 measured on one rig only.
 
-## 2026-10-18 — `vllm/qwen38-flash-next-dual-cmp170hx` moves to vLLM v0.32.0 (engine `vllm-flash-next`)
+## 2026-10-18 — `vllm/qwen38-flash-next-dual` moves to vLLM v0.32.0
 
-The slug leaves `vllm-stable` (still v0.31.0, overlay-free, used by ~24 other slugs) for a
-per-model patched engine, `vllm-flash-next`, pinned to the stock `vllm/vllm-openai:v0.32.0`.
+The slug follows `vllm-stable` to the stock `vllm/vllm-openai:v0.32.0` (#1740).
 
 Overlays:
 
@@ -75,3 +74,27 @@ cold kernel cache got 2.06M: 1.4 GiB more non-torch memory on stage 0).
 Quality (`quality-test.sh --full`, benchlocal-cli v0.11.0, on v0.31.0, thinking budget
 65,536 at every effort), pass@1 / pass@3 of 150: instruct 123 / 131, low 122 / 135, medium
 128 / 139, xhigh 130 / 141. Analysis and raw cards: #1737.
+
+## 2026-10-18 — `vllm/qwen38-flash-next-dual`: one layout, gated to 64 GB cards (PR #1736 review)
+
+- Renamed from `vllm/qwen38-flash-next-dual-cmp170hx`; the compose is now
+  `vllm/compose/dual/albucino-autoround-int4-fp8ple/mtp.yml`, container
+  `vllm-qwen38-flash-next-dual`. Engine `vllm-stable`, which lists the `qwen4exp` family.
+- Ships PP=2 only, with the measured defaults. The `PARALLEL`, `EP`, `COMPILE` and
+  `CUDAGRAPH_SIZES` knobs are gone; the compile mode follows `PLE_PLACEMENT` (nvme lean,
+  ram stock), as it did by default.
+- The entrypoint reads both cards with `nvidia-smi` and refuses to start below 61,440 MiB
+  per card, or with fewer than two cards. The message names
+  `strata/qwen3.8-flash-next-iq3s-dual` and `bucko-vllm/qwen3.8-flash-next-ple-dual` for
+  3090s. Header: `Requires-min-vram-gb: 64`, `Requires-min-gpu-count: 2`,
+  `Tensor-parallel: 2` (the card count preflight looks for; the layout stays PP=2).
+- Knob names as on the other Qwen3.8 vLLM composes, defaults unchanged: `MAMBA_SSM_DTYPE`
+  is now `MAMBA_SSM_CACHE_DTYPE`; new `SERVED_NAME`, `DRAFT_SAMPLE_METHOD` (default greedy,
+  vLLM's default and what everything here was measured with), `ASYNC_SCHED`, `OFFLINE`
+  (default 1, as the fixed `HF_HUB_OFFLINE=1` was), `PROMPT_TOKENS_DETAILS_ARG`,
+  `MAMBA_CACHE_MODE` (default align) and `MAMBA_BLOCK_SIZE`.
+- `--disable-custom-all-reduce` dropped: PP=2 runs TP=1 per stage, so there is no all-reduce.
+- `docs/UPSTREAM.md`: the overlay rows now name the upstream PRs that cover them (vllm#60234,
+  #58815, #49039 / #61405 / #48926 / #59895, #50653), and a row for vllm#61281, the prefix-cache
+  miss under concurrent prefills that `--prefix-match-unit 16` makes likely (read from the
+  source, not reproduced).

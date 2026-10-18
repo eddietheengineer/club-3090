@@ -16,6 +16,7 @@ ver="$(python3 -c 'import importlib.metadata as m; print(m.version("vllm"))')" |
 diff_file="$here/ple-mmap-v${ver%%+*}.diff"
 if [ ! -f "$diff_file" ]; then
   echo "$TAG REFUSE: no port for vLLM $ver (have: $(cd "$here" && ls ple-mmap-v*.diff | tr '\n' ' '))" >&2
+  echo "$TAG Fix: PLE_PLACEMENT=ram serves the PLE table from the stock pinned-RAM path (~83 GB host RAM) until the diff is re-ported." >&2
   exit 1
 fi
 target="$site/vllm/models/qwen4_exp/nvidia/ngram_embedding.py"

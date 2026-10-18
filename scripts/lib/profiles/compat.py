@@ -1264,7 +1264,7 @@ def fits(
         or model.family.startswith(("qwen3-next", "qwen35"))
     )
     # qwen4exp (Qwen3.8-Flash-Next) added 2026-10-18: its QSA attention kernel is Triton and
-    # fails to compile fp8e4nv below SM89, so vllm/qwen38-flash-next-dual-cmp170hx mounts the
+    # fails to compile fp8e4nv below SM89, so vllm/qwen38-flash-next-dual mounts the
     # qwen4exp-qsa-fp8kv-ampere overlay (e4m3 decoded in registers), measured on sm_80
     # (2x CMP 170HX: verify-full + verify-stress PASS, club-3090#1736). That compose is the
     # only vLLM path for this family, so the family key is the proxy for the overlay; the

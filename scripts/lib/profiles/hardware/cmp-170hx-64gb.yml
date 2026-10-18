@@ -32,7 +32,7 @@
 # Measured on a second rig (club-3090#1735/#1736, 2026-10-18, 2x CMP 170HX at PCIe Gen2 x8
 #   each, no P2P, 175 W, driver 615.71.09): two cards CAN serve one model when they split it by
 #   PIPELINE stages instead of TP. Flash-Next at PP=2 decodes 117/163 narr/code vs 45/63 at
-#   TP=2 on the same link (vllm/qwen38-flash-next-dual-cmp170hx). fp8_e4m3 KV is not listed
+#   TP=2 on the same link (vllm/qwen38-flash-next-dual). fp8_e4m3 KV is not listed
 #   below: stock Triton cannot compile it on sm_80; that slug gets it from an overlay.
 # Promote the rest from "assumed" to "measured" from a report: `bash scripts/report.sh`.
 schema_version: 1

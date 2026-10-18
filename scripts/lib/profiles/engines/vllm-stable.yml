@@ -30,6 +30,10 @@ supported_model_families:
                      # 2026-07-11 (62.4 tok/s TP=2, forensics-week boots; slug
                      # vllm/tess-dual-nvfp4). Family also covers Deckard-40B if a
                      # vLLM path is ever added there.
+  - qwen4exp              # Qwen3.8-Flash-Next (Qwen4Exp), loads on stock v0.31.0 and v0.32.0.
+                          # Its one slug, vllm/qwen38-flash-next-dual, runs PP=2 on 64 GB cards and mounts
+                          # model-specific overlays from its compose (patches.yml, qwen4exp-* rows); the
+                          # engine stays overlay-free (#1736).
   - nemotron-h-puzzle-moe   # Nemotron-3 Puzzle 75B-A9B (NemotronHPuzzleForCausalLM, hybrid
                             # Mamba2+attn MoE) — arch aliases to the NemotronH loader (registered
                             # in v0.24.0 + v0.25.0; NVIDIA card tested v0.20.0). UNVERIFIED on-rig

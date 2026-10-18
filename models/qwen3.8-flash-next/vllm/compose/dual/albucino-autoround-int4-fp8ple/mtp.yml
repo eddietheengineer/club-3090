@@ -1,48 +1,64 @@
 # ===========================================================================
 # Profile (at-a-glance):
-#   Model:     Qwen3.8-Flash-Next (stock vLLM v0.32.0 image + overlays; engine vllm-flash-next)
-#   Topology:  Dual CMP 170HX 64 GB (sm_80), TP=2 or PP=2 (PARALLEL=tp|pp)
+#   Model:     Qwen3.8-Flash-Next (albucino AutoRound W4A16 + FP8 PLE; stock vLLM image
+#              (engine vllm-stable) + volume-mounted overlays)
+#   Topology:  Dual 64 GB cards, PIPELINE parallel: PP=2 (TP=1 per stage, layers split
+#              26/22), no P2P needed. Measured on 2x CMP 170HX 64 GB (sm_80).
 #   Overlays:  qwen4exp-pp-ple-rank0 (stock refuses PP>1 for this model)
 #              qwen4exp-mtp-pp (stock MTP asserts under PP>1)
 #              qwen4exp-mtp-draft-head (DRAFT_HEAD=1: INT4 lm_head for the MTP drafter only)
-#              qwen4exp-ple-mmap (PLE_PLACEMENT=nvme only; v0.32.0 port)
+#              qwen4exp-ple-mmap (PLE_PLACEMENT=nvme only; a port pinned to v0.32.0)
 #              qwen4exp-qsa-fp8kv-ampere (FP8 KV on sm_80/86: e4m3 decoded in the QSA kernel,
 #              fused QSA prepare off because it writes the cache in fp8e4nv)
 #              vllm-pr48375-mamba-drop-eagle-block (MTP x prefix-cache recurrent state)
 #              w4a8-int8-act + w4a8-inc-moe (W4A8=1 only; INT8-activation Marlin for
-#              AutoRound dense linears + MoE experts; off by default, see RESULTS)
+#              AutoRound dense linears + MoE experts; off by default, see MEASURED 2)
 #              qwen38-reasoning-effort-template (Flash-Next's upstream template is
 #              byte-identical to Qwen3.8-27B's, md5 519239a4…, so the club patch applies)
 #              vllm-effort-budget + vllm-default-thinking-budget (reasoning budget by
 #              effort: low 4096 / medium 16384 / xhigh 32768, as on the Qwen3.8-27B slugs)
+#              Upstream status of each: docs/UPSTREAM.md (Qwen4Exp rows).
 #   Sampler:   follows ENABLE_THINKING (model card rows): thinking temp 1.0 top_p 0.95,
 #              instruct temp 0.7 top_p 0.8; TEMP/TOP_P/... override
-#   Drafter:   MTP n=3 by default (SPEC_N=0 off), drafting through an INT4 g128 copy of
-#              lm_head (DRAFT_HEAD=1, built on first boot). The albucino checkpoint carries no MTP head,
-#              so DRAFT_SUBDIR points at its separate draft (runtime/mtp-int4-g32: INT4 g32
-#              routed experts, compressed-tensors target "RoutedExperts", a stock class)
+#   Drafter:   MTP n=3 (SPEC_N override; SPEC_N=0 or SPEC=off disables), greedy draft
+#              sampling (DRAFT_SAMPLE_METHOD), drafting through an INT4 g128 copy of lm_head
+#              (DRAFT_HEAD=1, built on first boot). The albucino checkpoint carries no MTP
+#              head, so DRAFT_SUBDIR points at its separate draft (runtime/mtp-int4-g32:
+#              INT4 g32 routed experts, compressed-tensors target "RoutedExperts", a stock class)
 #   KV:        fp8_e4m3 via overlay qwen4exp-qsa-fp8kv-ampere (stock fails to compile the
-#              QSA kernels on sm_80/86: no fp8e4nv in Triton). Measured 2026-10-17 (v0.31.0), PP=2:
+#              QSA kernels on sm_80/86: no fp8e4nv in Triton). Measured 2026-10-17 (v0.31.0):
 #              pool 1.03M -> 1.80M tokens vs bf16; decode -2..-3%, prefill -7..-12%;
 #              needle 6K/42K/96K pass. KV_CACHE_DTYPE=auto for bf16.
-#   Vision:    on by default (VISION=0 for --language-model-only); verify-full vision 4/4
+#   Vision:    yes (VISION=0 for --language-model-only); verify-full vision 4/4
 #   Max ctx:   262K
+#   Genesis:   none
 #   Status:    🧪 Experimental
-#   Caveats:   measured on ONE rig (2x CMP 170HX 64 GB, Gen2 x8, no P2P, 175 W). Ten
-#              overlays on the stock image, one of them a port pinned to v0.32.0 (ple-mmap).
-#              No KV offload to RAM: it does not start under PP=2 (vLLM bug, see RESULTS).
-#              GPU_MEMORY_UTILIZATION 0.95 leaves ~2.7 GB per 64 GB card; 24 GB cards
-#              cannot hold the weights. Launch: switch.sh --force (🧪).
+#   Caveats:   needs two cards of 64 GB: more than 80 GiB of VRAM goes to weights before
+#              any KV cache, so the entrypoint refuses smaller cards (on 3090s use
+#              strata/qwen3.8-flash-next-iq3s-dual or bucko-vllm/qwen3.8-flash-next-ple-dual).
+#              Measured on ONE rig (2x CMP 170HX 64 GB, Gen2 x8, no P2P, 175 W). Ten overlays
+#              on the stock image, one of them a port pinned to v0.32.0 (ple-mmap; refuses
+#              any other vLLM, PLE_PLACEMENT=ram avoids it). No KV offload to RAM: it does not
+#              start under PP=2 (vllm#50653). Concurrent requests: vllm#61281 (prompt-boundary
+#              state freed mid-request) can make a follow-up miss its whole prompt in the
+#              prefix cache, and PREFIX_MATCH_UNIT=16 makes nearly every prompt end mid-block;
+#              read from the source, not reproduced here. Launch: switch.sh --force (🧪).
 #   Validated: 2026-10-18 on v0.32.0 (vLLM's release wheel in the v0.31.0 image; the Docker
 #              image was not published yet), report.sh --full PASS (verify-full incl. vision
 #              4/4, verify-stress ladder to 240,659 tokens, soak-continuous 0 MiB growth /
 #              100% retention, bench-agentic). bench.sh: 126.3 / 171.6 narr/code, prefill
 #              5,171 @10K / 7,546 @90K, peak 63.2 / 62.2 GB, KV pool 2.23M tokens (fp8;
 #              2.06M on the first boot with a cold kernel cache). v0.31.0, same day:
-#              126.1 / 174.0, 5,159 / 7,557, pool 2.23M. Quality on v0.31.0 (#1737): pass@1 of 150 instruct 123,
-#              low 122, medium 128, xhigh 130.
+#              126.1 / 174.0, 5,159 / 7,557, pool 2.23M. Quality on v0.31.0 (#1737): pass@1
+#              of 150 instruct 123, low 122, medium 128, xhigh 130.
 #   Best for:  c=1..8 long-context agent serving on 2x 64 GB sm_80 cards without P2P,
 #              with the PLE table on NVMe instead of ~48 GiB of pinned host RAM
+# ---------------------------------------------------------------------------
+# Requires-min-vram-gb: 64
+# Requires-min-gpu-count: 2
+# Tensor-parallel: 2
+#   ⤷ the number of cards preflight looks for. The layout is PP=2, not tensor parallel;
+#     Tensor-parallel 1 would make preflight pin the container to one card.
 # Requires-homogeneous-arch: true
 # CPU-Offload-Host-RAM-GB: 19
 #   ⤷ MEASURED 2026-10-17 at the shipped PLE_PLACEMENT=nvme: no CPU expert offload; the
@@ -50,29 +66,34 @@
 #     PLE_PLACEMENT=ram pins the table instead and needs ~83 GB.
 # ---------------------------------------------------------------------------
 #
-# Purpose: find the best stock-vLLM layout for Flash-Next on 2x CMP 170HX 64 GB.
+# CARD CHECK — the entrypoint reads each of the two cards with nvidia-smi and refuses to
+#   start below 61,440 MiB (60 GiB; a 64 GB CMP 170HX reports 65,536). Preflight only warns
+#   about a small card on a two-card compose, so this is where a 24 GB card stops, with the
+#   slugs that do serve Flash-Next on 3090s named in the message. The floor comes down when
+#   someone reports a run on smaller cards.
 #
-# RESULTS (2026-10-17, vLLM v0.31.0, albucino W4A16+FP8PLE, MTP draft mtp-int4-g32, 175 W cap,
+# MEASURED (2026-10-17, vLLM v0.31.0, albucino W4A16+FP8PLE, MTP draft mtp-int4-g32, 175 W cap,
 # PCIe Gen2 x8 each, no P2P; decode = bench.sh decode_TPS, agg = 512-tok streams):
 #   layout            narr/code   pf@10K/90K   c=1/c=4/c=8 agg     KV pool (fp8)
 #   PP=2 PLE ram      120/165     5109/7443    106/213/317         1.80M tok
-#   PP=2 PLE nvme     117/163     5088/7466    103/205/317         1.80M tok  <- default
+#   PP=2 PLE nvme     117/163     5088/7466    103/205/317         1.80M tok  <- shipped
 #   TP=2 PLE ram       45/63      1645/1717     -/31 (16K pr.)      2.03M tok
 #   TP=2+EP PLE ram     -          -             92/156/182          1.99M tok
-#   TP saturates the link (2.5-3.8 GB/s host-staged all-reduce). PLE nvme: host RAM
-#   ~19 GB vs ~83 GB; cold first 81K prompt 6284 tok/s, warms to ~6700.
+#   TP saturates the link (2.5-3.8 GB/s host-staged all-reduce), so this compose ships PP=2
+#   only. PLE nvme: host RAM ~19 GB vs ~83 GB; cold first 81K prompt 6284 tok/s, warms to ~6700.
 #   MTP sweep (PP=2 nvme): n=0 73/73 agg@c4 162 | n=2 117/147 184 | n=3 117/164 207
 #   | n=4 111/165 180 | n=5 fails: 'QSA ring capacity 12 must divide the attention
 #   block size 3232'. n=3 is the default.
-#   KV_OFFLOAD_GB fails under PP=2: per-stage KV layouts differ, so the shared
-#   /dev/shm region size disagrees ('Timed out waiting for mmap file...'). vLLM bug.
+#   KV_OFFLOAD_GB is not wired: under PP=2 the stages size the shared /dev/shm region
+#   differently ('Timed out waiting for mmap file...'), vllm#50653 / issue #50821. The QSA
+#   backend also declares supports_kv_connector() = False (0.31.0 through 0.32.0).
 #
-# RESULTS 2 (2026-10-18, vLLM v0.31.0, 175 W, sparkDash protocol: greedy, thinking off, 400 forced tokens,
-# aggregate tok/s at c=1/2/4/8; same protocol as AlexBrandes/cmp170hx-qwen38-flash-next):
+# MEASURED 2 (2026-10-18, vLLM v0.31.0, 175 W, sparkDash protocol: greedy, thinking off, 400
+# forced tokens, aggregate tok/s at c=1/2/4/8; same protocol as AlexBrandes/cmp170hx-qwen38-flash-next):
 #   arm                          code              prose             json              KV pool
-#   PP=2 nvme (RESULTS above)    189/292/479/668   148/218/358/514   164/281/483/745   1.80M
+#   PP=2 nvme (MEASURED above)   189/292/479/668   148/218/358/514   164/281/483/745   1.80M
 #   + DRAFT_HEAD=1               200/302/474/754   158/227/378/546   186/323/534/809   1.76M
-#   + PP split 26,22  <- default 186/312/502/695   163/238/397/620   192/330/550/840   1.99M
+#   + PP split 26,22  <- shipped 186/312/502/695   163/238/397/620   192/330/550/840   1.99M
 #   + W4A8=1 (fixed)             185/314/524/802   158/230/395/588   186/322/550/896   1.95M
 #   (AlexBrandes, bf16 KV, n=5:  226/363/560/840   157/212/385/567   198/320/537/873)
 #   Old sampled sweep (3K prompts, temp 0.6, cold): c=1/4/8 102/246/318 (was 103/205/317).
@@ -86,48 +107,33 @@
 #   LONG_PREFILL_TOKEN_THRESHOLD: a 35K prompt arriving beside 3 decoders stalls them
 #   (4096: 1.1 s max gap, TTFT 5.4 s | 1600: 0.7 s, 6.2 s | 560: 0.35 s, 8.5 s), but
 #   below 4096 a burst of 8 cold 3K prompts loses 16% aggregate (318 -> 266). Default
-#   4096; lower it for smoother streams. Mixed steps are slow on this hardware with or
-#   without piecewise graphs (PLE ram + stock compile measured the same).
+#   4096; lower it for smoother streams.
 #   Host tuning (16 KB readahead, drop_caches + compact_memory before boot): no effect.
-# Arms (one boot each):
-#   PARALLEL      tp | pp | dp                  TP=2, PP=2, or DP=2 (needs EP=1 for the MoE split)
-#   EP             0 | 1                        --enable-expert-parallel (tp or dp only)
-#   PLE_PLACEMENT nvme | ram                    ram = stock pinned-host table (--engram-config
-#                                               cpu_offload). nvme = Minachist's mmap PLE
-#                                               (overlay qwen4exp-ple-mmap), PP=2 only. The
-#                                               table file lives in PLE_TABLE_DIR (written on
-#                                               the first nvme boot, 51.2 GB for an FP8 PLE)
-#   COMPILE        stock | lean                 lean = Minachist's '{"mode":0,"cudagraph_mode":
-#                                               "FULL_DECODE_ONLY"}'. nvme forces lean; set
-#                                               COMPILE=lean on the ram arm for a like-for-like A/B
-#   KV_CACHE_DTYPE fp8_e4m3 | auto (bf16)
-#   MODEL_SUBDIR   which checkpoint under MODEL_DIR (default: where `setup.sh` puts the
-#                  albucino weights, qwen3.8-flash-next-w4a16-fp8ple; DRAFT_SUBDIR its
-#                  runtime/mtp-int4-g32). PLE_TABLE_DIR defaults to <club data dir>/ple-tables:
-#                  put it on NVMe.
 #
-# Checkpoints that load on stock v0.31.0 (read from the source, 2026-10-17):
-#   qwen3.8-flash-next-w4a16-fp8ple  albucino W4A16 + FP8 PLE (AutoRound/INC). Loads as-is.
-#   Minachist INT4-Mixed: NOT as-is. Its BF16 PLE + compressed-tensors body hits
-#     NotImplementedError in Qwen4ExpPLEEmbeddingMethod, and its INT8 embed / lm_head /
-#     hyper-connection mixers need Minachist's flash-next-vllm.patch (13 hunks fail on
-#     0.31.0). Needs a port before it can be an arm here.
+# Knobs specific to this compose (the standard Qwen3.8 ones are commented where they are read):
+#   PLE_PLACEMENT  nvme | ram   nvme (default) = the PLE table mmap'd from a file in PLE_TABLE_DIR
+#                               (overlay qwen4exp-ple-mmap; written on the first boot, 51.2 GB for
+#                               an FP8 PLE; put it on NVMe), compiled lean (FULL_DECODE_ONLY graphs).
+#                               ram = stock pinned-host table (--engram-config cpu_offload, ~83 GB
+#                               host RAM), stock compile; also the way round a vLLM version the
+#                               ple-mmap port does not cover.
+#   MODEL_SUBDIR   which checkpoint under MODEL_DIR (default: where `setup.sh` puts the albucino
+#                  weights, qwen3.8-flash-next-w4a16-fp8ple; DRAFT_SUBDIR its runtime/mtp-int4-g32).
+#   VLLM_PP_LAYER_PARTITION  layers per stage, default 26,22 (the last stage also runs MTP + lm_head).
 #
-# KV offload (OffloadingConnector) is not wired: it does not start under PP=2 (RESULTS),
-#   and the QSA backend declares supports_kv_connector() = False (0.31.0 through 0.32.0),
-#   so nobody has shown the connector round-trips QSA state. Revisit with a cache-hit +
-#   output-match test once vLLM sizes the shared region per stage.
-#
-# Run (on the host; reads the club settings for MODEL_DIR and caches):
+# Run: bash scripts/switch.sh --force vllm/qwen38-flash-next-dual
+#   or by hand (reads the club settings for MODEL_DIR and caches):
 #   f="$(bash scripts/settings.sh compose-env-file)"
-#   PARALLEL=pp PLE_PLACEMENT=ram docker compose --env-file "$f" \
-#     -f models/qwen3.8-flash-next/vllm/compose/dual/albucino-autoround-int4-fp8ple/cmp170hx-mtp.yml up -d
+#   docker compose --env-file "$f" \
+#     -f models/qwen3.8-flash-next/vllm/compose/dual/albucino-autoround-int4-fp8ple/mtp.yml up -d
 #   rm -f "$f"
 services:
-  vllm-qwen38-flash-next-cmp-exp:
+  vllm-qwen38-flash-next-dual:
     image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.32.0}
-    container_name: "${ESTATE_CONTAINER:-vllm-qwen38-flash-next-cmp-exp}"
+    container_name: "${ESTATE_CONTAINER:-vllm-qwen38-flash-next-dual}"
     user: "0:${DOCKER_GID:-1000}"
+    # ⚠️ When debugging a boot failure set CLUB3090_RESTART=no: under unless-stopped a
+    # refused boot (e.g. the card check) restart-loops and reads as "still booting".
     restart: ${CLUB3090_RESTART:-unless-stopped}
     shm_size: "16gb"
     ipc: host
@@ -165,16 +171,15 @@ services:
       - ${PLE_TABLE_DIR:-${CLUB3090_DATA_DIR:-../../../../../..}/ple-tables}:/ple
     environment:
       - MODEL_SUBDIR=${MODEL_SUBDIR:-qwen3.8-flash-next-w4a16-fp8ple}
-      - PARALLEL=${PARALLEL:-pp}
-      - EP=${EP:-0}
       - PLE_PLACEMENT=${PLE_PLACEMENT:-nvme}
-      - COMPILE=${COMPILE:-stock}
-      - CUDAGRAPH_SIZES=${CUDAGRAPH_SIZES:-}
       - VLLM_PLE_MMAP_REBUILD=${VLLM_PLE_MMAP_REBUILD:-0}
       - VLLM_PLE_PREFETCH=${VLLM_PLE_PREFETCH:-1}
       - VISION=${VISION:-1}
-      - SPEC_N=${SPEC_N:-3}
+      # Drafter toggle. The default depth (3) lives in the entrypoint, not here.
+      - SPEC_N
       - SPEC=${SPEC:-}
+      # Draft sampling (entrypoint). Bare on purpose: unset keeps the compose default.
+      - DRAFT_SAMPLE_METHOD
       - DRAFT_SUBDIR=${DRAFT_SUBDIR:-qwen3.8-flash-next-w4a16-fp8ple/runtime/mtp-int4-g32}
       - MAX_NUM_SEQS=${MAX_NUM_SEQS:-8}
       # DRAFT_HEAD=1: the MTP drafter projects through an INT4 (g128) copy of lm_head
@@ -186,9 +191,11 @@ services:
       - BLOCK_SIZE=${BLOCK_SIZE:-}
       # Layers per PP stage, e.g. 26,22 (the last stage also runs MTP and lm_head).
       - VLLM_PP_LAYER_PARTITION=${VLLM_PP_LAYER_PARTITION:-26,22}
-      - MAMBA_SSM_DTYPE=${MAMBA_SSM_DTYPE:-}
+      - ASYNC_SCHED=${ASYNC_SCHED:-}
+      - MAMBA_BLOCK_SIZE=${MAMBA_BLOCK_SIZE:-}
+      - MAMBA_SSM_CACHE_DTYPE=${MAMBA_SSM_CACHE_DTYPE:-}
       # W4A8: INT8 activations on Marlin (dense linears + MoE experts). Off by default:
-      # GSM8K equal, prefill +6-9%, decode mixed (RESULTS 2).
+      # GSM8K equal, prefill +6-9%, decode mixed (MEASURED 2).
       - W4A8=${W4A8:-0}
       # Prefix-cache match granularity (tokens). Must divide every prefix-cacheable KV
       # group block size and be a multiple of each per-state compression (QSA: 4).
@@ -220,13 +227,15 @@ services:
       - THINKING_BUDGETS
       - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
       - CUDA_VISIBLE_DEVICES
-      - HF_HUB_OFFLINE=1
+      # The weights are local paths, so the hub is not needed: OFFLINE=0 to allow it.
+      - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-${OFFLINE:-1}}
+      - TRANSFORMERS_OFFLINE=${TRANSFORMERS_OFFLINE:-${OFFLINE:-1}}
       - VLLM_WORKER_MULTIPROC_METHOD=spawn
       - NCCL_CUMEM_ENABLE=0
-      # PCIe-only, PHB topology, no NVLink: no P2P, no custom all-reduce.
+      # PP=2 sends activations between stages only (no all-reduce). PCIe without P2P:
+      # NCCL_P2P_DISABLE=1. With P2P unlocked (cmpunlocker + bayley P2P patches +
+      # ForceP2P=0x11): NCCL_P2P_DISABLE=0 NCCL_P2P_LEVEL=SYS.
       - NCCL_P2P_DISABLE=${NCCL_P2P_DISABLE:-1}
-      # With P2P unlocked (cmpunlocker + bayley P2P patches + ForceP2P=0x11): NCCL_P2P_DISABLE=0
-      # NCCL_P2P_LEVEL=SYS. Custom all-reduce stays off (its IPC buffers OOM/crash across root ports).
       - NCCL_P2P_LEVEL=${NCCL_P2P_LEVEL:-}
       - NCCL_DEBUG
       - VLLM_NO_USAGE_STATS=1
@@ -238,7 +247,37 @@ services:
       - |
         umask 0002
         set -e
-        # Drafter depth: SPEC_N=<n>; SPEC_N=0 or SPEC=off turns MTP off.
+        # -- Card check: two cards of 64 GB (CARD CHECK in the header) ---------------------
+        #   PP=2 runs on the first two CUDA devices. Read each with nvidia-smi; refuse a
+        #   missing second card or one below 61,440 MiB, before any overlay or weight load.
+        _floor_mib=61440
+        _ids="$${CUDA_VISIBLE_DEVICES:-}"
+        [ -n "$$_ids" ] || _ids="$$(nvidia-smi --query-gpu=index --format=csv,noheader 2>/dev/null | tr -d ' ' | tr '\n' ',')"
+        IFS=',' read -ra _gl <<< "$$_ids"
+        _cards=(); for _g in "$${_gl[@]}"; do [ -z "$$_g" ] || _cards+=("$$_g"); done
+        if [ "$${#_cards[@]}" -eq 0 ]; then
+          echo "[cards] could not list the GPUs (nvidia-smi); skipping the 64 GB card check" >&2
+        else
+          _seen=""; _small=0; _unread=0
+          for _g in "$${_cards[@]:0:2}"; do
+            _mib="$$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits -i "$$_g" 2>/dev/null | head -1 | tr -dc '0-9')"
+            if [ -z "$$_mib" ]; then _unread=1; _seen="$$_seen GPU $$_g: ?;"; continue; fi
+            _seen="$$_seen GPU $$_g: $$_mib MiB;"
+            [ "$$_mib" -ge "$$_floor_mib" ] || _small=1
+          done
+          if [ "$${#_cards[@]}" -lt 2 ] || [ "$$_small" = 1 ]; then
+            echo "[cards] REFUSE: this layout needs two cards with 64 GB each (PP=2; more than 80 GiB of" >&2
+            echo "[cards]   weights before any KV cache). Found $${#_cards[@]} card(s):$$_seen" >&2
+            echo "[cards] Fix: on 24 GB cards serve Flash-Next with strata/qwen3.8-flash-next-iq3s-dual" >&2
+            echo "[cards]   or bucko-vllm/qwen3.8-flash-next-ple-dual (bash scripts/switch.sh <slug>)." >&2
+            exit 1
+          fi
+          [ "$$_unread" = 0 ] || echo "[cards] could not read every card's VRAM (nvidia-smi -i); continuing:$$_seen" >&2
+          echo "[cards] ok:$$_seen" >&2
+        fi
+        # -- Drafter toggle ----------------------------------------------------------------
+        #   SPEC_N=<n>  drafter depth (this compose defaults to 3); SPEC_N=0 disables
+        #   SPEC=off    back-compat alias for SPEC_N=0
         _spec_n="$${SPEC_N:-3}"
         case "$${SPEC:-}" in off|OFF|Off|false|no|0) _spec_n=0 ;; esac
         case "$$_spec_n" in ""|*[!0-9]*)
@@ -247,11 +286,19 @@ services:
           exit 1 ;;
         esac
         SPEC_N="$$_spec_n"
+        # Draft sampling: greedy here (vLLM's default, and what every number in the header
+        # was measured with). probabilistic samples drafts at the request temperature and
+        # keeps their logits for the rejection test (more accepted tokens when temp > 0).
+        _dsm="$${DRAFT_SAMPLE_METHOD:-greedy}"
+        case "$$_dsm" in
+          greedy|probabilistic) : ;;
+          *) echo "[spec] DRAFT_SAMPLE_METHOD='$$_dsm' must be greedy or probabilistic" >&2; exit 1 ;;
+        esac
         # Stock vLLM refuses PP>1 for Qwen4Exp; this overlay allows it (PLE is on rank 0).
         bash /etc/club3090/pp-ple-rank0/install.sh || exit 1
         # Stock MTP asserts under PP>1 (branches on the global PP rank).
         bash /etc/club3090/mtp-pp/install.sh || exit 1
-        if [ "$${DRAFT_HEAD:-0}" = "1" ] && [ "$${SPEC_N:-0}" -gt 0 ]; then
+        if [ "$${DRAFT_HEAD:-0}" = "1" ] && [ "$${SPEC_N}" -gt 0 ]; then
           export DRAFT_HEAD_SOURCE="/models/$${DRAFT_SUBDIR:-$${MODEL_SUBDIR}}"
           export VLLM_MTP_DRAFT_HEAD_PATH="/draft-head/$$(echo "$${DRAFT_SUBDIR:-$${MODEL_SUBDIR}}" | tr '/' '_')-w4a16-g128.safetensors"
         fi
@@ -284,65 +331,66 @@ services:
           echo "[sampler] instruct row (ENABLE_THINKING=false): temp=$$_temp top_p=$${TOP_P} presence=$${PRESENCE_PENALTY}" >&2
         fi
         SAMPLER_ARGS=(--override-generation-config "{\"temperature\":$$_temp,\"top_p\":$${TOP_P},\"top_k\":$${TOP_K:-20},\"min_p\":$${MIN_P:-0.0},\"presence_penalty\":$${PRESENCE_PENALTY},\"repetition_penalty\":$${REPEAT_PENALTY:-1.0}}")
-        case "$${PARALLEL}" in
-          tp) PAR_ARGS=(--tensor-parallel-size 2 --pipeline-parallel-size 1) ;;
-          pp) PAR_ARGS=(--tensor-parallel-size 1 --pipeline-parallel-size 2) ;;
-          # DP attention + expert-parallel MoE: each card serves its own requests.
-          dp) PAR_ARGS=(--tensor-parallel-size 1 --pipeline-parallel-size 1 --data-parallel-size 2) ;;
-          *) echo "[exp] PARALLEL='$${PARALLEL}' must be tp, pp or dp" >&2; exit 1 ;;
-        esac
-        # EP=1: experts split across the TP/DP group (no effect with pp: one GPU per stage).
-        if [ "$${EP:-0}" = "1" ]; then
-          [ "$${PARALLEL}" != "pp" ] || { echo "[exp] EP=1 needs PARALLEL=tp or dp" >&2; exit 1; }
-          PAR_ARGS+=(--enable-expert-parallel)
-        fi
+        # PLE placement decides the compile mode: the mmap path (nvme) runs Minachist's lean
+        # compile, FULL decode graphs only; the stock pinned-RAM path keeps vLLM's default.
         PLE_ARGS=(--engram-config '{"cpu_offload":true}')
+        COMPILE_ARGS=()
         case "$${PLE_PLACEMENT}" in
           ram) unset VLLM_PLE_MMAP_PATH ;;
           nvme)
-            [ "$${PARALLEL}" = "pp" ] || { echo "[exp] PLE_PLACEMENT=nvme needs PARALLEL=pp (the mmap table is not TP-sharded)" >&2; exit 1; }
             export VLLM_PLE_MMAP_PATH="/ple/ngram-$${MODEL_SUBDIR}.bin"
-            COMPILE=lean ;;
-          *) echo "[exp] PLE_PLACEMENT='$${PLE_PLACEMENT}' must be ram or nvme" >&2; exit 1 ;;
+            # A decode step runs seqs x (n+1) tokens; capture one graph per batch of those.
+            _sizes="$$(python3 -c 'import sys; s, n = int(sys.argv[1]), int(sys.argv[2]); print(sorted({b * (n + 1) for b in range(1, s + 1)} | {1}))' "$${MAX_NUM_SEQS}" "$${SPEC_N}" | tr -d ' ')"
+            COMPILE_ARGS=(--compilation-config "{\"mode\":0,\"cudagraph_mode\":\"FULL_DECODE_ONLY\",\"cudagraph_capture_sizes\":$$_sizes}") ;;
+          *) echo "[ple] PLE_PLACEMENT='$${PLE_PLACEMENT}' must be nvme or ram" >&2; exit 1 ;;
         esac
         bash /etc/club3090/ple-mmap/install.sh || exit 1
         VISION_ARGS=()
         [ "$${VISION}" = "1" ] || VISION_ARGS=(--language-model-only)
         SPEC_ARGS=()
-        if [ "$${SPEC_N:-0}" -gt 0 ]; then
+        if [ "$${SPEC_N}" -gt 0 ]; then
           _draft=""
           if [ -n "$${DRAFT_SUBDIR:-}" ]; then
             # (checked only when the checkpoint itself is mounted; vLLM reports a missing one)
             [ ! -d "/models/$${MODEL_SUBDIR}" ] || [ -f "/models/$${DRAFT_SUBDIR}/config.json" ] || { echo "[spec] draft /models/$${DRAFT_SUBDIR} not found (DRAFT_SUBDIR= to use the checkpoint's own head)" >&2; exit 1; }
             _draft=",\"model\":\"/models/$${DRAFT_SUBDIR}\""
           fi
-          SPEC_ARGS=(--speculative-config "{\"method\":\"mtp\",\"num_speculative_tokens\":$${SPEC_N}$${_draft}}")
-          echo "[spec] MTP n=$${SPEC_N} draft=$${DRAFT_SUBDIR:-<checkpoint head>}" >&2
+          SPEC_ARGS=(--speculative-config "{\"method\":\"mtp\",\"num_speculative_tokens\":$${SPEC_N}$${_draft},\"draft_sample_method\":\"$$_dsm\"}")
+          echo "[spec] drafter ON - mtp n=$${SPEC_N}, draft sampling $$_dsm, draft $${DRAFT_SUBDIR:-<checkpoint head>}" >&2
+        else
+          echo "[spec] drafter OFF (SPEC_N=0 / SPEC=off)" >&2
         fi
-        # Lean mode captures FULL decode graphs only; a decode step runs seqs x (n+1) tokens.
-        if [ -z "$${CUDAGRAPH_SIZES:-}" ]; then
-          CUDAGRAPH_SIZES="$$(python3 -c 'import sys; s, n = int(sys.argv[1]), int(sys.argv[2]); print(sorted({b * (n + 1) for b in range(1, s + 1)} | {1}))' "$${MAX_NUM_SEQS}" "$${SPEC_N:-0}" | tr -d ' ')"
-        fi
-        COMPILE_ARGS=()
-        case "$${COMPILE}" in
-          stock) ;;
-          lean) COMPILE_ARGS=(--compilation-config "{\"mode\":0,\"cudagraph_mode\":\"FULL_DECODE_ONLY\",\"cudagraph_capture_sizes\":$${CUDAGRAPH_SIZES}}") ;;
-          *) echo "[exp] COMPILE='$${COMPILE}' must be stock or lean" >&2; exit 1 ;;
+        # -- Async-scheduling toggle: vllm#50021 mitigation, keeps the drafter --
+        ASYNC_ARGS=()
+        case "$${ASYNC_SCHED:-}" in off|OFF|Off|false|no|0)
+          ASYNC_ARGS=(--no-async-scheduling)
+          echo "[async] async scheduling OFF (ASYNC_SCHED=off)" >&2 ;;
         esac
         PMU_ARGS=()
         [ -z "$${PREFIX_MATCH_UNIT:-}" ] || PMU_ARGS=(--prefix-match-unit "$${PREFIX_MATCH_UNIT}")
         [ "$${SHARED_PREFIX_CKPT:-0}" != "1" ] || PMU_ARGS+=(--enable-mamba-shared-prefix-checkpoint)
+        # -- Mamba/GDN cache knobs --
+        #   MAMBA_BLOCK_SIZE=<tokens>  checkpoint SSM state every N tokens (align mode; multiple of 8)
+        #   MAMBA_SSM_CACHE_DTYPE      the SSM state dtype; unset or auto = the model's own
+        MAMBA_ARGS=()
+        [ -z "$${MAMBA_BLOCK_SIZE:-}" ] || MAMBA_ARGS+=(--mamba-block-size "$${MAMBA_BLOCK_SIZE}")
+        _ssm_dt="$${MAMBA_SSM_CACHE_DTYPE:-auto}"
+        [ "$$_ssm_dt" = "auto" ] || MAMBA_ARGS+=(--mamba-ssm-cache-dtype "$$_ssm_dt")
         EXTRA_ARGS=()
         [ -z "$${BLOCK_SIZE:-}" ] || EXTRA_ARGS+=(--block-size "$${BLOCK_SIZE}")
-        [ -z "$${MAMBA_SSM_DTYPE:-}" ] || EXTRA_ARGS+=(--mamba-ssm-cache-dtype "$${MAMBA_SSM_DTYPE}")
         [ -n "$${VLLM_PP_LAYER_PARTITION:-}" ] || unset VLLM_PP_LAYER_PARTITION
-        echo "[exp] model=$${MODEL_SUBDIR} parallel=$${PARALLEL} ep=$${EP:-0} ple=$${PLE_PLACEMENT} compile=$${COMPILE} vision=$${VISION} spec_n=$${SPEC_N:-0} prefix_match_unit=$${PREFIX_MATCH_UNIT:-default} shared_prefix_ckpt=$${SHARED_PREFIX_CKPT:-0} kv=$${KV_CACHE_DTYPE:-fp8_e4m3} draft_head=$${VLLM_MTP_DRAFT_HEAD_PATH:-off} block=$${BLOCK_SIZE:-auto} pp_split=$${VLLM_PP_LAYER_PARTITION:-auto} ssm=$${MAMBA_SSM_DTYPE:-auto}" >&2
-        exec vllm serve "/models/$${MODEL_SUBDIR}" --disable-custom-all-reduce "$$@" \
-          "$${PAR_ARGS[@]}" "$${PLE_ARGS[@]}" "$${COMPILE_ARGS[@]}" "$${PMU_ARGS[@]}" "$${VISION_ARGS[@]}" "$${SPEC_ARGS[@]}" "$${EXTRA_ARGS[@]}" "$${SAMPLER_ARGS[@]}"
+        echo "[layout] PP=2 model=$${MODEL_SUBDIR} ple=$${PLE_PLACEMENT} vision=$${VISION} spec_n=$${SPEC_N} prefix_match_unit=$${PREFIX_MATCH_UNIT:-default} shared_prefix_ckpt=$${SHARED_PREFIX_CKPT:-0} kv=$${KV_CACHE_DTYPE:-fp8_e4m3} draft_head=$${VLLM_MTP_DRAFT_HEAD_PATH:-off} block=$${BLOCK_SIZE:-auto} pp_split=$${VLLM_PP_LAYER_PARTITION:-auto} mamba_block=$${MAMBA_BLOCK_SIZE:-auto} ssm=$$_ssm_dt" >&2
+        exec vllm serve "/models/$${MODEL_SUBDIR}" "$$@" \
+          "$${PLE_ARGS[@]}" "$${COMPILE_ARGS[@]}" "$${PMU_ARGS[@]}" "$${VISION_ARGS[@]}" "$${SPEC_ARGS[@]}" "$${ASYNC_ARGS[@]}" "$${MAMBA_ARGS[@]}" "$${EXTRA_ARGS[@]}" "$${SAMPLER_ARGS[@]}"
       - --
     command:
+      # SERVED_NAME renames the model the API serves (default: qwen3.8-flash-next).
       - --served-model-name
-      - qwen3.8-flash-next
+      - ${SERVED_NAME:-qwen3.8-flash-next}
+      - --tensor-parallel-size
+      - "1"
+      - --pipeline-parallel-size
+      - "2"
       - --dtype
       - bfloat16
       - --max-model-len
@@ -362,7 +410,7 @@ services:
       - --long-prefill-token-threshold
       - "${LONG_PREFILL_TOKEN_THRESHOLD:-4096}"
       - --mamba-cache-mode
-      - align
+      - "${MAMBA_CACHE_MODE:-align}"
       - --reasoning-parser
       - qwen3
       - --enable-auto-tool-choice
@@ -370,7 +418,9 @@ services:
       - qwen3_coder
       - --default-chat-template-kwargs
       - '{"enable_thinking": ${ENABLE_THINKING:-true}, "reasoning_effort": "${REASONING_EFFORT:-low}"}'
-      - --enable-prompt-tokens-details
+      # prompt_tokens_details in the usage block (cached_tokens). Opt out:
+      # PROMPT_TOKENS_DETAILS_ARG=--no-enable-prompt-tokens-details
+      - "${PROMPT_TOKENS_DETAILS_ARG:---enable-prompt-tokens-details}"
       - --host
       - 0.0.0.0
       - --port

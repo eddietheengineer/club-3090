@@ -34,7 +34,7 @@ dropped; the mmap class reuses the common base classes), added the missing impor
 Co-authored-by: Minachist <84688797+aiueonicked@users.noreply.github.com>
 
 **Versions.** One diff per vLLM version (`ple-mmap-v<version>.diff`); the installer refuses
-any other version. Today: `ple-mmap-v0.32.0.diff` only (the slug's engine, `vllm-flash-next`).
+any other version. Today: `ple-mmap-v0.32.0.diff` only (the `vllm-stable` pin since #1740). A `vllm-stable` bump needs a new diff first; until then `PLE_PLACEMENT=ram` serves from the stock path.
 The v0.32.0 port follows upstream's new prefetch interface: `start_prefetch(ngram_ids)` lost
 its `hidden_states` argument, the forward now calls `finalize_prefetch(total_tokens)` (which
 replaces the mmap class's `forward(hidden_states)`), and PLE embeddings take a
