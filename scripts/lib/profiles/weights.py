@@ -210,7 +210,7 @@ def _resolve_key(key: str) -> tuple[str, str]:
     _die(f"unknown weight key: {key}")
 
 
-def _lookup_path(rel: str) -> tuple[str, str]:
+def _lookup_path(rel: str, model_hint: str | None = None) -> tuple[str, str]:
     rel = rel.split(" (", 1)[0].strip()
     rel = rel.removeprefix("./").removeprefix("/")
     rel = rel.removeprefix("models/")
@@ -227,9 +227,18 @@ def _lookup_path(rel: str) -> tuple[str, str]:
     # user to download Maya-S. Each entry also knows a more specific dir of its own —
     # its `path` and the dir its `files` live in — and the longest of those that
     # contains `rel` decides. An exact file match beats any dir.
+    #
+    # Two models can also declare the same dir: the DFlash2 drafter is a weights entry of
+    # both qwen3.8-27b and thinkingcap-qwen3.8-27b. That tie went to the alphabetically
+    # last model, so a Qwen3.8-27B slug's fetch ran ThinkingCap's setup, which then said
+    # "ThinkingCap downloaded" and suggested an SGLang ThinkingCap slug (#1742). The
+    # caller's model (`--model`, from the compose's models/<id>/ dir) now breaks it.
     models = _load_models()
-    matches: list[tuple[int, int, str, str]] = []
+    matches: list[tuple[int, int, int, str, str]] = []
+    # Entries whose dir sits BELOW `rel`, for the parent-mount fallback further down.
+    below: list[tuple[int, int, str, str]] = []
     for model_id, model in models.items():
+        own = 1 if model_hint and model_id == model_hint else 0
         for variant, meta in (model.get("weights") or {}).items():
             subdir = str(meta.get("local_subdir") or meta.get("path") or "")
             if not subdir:
@@ -250,15 +259,28 @@ def _lookup_path(rel: str) -> tuple[str, str]:
             # vision projector) that share their dir.
             primary = 0 if meta.get("kind") in ("draft", "mmproj") else 1
             if rel in exact_files:
-                matches.append((len(rel) + 1000, primary, model_id, variant))
+                matches.append((len(rel) + 1000, primary, own, model_id, variant))
                 continue
             hit = [len(d) for d in dirs if rel == d or rel.startswith(f"{d}/")]
             if hit:
-                matches.append((max(hit), primary, model_id, variant))
-    if not matches:
-        _die(f"no recipe for path: {rel}")
-    _, _, model_id, variant = sorted(matches, reverse=True)[0]
-    return model_id, variant
+                matches.append((max(hit), primary, own, model_id, variant))
+            elif any(d.startswith(f"{rel}/") for d in dirs):
+                below.append((own, primary, model_id, variant))
+    if matches:
+        *_, model_id, variant = sorted(matches, reverse=True)[0]
+        return model_id, variant
+    # A compose can mount the dir ABOVE the weights: HyperQwen mounts
+    # qwen3.8-27b-hyperqwen/ because its prepare step writes a "-fast" copy next to
+    # Qwen3.8-27B-W4A16-AutoRound/ inside it. No entry is that dir, so preflight found
+    # no recipe and never offered the 19 GB base (#1742). Take the one entry below it,
+    # preferring the caller's model and then main weights over companions; if that
+    # still leaves several, say there is no recipe rather than guess one.
+    for want_own in (1, 0):
+        for want_primary in (1, 0):
+            pool = [b for b in below if b[0] >= want_own and b[1] >= want_primary]
+            if len(pool) == 1:
+                return pool[0][2], pool[0][3]
+    _die(f"no recipe for path: {rel}")
 
 
 def _print_env(recipe: dict[str, str]) -> None:
@@ -274,6 +296,9 @@ def main(argv: list[str] | None = None) -> int:
     p_entry.add_argument("variant", nargs="?")
     p_lookup = sub.add_parser("lookup")
     p_lookup.add_argument("path")
+    # The model whose compose mounts the path; breaks a tie between models that share
+    # a dir. An id that isn't a model just matches nothing.
+    p_lookup.add_argument("--model", default=None)
     # `list --json` — batch static weights metadata for every (model, variant)
     # with a local_subdir, for the TUI's download-state join (it stats the dirs
     # itself against its configured model dir).  Pure profile read, no FS check.
@@ -354,7 +379,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             model_id, variant = _resolve_key(args.key)
     else:
-        model_id, variant = _lookup_path(args.path)
+        model_id, variant = _lookup_path(args.path, args.model)
 
     _print_env(_recipe(model_id, variant))
     return 0

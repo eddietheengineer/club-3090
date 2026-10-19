@@ -54,6 +54,11 @@
 #   WITH_PRISM_EAGLE3   Set to 1 to ALSO download the Prism EAGLE3 drafter when
 #                       the model registers one (setup: prism_eagle3).
 #                       Default: 0.
+#   SETUP_FOR_LAUNCH    Set to 1 by preflight's "fetch missing weights now?" offer,
+#                       which runs in the middle of a switch.sh / launch.sh launch:
+#                       downloads as usual, then exits without the optional-drafter
+#                       notice and the "Next — launch it" block, which name the
+#                       model's default slug rather than the one being launched (#1742).
 #   HF_DOWNLOAD_RETRIES Attempts per repo download before giving up. Default: 4.
 #                       A transfer is resumable, so a retry costs only the
 #                       reconnect; raise it on a flaky link.
@@ -1244,7 +1249,7 @@ if [[ "${WITH_DFLASH_DRAFT:-0}" == "1" ]] && [[ "${SKIP_MODEL:-0}" != "1" ]]; th
       ;;
   esac
   echo ""
-else
+elif [[ "${SETUP_FOR_LAUNCH:-0}" != "1" ]]; then
   echo "[dflash]  Skipping DFlash draft model. Set WITH_DFLASH_DRAFT=1 to fetch it when a matching compose requires it."
 fi
 
@@ -1265,6 +1270,13 @@ fi
 # clone needed. (Previous design required cloning a fork to /opt/ai/engines/vllm/primary/;
 # refactored 2026-05-03 to vendor the two files in-repo, fixing #37.)
 
+
+# Preflight's fetch offer (SETUP_FOR_LAUNCH=1): the launch that called it carries on, so
+# stop before the next steps, which suggest a different slug (#1742).
+if [[ "${SETUP_FOR_LAUNCH:-0}" == "1" ]]; then
+  echo "[setup] ✓ ${WEIGHT_KEY:-${MODEL_NAME}} downloaded; back to the launch."
+  exit 0
+fi
 
 # Per-model "next steps" — different composes / served-model-name / port between
 # models. Derived from the registry (`scripts/lib/registry-emit.sh --json`),
