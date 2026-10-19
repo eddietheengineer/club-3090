@@ -1263,10 +1263,18 @@ def fits(
         str(effective_weights or "").startswith(("fp8", "nvfp4", "bf16", "fp16"))
         or model.family.startswith(("qwen3-next", "qwen35"))
     )
+    # qwen4exp (Qwen3.8-Flash-Next) added 2026-10-18: its QSA attention kernel is Triton and
+    # fails to compile fp8e4nv below SM89, so vllm/qwen38-flash-next-dual mounts the
+    # qwen4exp-qsa-fp8kv-ampere overlay (e4m3 decoded in registers), measured on sm_80
+    # (2x CMP 170HX: verify-full + verify-stress PASS, club-3090#1736). That compose is the
+    # only vLLM path for this family, so the family key is the proxy for the overlay; the
+    # overlay also targets sm_86, hence the sm_80 floor here.
+    _fp8_ampere_floor = 8.0 if (effective_kv == "fp8_e4m3" and model.family == "qwen4exp") else 8.6
+    _fp8w_ampere_kv = _fp8w_ampere_kv or _fp8_ampere_floor == 8.0
     unsupported_hw = [
         hw.id for hw in hardware
         if effective_kv not in hw.supported_kv_formats
-        and not (_fp8w_ampere_kv and hw.sm >= 8.6)
+        and not (_fp8w_ampere_kv and hw.sm >= _fp8_ampere_floor)
     ]
     if unsupported_hw:
         fail("C5", f"kv_format={effective_kv} not supported by hardware: {', '.join(unsupported_hw)}")

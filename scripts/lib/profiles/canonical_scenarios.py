@@ -20,5 +20,7 @@ CANONICAL_SCENARIOS = [
     {"name": "1x-5090", "hardware": ["rtx-5090"], "nvlink_active": False},
     {"name": "2x-5090", "hardware": ["rtx-5090", "rtx-5090"], "nvlink_active": False},
     {"name": "2x-a100-40gb", "hardware": ["a100-40gb", "a100-40gb"], "nvlink_active": True},
+    # Added 2026-10-18 with vllm/qwen38-flash-next-dual (supported_sm [8.0], needs 64 GB cards).
+    {"name": "2x-cmp-170hx-64gb", "hardware": ["cmp-170hx-64gb", "cmp-170hx-64gb"], "nvlink_active": False},
     {"name": "heterogeneous-3090-5090", "hardware": ["rtx-3090", "rtx-5090"], "nvlink_active": False},
 ]

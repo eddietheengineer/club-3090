@@ -6326,6 +6326,57 @@ entries:
     serve_aliases: []
     required_sm: 8.6
     category: frontier
+  vllm/qwen38-flash-next-dual:
+    origin: core
+    model: qwen3.8-flash-next
+    weights_variant: albucino-autoround-int4-fp8ple
+    workload: multi-stream-tenant
+    engine: vllm-stable
+    drafter: null
+    spec_method: mtp
+    kv_format: fp8_e4m3
+    act_format: 16bit
+    act8_capable: true
+    offload: null
+    moe_cache: false
+    host_ram_gb: 19
+    kv_offload: null
+    chat_template: qwen38-reasoning-effort
+    tp: 2
+    max_ctx: 262144
+    max_num_seqs: 8
+    mem_util: 0.95
+    compose_path: models/qwen3.8-flash-next/vllm/compose/dual/albucino-autoround-int4-fp8ple/mtp.yml
+    requires_nvlink: false
+    requires_homogeneous_arch: true
+    required_engine_features: []
+    default_port: 8196
+    kvcalc_key: SKIP
+    status: experimental
+    status_note: "2x 64 GB cards, measured on 2x CMP 170HX 64 GB (sm_80), on the stock vllm/vllm-openai image (engine vllm-stable) with ten volume-mounted overlays (club-3090#1736, findings #1735). Layout: PP=2, the only layout this compose ships (tp: 2 here counts the two cards; the compose runs --tensor-parallel-size 1 --pipeline-parallel-size 2), 26/22 layer split, PLE table mmap'd from NVMe (host RAM ~19 GB vs ~83 GB pinned), FP8 e4m3 KV via qwen4exp-qsa-fp8kv-ampere, vision on, GPU_MEMORY_UTILIZATION 0.95 (pool 2.23M tokens), MTP n=3 with greedy draft sampling through albucino's compact draft (companion albucino-mtp-int4-g32) with an INT4 copy of lm_head as the draft head (built on first boot); reasoning budget by effort and sampler by mode as on the Qwen3.8-27B slugs. Needs two 64 GB cards: more than 80 GiB of VRAM goes to weights before any KV cache, so the entrypoint reads each card with nvidia-smi and refuses below 61,440 MiB, naming strata/qwen3.8-flash-next-iq3s-dual and bucko-vllm/qwen3.8-flash-next-ple-dual for 3090s. MEASURED 2026-10-18 on ONE rig (Gen2 x8, no P2P, 175 W cap). Official vllm/vllm-openai:v0.32.0 image, this compose, stock clocks: verify-full PASS incl. vision 4/4; bench.sh 122.9 / 170.9 narr/code, prefill 5,147 @10K / 7,610 @90K, pool 2.23M tokens. v0.32.0 wheel in the v0.31.0 image, before the image was published: report.sh --full PASS (verify-full incl. vision 4/4, verify-stress ladder to 240,659 tokens, soak-continuous 0 MiB growth); bench.sh 126.3 / 171.6 narr/code, prefill 5,171 @10K / 7,546 @90K, peak 63.2 / 62.2 GB. v0.31.0 the same day: 126.1 / 174.0, 5,159 / 7,557; sparkDash aggregate decode c=1/8 code 186/695, prose 163/620, json 192/840 tok/s; quality pass@1 of 150 (#1737) instruct 123, low 122, medium 128, xhigh 130. W4A8=1 is an opt-in (w4a8-inc-moe fixes four vLLM MoE bugs; GSM8K 386/400 vs 388/400, decode mixed). KV_OFFLOAD_GB does not start under PP=2 (vllm#50653). ple-mmap is a port pinned to v0.32.0 and refuses other versions (PLE_PLACEMENT=ram avoids it); re-port it at a vllm-stable bump."
+    weights_companions:
+      - albucino-mtp-int4-g32
+    gateway: false
+    serve_aliases: []
+    supported_sm:
+      - 8.0
+    category: frontier
+    sampler_profiles:
+      instruct:
+        temperature: 0.7
+        top_p: 0.8
+        top_k: 20
+        min_p: 0.0
+        presence_penalty: 1.5
+        repetition_penalty: 1.0
+      thinking:
+        temperature: 1.0
+        top_p: 0.95
+        top_k: 20
+        min_p: 0.0
+        presence_penalty: 0.0
+        repetition_penalty: 1.0
+    sampler_default_mode: thinking
   strata/qwen3.8-flash-next-iq3s-dual:
     origin: core
     model: qwen3.8-flash-next

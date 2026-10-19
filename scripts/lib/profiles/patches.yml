@@ -339,12 +339,13 @@ patches:
     status: verified
 
   - id: qwen38-reasoning-effort-template
-    model: [qwen3.8-27b, thinkingcap-qwen3.8-27b]
+    model: [qwen3.8-27b, thinkingcap-qwen3.8-27b, qwen3.8-flash-next]
     files:
       - models/qwen3.8-27b/vllm/patches/qwen38-reasoning-effort-template/chat_template.jinja
     load_bearing_when:
       - composes:
           - vllm/qwen38-27b-dual-max
+          - vllm/qwen38-flash-next-dual   # Flash-Next's upstream template is byte-identical (md5 519239a4)
           - vllm/qwen38-27b-multi4-max
           - vllm/qwen38-27b-multi8-max
           - vllm/qwen38-27b-dual-supermax
@@ -487,7 +488,7 @@ patches:
     # qwen3.8-27b added 2026-08-14: its two vLLM "max" composes ship the SAME
     # MTP + prefix-caching pair on the same Qwen3-Next hybrid family, and mount
     # this patch dir from the qwen3.6-27b tree exactly as tess-4-27b does.
-    model: [qwen3.6-27b, qwen3.6-35b-a3b, tess-4-27b, qwen3.8-27b]
+    model: [qwen3.6-27b, qwen3.6-35b-a3b, tess-4-27b, qwen3.8-27b, qwen3.8-flash-next]
     files:
       - models/qwen3.6-27b/vllm/patches/vllm-pr48375-mamba-drop-eagle-block/install.sh
       - models/qwen3.6-27b/vllm/patches/vllm-pr48375-mamba-drop-eagle-block/patch_mamba_drop_eagle_block.py
@@ -503,6 +504,7 @@ patches:
           - vllm/qwen38-27b-dual-ultramax
           - vllm/qwen38-27b-dual-max
           - vllm/qwen38-27b-multi4-max
+          - vllm/qwen38-flash-next-dual
         reason: "Vendored upstream fix vllm#48375 for vllm#43559 (MTP x prefix-caching corrupts recurrent-state KV on Qwen3-Next hybrids; ~20% acc drop reproduced upstream on 35B-A3B): MambaManager.find_longest_cache_hit receives drop_eagle_block but silently ignores it, so the final matched page's Mamba/GDN state snapshot may reflect draft tokens verification later rejected. The 9-line fix lowers the hit-search ceiling by one page. ACTIVE by default since 2026-07-17: the same PR flipped the pair-capable composes back to --enable-prefix-caching (the #720 off-default cost 7.4x TTFT on long prefixes per kevinb361's production data, and the pair-clean evidence stack is now: upstream repro+fix+tests, kevin's 7-day production at 89.5% hit rate on v0.25.x, our 6-arm probe matrix). Opt-out: PREFIX_CACHE_ARG=--no-enable-prefix-caching makes the patched path dormant again. On-rig validation 2026-07-17: no-harm on both hybrid families (27B + 35B-A3B, MTP n=3 + prefix-ON: 12/12 post-agent tool-call probes clean per arm with prefix_cache_hits_total asserted; accept-len 3.2-3.9 intact; ~5% fewer hit tokens = the by-design one-block reduction). Full 6-arm matrix: club-3090#710."
         evidence: "models/qwen3.6-27b/vllm/patches/vllm-pr48375-mamba-drop-eagle-block/README.md; club-3090#710; docs/UPSTREAM.md #43559/#48375 row"
     delivery:               # DEPRECATED/READ-ONLY (test-only) — see header
@@ -813,7 +815,7 @@ patches:
       drop_when: "the pinned bucko image ships a server-default thinking budget, or bucko's base gains what vllm-default-thinking-budget needs (then switch these composes to that patch and retire this entry)."
     status: verified
   - id: qwen-w4a8-int8-act
-    model: [qwen3.6-27b, thinkingcap-27b]
+    model: [qwen3.6-27b, thinkingcap-27b, qwen3.8-flash-next]
     files:
       - models/qwen3.6-27b/vllm/patches/w4a8-int8-act/install.sh
       - models/qwen3.6-27b/vllm/patches/w4a8-int8-act/patch-inc-w4a8.py
@@ -824,6 +826,7 @@ patches:
           - vllm/minimal
           - vllm/qwen-27b-multi-fast
           - vllm/thinkingcap-dual-w4a8
+          - vllm/qwen38-flash-next-dual   # opt-in W4A8=1, with w4a8-inc-moe for the MoE experts
         reason: "Enables the STOCK serve-time W4A8 toggle (VLLM_MARLIN_INPUT_DTYPE=int8 — int8 activations on the int4 weights, +50% prefill / decode ~neutral dual (env-only A/B), 8-pack-tied 110/111 vs 109) on auto-round checkpoints: vLLM's inc route silently drops the toggle (bug A), and the int8 kernel reads group scales UNSIGNED while AutoRound emits ~50% negative scales → garbage (bug B; load-time sign-fold, exact except 0.61% of weights). BOTH patches are NO-OPS while the env is unset, so they ship applied-always with zero default-path behavior change. Forensics + measurements: club-3090#609."
         evidence: "models/qwen3.6-27b/vllm/patches/w4a8-int8-act/README.md; club-3090#609 (c-17664346 + c-17666873); docs/UPSTREAM.md W4A8 rows"
     delivery:               # DEPRECATED/READ-ONLY (test-only) — see header
@@ -1643,3 +1646,219 @@ patches:
         SGLang ships, in the sglang-stable pin, a per-request reasoning budget chosen from the
         effort (or a native field that covers the explicit alias and the map). If only #36750
         lands, drop the protocol edit (thinking_token_budget) and keep the hooks.
+
+  # ---- Qwen3.8-Flash-Next on stock vLLM v0.32.0 (engine vllm-stable), 2x 64 GB cards (club-3090#1736) ----
+  # qwen4exp-ple-fp8-bytecopy was retired on v0.32.0: upstream vllm#60142 copies FP8 PLE rows
+  # as bytes, the same fix. All six are wired only on vllm/qwen38-flash-next-dual. Each installer is
+  # marker-gated and anchor-checked: a missing or repeated anchor exits 1 and the
+  # entrypoint stops the boot (never a silent half-wire).
+  - id: qwen4exp-pp-ple-rank0
+    model: [qwen3.8-flash-next]
+    files:
+      - models/qwen3.8-flash-next/vllm/patches/qwen4exp-pp-ple-rank0/install.sh
+      - models/qwen3.8-flash-next/vllm/patches/qwen4exp-pp-ple-rank0/patch_pp_ple_rank0.py
+    load_bearing_when:
+      - composes: [vllm/qwen38-flash-next-dual]
+        reason: "Stock vLLM (v0.31.0 through v0.32.0) refuses --pipeline-parallel-size > 1 for any Qwen4Exp model with an n-gram PLE. Flash-Next's only PLE layer is decoder layer 1, always on rank 0, so the refusal is stricter than needed. PP=2 is the layout that won on cards without P2P (TP saturates a Gen2 link: 45/63 vs 117/163 tok/s narr/code, #1735)."
+        evidence: "models/qwen3.8-flash-next/vllm/patches/qwen4exp-pp-ple-rank0/README.md; club-3090#1735"
+    delivery:
+      dockerfile_bake: false
+      entrypoint_invoke: true
+      genesis: false
+    delivery_gaps: []
+    delivery_mechanism: install_script
+    delivery_spec:
+      script: models/qwen3.8-flash-next/vllm/patches/qwen4exp-pp-ple-rank0/install.sh
+      mounted_at: /etc/club3090/pp-ple-rank0
+      invoke: "bash /etc/club3090/pp-ple-rank0/install.sh"
+      invoked_before: vllm-serve
+      wired_at: [volumes, entrypoint]
+      note: "Three edits (model config check, worker-side check, per-rank KV group allocation). Port of the PP parts of Minachist's flash-next-vllm.patch (Apache-2.0)."
+    drift_guard:
+      kind: boot
+      check: "Boot log carries '[qwen4exp-pp-ple-rank0] applied'; anchor drift -> REFUSE + exit 1. Verified to apply on v0.31.0, v0.32.0rc3 and v0.32.0."
+      on_fail: refuse-to-boot
+    capability: qwen4exp-pipeline-parallel
+    foundational: true
+    upstream:
+      ref: "vllm#60234 (open: PP for Qwen4Exp PLE models and their MTP drafter; builds on #61016, merged 2026-10-15 after v0.32.0); also #56444 (open). Ours is a port of Minachist's local patch (huggingface.co/Minachist/Qwen3.8-Flash-Next-INT4-Mixed-AutoRound, vllm-patch/)"
+      status: local-vendored
+      drop_when: "vllm#60234 (or #56444) is in the vllm-stable pin; that pin will also carry #62129 (speculative warmup deadlock under PP, merged 2026-10-18, after v0.32.0)"
+      criticality: "EXCEPTION CLASS (AGENTS.md upstream-first; maintainer decision 2026-10-19, #1736: kept for vllm/qwen38-flash-next-dual only). Criticality: without it the slug cannot start. Stock vLLM (v0.31.0, v0.32.0) refuses PP > 1 for Qwen4Exp models with an n-gram PLE, and PP=2 is this slug's only layout. vllm#60234 covers it but builds on #61016, merged after v0.32.0, so it can't be vendored on this pin."
+    status: verified
+
+  - id: qwen4exp-mtp-pp
+    model: [qwen3.8-flash-next]
+    files:
+      - models/qwen3.8-flash-next/vllm/patches/qwen4exp-mtp-pp/install.sh
+      - models/qwen3.8-flash-next/vllm/patches/qwen4exp-mtp-pp/mtp-pp.diff
+    load_bearing_when:
+      - composes: [vllm/qwen38-flash-next-dual]
+        reason: "Under PP>1 the Qwen4ExpMTP drafter branches on the global PP rank and asserts 'intermediate_tensors is not None' in the profiling run. MTP n=3 is worth ~1.6x decode at c=1 on this layout (n=0 73 vs n=3 117 narr tok/s, #1735)."
+        evidence: "models/qwen3.8-flash-next/vllm/patches/qwen4exp-mtp-pp/README.md; club-3090#1735"
+    delivery:
+      dockerfile_bake: false
+      entrypoint_invoke: true
+      genesis: false
+    delivery_gaps: []
+    delivery_mechanism: install_script
+    delivery_spec:
+      script: models/qwen3.8-flash-next/vllm/patches/qwen4exp-mtp-pp/install.sh
+      mounted_at: /etc/club3090/mtp-pp
+      invoke: "bash /etc/club3090/mtp-pp/install.sh"
+      invoked_before: vllm-serve
+      wired_at: [volumes, entrypoint]
+      note: "Applies the mtp.py hunks of Minachist's flash-next-mtp-01-enable.patch (Apache-2.0) with patch --dry-run first; skipped when SPEC_N=0."
+    drift_guard:
+      kind: boot
+      check: "Boot log carries '[qwen4exp-mtp-pp] applied'; a hunk that fails the dry run -> REFUSE + exit 1. verify-full reports MTP acceptance (2.5 accepted tokens per step at n=3)."
+      on_fail: refuse-to-boot
+    capability: qwen4exp-mtp-under-pp
+    foundational: false
+    upstream:
+      ref: "vllm#60234 (open; covers the MTP drafter under PP too). Ours is Minachist's local vLLM patch (vllm-patch/3x24GB+MTP/)"
+      status: local-vendored
+      drop_when: "vllm#60234 is in the vllm-stable pin"
+      criticality: "EXCEPTION CLASS (AGENTS.md upstream-first; maintainer decision 2026-10-19, #1736: kept for vllm/qwen38-flash-next-dual only). Criticality: a crash. The MTP drafter hits `assert intermediate_tensors is not None` under PP in the memory-profiling run (v0.31.0, PP=2), and MTP is this slug's default. vllm#60234 covers it, with the same pin limit as qwen4exp-pp-ple-rank0."
+    status: verified
+
+  - id: qwen4exp-mtp-draft-head
+    model: [qwen3.8-flash-next]
+    files:
+      - models/qwen3.8-flash-next/vllm/patches/qwen4exp-mtp-draft-head/install.sh
+      - models/qwen3.8-flash-next/vllm/patches/qwen4exp-mtp-draft-head/patch_mtp_draft_head.py
+      - models/qwen3.8-flash-next/vllm/patches/qwen4exp-mtp-draft-head/quantize_lm_head.py
+    load_bearing_when:
+      - composes: [vllm/qwen38-flash-next-dual]
+        reason: "Performance, not correctness: gives the MTP drafter an INT4 g128 copy of lm_head instead of the target's 1.27 GiB BF16 head, read three times per step at n=3. sparkDash c=8 aggregate code 668 -> 754, json 745 -> 809 tok/s at 175 W. The target's verify pass keeps its own head, so only acceptance can change. DRAFT_HEAD=0 turns it off."
+        evidence: "models/qwen3.8-flash-next/vllm/patches/qwen4exp-mtp-draft-head/README.md; club-3090#1735 (2026-10-18 comment)"
+    delivery:
+      dockerfile_bake: false
+      entrypoint_invoke: true
+      genesis: false
+    delivery_gaps: []
+    delivery_mechanism: install_script
+    delivery_spec:
+      script: models/qwen3.8-flash-next/vllm/patches/qwen4exp-mtp-draft-head/install.sh
+      mounted_at: /etc/club3090/mtp-draft-head
+      invoke: "bash /etc/club3090/mtp-draft-head/install.sh"
+      invoked_before: vllm-serve
+      wired_at: [volumes, entrypoint]
+      note: "Builds <engine cache>/draft-head/<draft>-w4a16-g128.safetensors on first boot (~10 s CPU, MSE scale search) from the draft's lm_head.weight, then patches Qwen4ExpMTP and eagle/utils.py. No-op while VLLM_MTP_DRAFT_HEAD_PATH is unset. V2 model runner, TP=1 per stage. Port of AlexBrandes/vllm 14457f89e; quantize_lm_head.py is MIT."
+    drift_guard:
+      kind: boot
+      check: "Boot log carries '[qwen4exp-mtp-draft-head] applied' and the drafter reports the quantized head; anchor drift -> REFUSE + exit 1. Acceptance stays within noise of the BF16 head (verify-full MTP check)."
+      on_fail: refuse-to-boot
+    capability: mtp-int4-draft-head
+    foundational: false
+    upstream:
+      ref: "AlexBrandes/vllm 14457f89e (fork commit, not an upstream PR)"
+      status: local-vendored
+      drop_when: "stock vLLM lets an MTP/EAGLE drafter carry its own quantized lm_head"
+      criticality: "EXCEPTION CLASS (AGENTS.md upstream-first; maintainer decision 2026-10-19, #1736: kept for vllm/qwen38-flash-next-dual only). A speed patch, not a fix: an INT4 draft lm_head instead of the target's BF16 head, on by default. Measured +6-13% aggregate at c=1/c=8 on 2x CMP 170HX (2026-10-18), acceptance unchanged. Its source is a fork commit (AlexBrandes/vllm 14457f89e), with no upstream PR. Kept as a capability."
+    status: verified
+
+  - id: qwen4exp-ple-mmap
+    model: [qwen3.8-flash-next]
+    files:
+      - models/qwen3.8-flash-next/vllm/patches/qwen4exp-ple-mmap/install.sh
+      - models/qwen3.8-flash-next/vllm/patches/qwen4exp-ple-mmap/ple-mmap-v0.32.0.diff
+    load_bearing_when:
+      - composes: [vllm/qwen38-flash-next-dual]
+        reason: "PLE_PLACEMENT=nvme (the default): keeps the 51.2 GB FP8 PLE table in a memory-mapped file on NVMe instead of pinned host RAM. Host RAM ~19 GB vs ~83 GB with decode within 3% (117/163 vs 120/165 narr/code, #1735). PLE_PLACEMENT=ram skips it."
+        evidence: "models/qwen3.8-flash-next/vllm/patches/qwen4exp-ple-mmap/README.md; club-3090#1735"
+    delivery:
+      dockerfile_bake: false
+      entrypoint_invoke: true
+      genesis: false
+    delivery_gaps: []
+    delivery_mechanism: install_script
+    delivery_spec:
+      script: models/qwen3.8-flash-next/vllm/patches/qwen4exp-ple-mmap/install.sh
+      mounted_at: /etc/club3090/ple-mmap
+      invoke: "bash /etc/club3090/ple-mmap/install.sh"
+      invoked_before: vllm-serve
+      wired_at: [volumes, entrypoint]
+      note: "Minachist's mmap + host gather + prefetch design, ported to v0.32.0 as a unified diff (the v0.31.0 port moved to the new start_prefetch(ngram_ids) / finalize_prefetch(total_tokens) interface and the reduce_results argument). Writes the table file on first boot (VLLM_PLE_MMAP_PATH). PP only (ETP=1)."
+    drift_guard:
+      kind: boot
+      check: "install.sh refuses any vLLM version without a ple-mmap-v<version>.diff (only 0.32.0 today); a failed dry run -> exit 1. Boot log carries '[qwen4exp-ple-mmap] applied'."
+      on_fail: refuse-to-boot
+    capability: qwen4exp-ple-on-nvme
+    foundational: false
+    upstream:
+      ref: "vllm#58815 (open: host_file_gather, reads the PLE rows in place from the checkpoint shards). Ours is a port of Minachist's local vLLM patch set (decode-01/02/06, ttft-01)"
+      status: local-vendored
+      drop_when: "vllm#58815 is in the vllm-stable pin. Until then every pin bump needs a ple-mmap-v<version>.diff first (PLE_PLACEMENT=ram boots without it)"
+      criticality: "EXCEPTION CLASS (AGENTS.md upstream-first; maintainer decision 2026-10-19, #1736: kept for vllm/qwen38-flash-next-dual only). Not a crash fix: it keeps the 51.2 GB FP8 PLE table in a memory-mapped file instead of ~48 GiB of pinned host RAM, which the default PLE_PLACEMENT=nvme relies on. PLE_PLACEMENT=ram runs without it. vllm#58815 (open) does the same job a different way. Kept as a capability."
+    status: verified
+
+  - id: qwen4exp-qsa-fp8kv-ampere
+    model: [qwen3.8-flash-next]
+    files:
+      - models/qwen3.8-flash-next/vllm/patches/qwen4exp-qsa-fp8kv-ampere/install.sh
+      - models/qwen3.8-flash-next/vllm/patches/qwen4exp-qsa-fp8kv-ampere/patch_qsa_fp8kv_ampere.py
+    load_bearing_when:
+      - composes: [vllm/qwen38-flash-next-dual]
+        reason: "fp8_e4m3 KV (the default): the QSA sparse-attention kernel reads the cache through float8_e4m3fn pointers and fails to compile below SM89. Passing uint8 and decoding e4m3 in registers (exact for all finite codes) gives the FP8 pool: 1.03M -> 1.80M tokens, decode -2..-3%, needles 6K/42K/96K pass. On v0.32.0 the fused QSA prepare (vllm#57097) also writes the cache through an fp8e4nv cast; below SM89 with FP8 KV it is turned off, so the write takes the unfused reshape_and_cache path. KV_CACHE_DTYPE=auto skips both."
+        evidence: "models/qwen3.8-flash-next/vllm/patches/qwen4exp-qsa-fp8kv-ampere/README.md; club-3090#1735"
+    delivery:
+      dockerfile_bake: false
+      entrypoint_invoke: true
+      genesis: false
+    delivery_gaps: []
+    delivery_mechanism: install_script
+    delivery_spec:
+      script: models/qwen3.8-flash-next/vllm/patches/qwen4exp-qsa-fp8kv-ampere/install.sh
+      mounted_at: /etc/club3090/qsa-fp8kv
+      invoke: "bash /etc/club3090/qsa-fp8kv/install.sh"
+      invoked_before: vllm-serve
+      wired_at: [volumes, entrypoint]
+      note: "Two edits: ops/qsa.py (read as bytes + e4m3 decode; halt95's, Merlin engine, Apache-2.0) and nvidia/qsa.py (use_fused_qsa_prepare off for FP8 KV below SM89; skipped on builds without the fused prepare). SM89+ keeps the native paths."
+    drift_guard:
+      kind: boot
+      check: "Boot log carries '[qwen4exp-qsa-fp8kv-ampere] applied'; anchor drift -> REFUSE + exit 1. verify-stress needle ladder to 240,662 tokens passes with FP8 KV."
+      on_fail: refuse-to-boot
+    capability: qwen4exp-fp8-kv-ampere
+    foundational: false
+    upstream:
+      ref: "none open: vllm#59943 and #60491 (QSA FP8 KV below sm_89) closed unmerged; #54846 (open) targets SM120. To be filed upstream, crediting halt95/Merlin for the e4m3 decode (docs/UPSTREAM.md row)"
+      status: ours
+      drop_when: "stock QSA kernels read and write e4m3 without fp8e4nv on sm_80/86"
+      criticality: "EXCEPTION CLASS (AGENTS.md upstream-first; maintainer decision 2026-10-19, #1736: kept for vllm/qwen38-flash-next-dual only). Not a crash fix as shipped: stock QSA can't compile fp8_e4m3 below sm_89, so this slug's default fp8 KV needs it on sm_80. It halves the KV per token, which buys concurrency. No upstream PR (#59943 and #60491 closed unmerged; #54846 targets SM120). Kept as a capability."
+    status: verified
+
+  - id: w4a8-inc-moe
+    model: [qwen3.8-flash-next]
+    files:
+      - models/qwen3.8-flash-next/vllm/patches/w4a8-inc-moe/install.sh
+      - models/qwen3.8-flash-next/vllm/patches/w4a8-inc-moe/patch_w4a8_inc_moe.py
+    load_bearing_when:
+      - composes: [vllm/qwen38-flash-next-dual]
+        reason: "Opt-in W4A8=1 only (VLLM_MARLIN_INPUT_DTYPE=int8). Without it an AutoRound MoE model answers '!!!!' and a compressed-tensors MoE drafter loses most of its acceptance. Four bugs in the Marlin MoE int8-activation path: INC never sets the expert input dtype, an inverted size_bits assert, the int8 global scale never reaching the kernel (GPTQ and compressed-tensors methods), and negative AutoRound group scales. This is the MoE follow-up the qwen-w4a8-int8-act row left open. GSM8K 386/400 vs 388/400 W4A16; prefill +6-9%, decode mixed, so it stays off by default."
+        evidence: "models/qwen3.8-flash-next/vllm/patches/w4a8-inc-moe/README.md; club-3090#1735"
+    delivery:
+      dockerfile_bake: false
+      entrypoint_invoke: true
+      genesis: false
+    delivery_gaps: []
+    delivery_mechanism: install_script
+    delivery_spec:
+      script: models/qwen3.8-flash-next/vllm/patches/w4a8-inc-moe/install.sh
+      mounted_at: /etc/club3090/w4a8-moe
+      invoke: "bash /etc/club3090/w4a8-moe/install.sh"
+      invoked_before: vllm-serve
+      wired_at: [volumes, entrypoint]
+      note: "Runs after qwen-w4a8-int8-act. install.sh exits 0 unless VLLM_MARLIN_INPUT_DTYPE=int8; all anchors are checked before any file is written."
+    drift_guard:
+      kind: behavioral
+      check: "With W4A8=1: coherent output and GSM8K within noise of W4A16; a kernel-level test of fused_marlin_moe against a torch reference (signed and unsigned scales, bf16 and int8 activations) stays near bf16 error. Anchor drift with the env set -> REFUSE + exit 1."
+      on_fail: refuse-to-boot
+    capability: w4a8-int8-activations-moe
+    foundational: false
+    upstream:
+      ref: "bug 1 ~ vllm#49039 (open), bug 3 ~ #61405 (open, compressed-tensors side), bug 4 ~ #48926 / #59895 (open); bug 2 (inverted size_bits assert) has no PR. Companions of vllm#48904 / #48905 (dense path)"
+      status: ours
+      drop_when: "all four fixes are in the vllm-stable pin"
+      criticality: "EXCEPTION CLASS (AGENTS.md upstream-first; maintainer decision 2026-10-19, #1736: kept for vllm/qwen38-flash-next-dual only). Criticality: a measured corruption. With W4A8 on, every answer is `!!!!!!!!` on stock v0.31.0 plus w4a8-int8-act. W4A8 is opt-in here (W4A8=0 by default), and the patch is a no-op without int8 activations. Bugs 1, 3 and 4 have open PRs (#49039, #61405, #48926 / #59895); bug 2 has none."
+    status: verified
