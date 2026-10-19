@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export CLUB3090_CONFIG_DIR=/nonexistent/club-3090-test-config   # tests never read your real settings (#1466)
+export PYTHONUTF8="${PYTHONUTF8:-1}"
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 TMP_DIR="$(mktemp -d)"
@@ -272,5 +273,80 @@ services:
 YAML
 out="$(run_deps "$target_compose" "${TMP_DIR}/bucko-empty")"
 [[ -z "$out" ]] || { echo "ASSERTION FAILED: a /models mount target was checked as weights: $out" >&2; exit 1; }
+
+# #1742, on the REAL composes. HyperQwen mounts the dir ABOVE its weights
+# (qwen3.8-27b-hyperqwen/, where prepare also writes a -fast copy), and no weights
+# entry is that dir, so preflight offered nothing for the 19 GB base. And the DFlash2
+# drafter dir is an entry of both qwen3.8-27b and thinkingcap-qwen3.8-27b: the tie went
+# to ThinkingCap, whose setup then suggested an SGLang ThinkingCap slug.
+hq_compose="${ROOT_DIR}/models/qwen3.8-27b/vllm-hyperqwen/compose/single/hyperqwen-w4a16/dflash2.yml"
+mkdir -p "${TMP_DIR}/hq-empty"
+out="$(expect_missing "$hq_compose" "${TMP_DIR}/hq-empty")"
+assert_contains "$out" "${TMP_DIR}/hq-empty/qwen3.8-27b-hyperqwen (MODEL_DIR volume path)"
+assert_contains "$out" "--local-dir \$MODEL_DIR/qwen3.8-27b-hyperqwen/Qwen3.8-27B-W4A16-AutoRound"
+assert_contains "$out" "WEIGHT_KEY=qwen3.8-27b:hyperqwen-w4a16 bash scripts/setup.sh qwen3.8-27b"
+assert_contains "$out" "WITH_DFLASH_DRAFT=1 bash scripts/setup.sh qwen3.8-27b"
+assert_not_contains "$out" "thinkingcap"
+assert_not_contains "$out" "Check the compose header"
+# The issue's second attempt: the drafter on disk, the base still missing.
+mkdir -p "${TMP_DIR}/hq-draft/qwen3.8-27b-dflash2-w4a16"
+out="$(expect_missing "$hq_compose" "${TMP_DIR}/hq-draft")"
+assert_contains "$out" "WEIGHT_KEY=qwen3.8-27b:hyperqwen-w4a16 bash scripts/setup.sh qwen3.8-27b"
+assert_not_contains "$out" "Check the compose header"
+# POSITIVE CONTROL: the base where setup.sh puts it, plus the drafter → no complaint.
+mkdir -p "${TMP_DIR}/hq-draft/qwen3.8-27b-hyperqwen/Qwen3.8-27B-W4A16-AutoRound"
+out="$(run_deps "$hq_compose" "${TMP_DIR}/hq-draft")"
+[[ -z "$out" ]] || { echo "ASSERTION FAILED: HyperQwen weights present but reported: $out" >&2; exit 1; }
+# The shared drafter: a Qwen3.8-27B compose gets its own model's recipe, and a
+# ThinkingCap compose still gets ThinkingCap's.
+out="$(expect_missing "${ROOT_DIR}/models/qwen3.8-27b/vllm/compose/dual/autoround-int4/dflash2.yml" "${TMP_DIR}/hq-empty")"
+assert_contains "$out" "WITH_DFLASH_DRAFT=1 bash scripts/setup.sh qwen3.8-27b"
+assert_not_contains "$out" "thinkingcap"
+out="$(expect_missing "${ROOT_DIR}/models/thinkingcap-qwen3.8-27b/vllm/compose/dual/autoround-int4/dflash2.yml" "${TMP_DIR}/hq-empty")"
+assert_contains "$out" "WITH_DFLASH_DRAFT=1 bash scripts/setup.sh thinkingcap-qwen3.8-27b"
+
+# The fetch offer itself, which needs a terminal: the real HyperQwen compose under
+# `script`, with setup.sh stubbed to log its call and create the dir it was asked for.
+# It must fetch through the compose's model with SETUP_FOR_LAUNCH=1 (so setup.sh skips
+# the next steps that name another slug), and a fetch whose re-check still fails must
+# print the Skip line once: #1742 printed it twice.
+if ! command -v script >/dev/null 2>&1; then
+  echo "ASSERTION FAILED: util-linux 'script' is required for the fetch-offer coverage" >&2
+  exit 1
+fi
+fake_root="${TMP_DIR}/fake-root"
+mkdir -p "${fake_root}/scripts" "${TMP_DIR}/fake-bin"
+ln -s "${ROOT_DIR}/scripts/lib" "${fake_root}/scripts/lib"
+ln -s "${ROOT_DIR}/scripts/preflight.sh" "${fake_root}/scripts/preflight.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "${TMP_DIR}/fake-bin/hf"
+cat > "${fake_root}/scripts/setup.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "setup.sh $* WEIGHT_KEY=${WEIGHT_KEY:-} SETUP_FOR_LAUNCH=${SETUP_FOR_LAUNCH:-}" >> "${STUB_LOG}"
+[[ "${STUB_FETCH}" == "1" ]] || exit 0
+sub="$(python3 "$(dirname "$0")/lib/profiles/weights.py" entry "${WEIGHT_KEY}" | sed -n 's/^WEIGHT_SUBDIR=//p')"
+mkdir -p "${MODEL_DIR}/${sub}"
+STUB
+chmod +x "${TMP_DIR}/fake-bin/hf" "${fake_root}/scripts/setup.sh"
+run_fetch() {   # <model dir> <1 = the stub creates the dirs, 0 = it doesn't>
+  printf 'y\n' | STUB_LOG="${TMP_DIR}/stub-$2.log" STUB_FETCH="$2" MODEL_DIR="$1" \
+    ROOT_DIR="$fake_root" PATH="${TMP_DIR}/fake-bin:${PATH}" \
+    script -qec "bash -c 'source \"${fake_root}/scripts/preflight.sh\"; preflight_compose_deps \"${hq_compose}\"; echo \"rc=\$?\"'" /dev/null 2>&1
+}
+mkdir -p "${TMP_DIR}/hq-fetch-ok" "${TMP_DIR}/hq-fetch-fail"
+out="$(run_fetch "${TMP_DIR}/hq-fetch-ok" 1)"
+assert_contains "$out" "rc=0"
+log="$(cat "${TMP_DIR}/stub-1.log")"
+assert_contains "$log" "setup.sh qwen3.8-27b WEIGHT_KEY=qwen3.8-27b:hyperqwen-w4a16 SETUP_FOR_LAUNCH=1"
+assert_contains "$log" "setup.sh qwen3.8-27b WEIGHT_KEY=qwen3.8-27b:dflash2 SETUP_FOR_LAUNCH=1"
+assert_not_contains "$log" "thinkingcap"
+out="$(run_fetch "${TMP_DIR}/hq-fetch-fail" 0)"
+assert_contains "$out" "rc=1"
+skip_lines="$(command grep -c 'Skip this check' <<< "$out" || true)"
+if [[ "$skip_lines" != "1" ]]; then
+  echo "ASSERTION FAILED: expected the Skip line once after a failed fetch, got ${skip_lines}" >&2
+  echo "--- output ---" >&2
+  echo "$out" >&2
+  exit 1
+fi
 
 echo "test-preflight-compose-deps: ok"
