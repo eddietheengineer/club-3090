@@ -36,10 +36,13 @@ RUN cmake -S /src -B /build -G Ninja -DCMAKE_BUILD_TYPE=Release \
         -DSTRATA_ENABLE_CUDA=ON "-DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES}" \
         -DSTRATA_NATIVE_EXPERTS=ON -DSTRATA_BUILD_TESTS=OFF -DSTRATA_PORTABLE=ON \
         -DSTRATA_GGML_DIR=/llama.cpp
-RUN jobs="${JOBS:-$(( $(nproc) / 2 ))}"; [ "$jobs" -ge 1 ] || jobs=1; \
-    cmake --build /build --target strata -j "$jobs"
+# The engine's target: `maya` since v1.1.16, `strata` before (v1.1.16 renamed the programs after Maya)
+RUN target=strata; grep -q -E '^ *add_executable\(maya ' /src/CMakeLists.txt && target=maya; \
+    echo "$target" > /tmp/engine-target; \
+    jobs="${JOBS:-$(( $(nproc) / 2 ))}"; [ "$jobs" -ge 1 ] || jobs=1; \
+    cmake --build /build --target "$target" -j "$jobs"
 # the CPU settings and archs the tree was configured with, read by build.sh's checks
-RUN mkdir -p /out && cp /build/strata /out/strata \
+RUN mkdir -p /out/bin && t="$(cat /tmp/engine-target)" && cp "/build/$t" "/out/bin/$t" \
     && grep -E '^(STRATA_PORTABLE|GGML_NATIVE|GGML_AVX[A-Z0-9_]*|GGML_FMA|GGML_F16C|GGML_BMI2|GGML_AMX_[A-Z0-9_]*):' \
          /build/CMakeCache.txt | sed 's/^/build /' > /out/maya-cpu-flags.txt \
     && sed -n 's/^CMAKE_CUDA_ARCHITECTURES:[A-Z]*=//p' /build/CMakeCache.txt > /out/cuda-architectures.txt
@@ -66,7 +69,8 @@ RUN python3 -m venv /opt/maya/.venv \
     && /opt/maya/.venv/bin/pip install --no-cache-dir numpy jinja2 regex pyyaml tqdm requests pillow psutil \
     && mkdir -p /opt/club3090 \
     && /opt/maya/.venv/bin/pip freeze > /opt/club3090/maya-pip-freeze.txt
-COPY --from=build /out/strata /opt/maya/build/strata
+# the engine under the release's own name: /opt/maya/build/maya (v1.1.16 on) or /opt/maya/build/strata
+COPY --from=build /out/bin/ /opt/maya/build/
 COPY --from=build /out/maya-cpu-flags.txt /out/cuda-architectures.txt /opt/club3090/
 
 WORKDIR /opt/maya

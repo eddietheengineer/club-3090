@@ -114,11 +114,14 @@ PY
   say "check: archs $CUDA_ARCHITECTURES, VERSION $version"
 
   # libcuda / libnvidia-* come from the host driver at run time, so only those may be missing here
-  missing="$("${run[@]}" ldd "$ref" /opt/maya/build/strata | command grep 'not found' \
+  # the engine is build/maya from v1.1.16 on (the release renamed its programs), build/strata before
+  engine="$("${run[@]}" sh "$ref" -c 'for e in /opt/maya/build/maya /opt/maya/build/strata; do [ -x "$e" ] && { echo "$e"; exit 0; }; done; exit 1')" \
+    || die "$ref has no engine at /opt/maya/build/maya or /opt/maya/build/strata"
+  missing="$("${run[@]}" ldd "$ref" "$engine" | command grep 'not found' \
              | command grep -v -E 'libcuda\.so|libnvidia' || true)"
   [[ -z "$missing" ]] || die "libraries missing from the image:
 $missing"
-  say "check: every library resolves except the host driver's"
+  say "check: every library of $engine resolves except the host driver's"
 
   help="$("${run[@]}" /opt/maya/.venv/bin/python "$ref" /opt/maya/serve/server.py --help 2>&1)" \
     || die "serve/server.py --help failed:

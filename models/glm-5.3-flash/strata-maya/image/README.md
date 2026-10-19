@@ -26,7 +26,7 @@ Two stages on NVIDIA's CUDA 13.0 images (so the host needs a driver ≥ 580):
    - **`CMAKE_CUDA_ARCHITECTURES=75;80;86;89;120`** (RTX 20 / 30 / 40 / 50 and the A-series) instead of the
      user's own cards: a fat binary, one cubin per arch.
 2. **Runtime** (`-runtime`, which carries cudart and cuBLAS): the release's files in `/opt/maya`
-   (less `.git`, tests, benches and test dumps), llama.cpp's `gguf-py` in `third_party/llama.cpp/` where `setup.py` puts it (the pack builder reads the tokenizer with it), the engine at `/opt/maya/build/strata`, and a
+   (less `.git`, tests, benches and test dumps), llama.cpp's `gguf-py` in `third_party/llama.cpp/` where `setup.py` puts it (the pack builder reads the tokenizer with it), the engine at `/opt/maya/build/maya` (`build/strata` for releases before v1.1.16, which renamed its programs after Maya), and a
    `.venv` with `setup.py`'s `PY_PACKAGES` less the build tools (the versions pip took are in
    `/opt/club3090/maya-pip-freeze.txt`). `MAYA_UPDATE_CHECK=0`: the dashboard's self-update does a
    `git` fast-forward, which an image can't do.

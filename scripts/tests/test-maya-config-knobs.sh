@@ -7,7 +7,8 @@
 #   3. the config is rewritten from scratch each time, so a setting removed is gone;
 #   4. a bad value exits 2 from `validate` and stops maya_prepare.py's main() before any shard work;
 #   5. every key a setting writes has evidence that the pinned Maya reads it (engine_config_reads.py check:
-#      a new setting needs an entry in engine-config-reads.json).
+#      a new setting needs an entry in engine-config-reads.json);
+#   6. "exe" names the image's engine: build/maya (Maya v1.1.16 on), else build/strata, else build/maya.
 set -uo pipefail
 export PYTHONDONTWRITEBYTECODE=1   # the launcher folder is mounted into the container: leave no __pycache__
 export CLUB3090_CONFIG_DIR=/nonexistent/club-3090-test-config   # tests never read your real settings (#1466)
@@ -76,6 +77,22 @@ err="$(env $(clean) REASONING_EFFORT=minimal python3 "$L/maya_prepare.py" --tag 
 
 echo "== 5. the pinned engine reads every key a setting writes (engine-config-reads.json; no docker)"
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/lib/profiles/engine_config_reads.py check --engine strata-maya || rc=1
+
+echo "== 6. exe: the engine the image has (v1.1.16 renamed build/strata to build/maya)"
+for case in "maya strata:build/maya" "strata:build/strata" "maya:build/maya" ":build/maya"; do
+  have="${case%%:*}" want="${case#*:}" m="$work/opt-maya-${have// /-}"
+  mkdir -p "$m/build"; for e in $have; do : > "$m/build/$e"; done
+  got="$(python3 - "$L" "$m" <<'PY'
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import maya_prepare
+maya_prepare.MAYA = Path(sys.argv[2])
+print(maya_prepare.engine().relative_to(maya_prepare.MAYA))
+PY
+)"
+  [[ "$got" == "$want" ]] && ok "image with [${have:-none}] -> $got" || bad "image with [${have:-none}]: exe $got, want $want"
+done
 
 if [[ "$rc" -eq 0 ]]; then echo "test-maya-config-knobs: ok"; else echo "test-maya-config-knobs: FAILED" >&2; fi
 exit "$rc"
