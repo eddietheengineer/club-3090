@@ -13,7 +13,7 @@ runs twice, and the glue scenarios import the PATCHED modules in a fresh interpr
   4. scenarios    real ChatCompletionRequest / AnthropicMessagesRequest objects through the
                   REAL patched _convert_to_internal_request and _convert_to_chat_completion_request;
                   the serving objects around them are stubs (no tokenizer, no GPU), and the stub
-                  _process_messages replicates v0.5.21's server-default merge (setdefault) and
+                  _process_messages replicates v0.5.21-v0.5.22's server-default merge (setdefault) and
                   require_reasoning = (enable_thinking is not False)
 """
 from __future__ import annotations
@@ -173,7 +173,7 @@ class StubChat:
         self.template_manager = types.SimpleNamespace(reasoning_config=None)
         self.tokenizer_manager = types.SimpleNamespace(model_config=types.SimpleNamespace(is_multimodal=False))
     def _process_messages(self, request, is_multimodal):
-        # replicates v0.5.21 _process_messages' server-default merge (setdefault) ...
+        # replicates v0.5.21-v0.5.22 _process_messages' server-default merge (setdefault) ...
         if self.default_chat_template_kwargs:
             ctk = dict(request.chat_template_kwargs or {})
             for k, v in self.default_chat_template_kwargs.items():
@@ -186,6 +186,8 @@ class StubChat:
         return MessageProcessingResult(prompt="", prompt_ids=[1, 2, 3], image_data=None, audio_data=None,
                                        video_data=None, modalities=[], stop=[], require_reasoning=thinking)
     def _engine_prompt(self, pm, is_multimodal): return "input_ids", pm.prompt_ids
+    # v0.5.22+: the real one starts with `is_multimodal and ...`, so it is False on this text-only stub
+    def _can_reuse_text_only_prompt_ids(self, pm, is_multimodal): return False
     def extract_custom_labels(self, raw): return None
     def extract_routed_dp_rank_from_header(self, raw, rank): return rank
     def _resolve_lora_path(self, model, lora_path): return lora_path
