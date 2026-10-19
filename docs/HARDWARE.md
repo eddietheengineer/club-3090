@@ -171,7 +171,7 @@ Mixed workloads: pick 290W (the prefill cost at 290W is only -5% vs prefill's ow
 
 **Cooling caveat**: the 388W stock numbers above are from a water-cooled rig (Alphacool Eiswolf 2 AIO 360mm) — that's what lets the card actually sustain full board power. On **air-cooled 3090s**, thermal throttling typically kicks in at ~80°C and drops effective power to ~310-340W under sustained decode load even with no software cap, so 388W → 330W gap mostly disappears — your "stock" was likely already 330W-equivalent. The 330W cap mainly helps liquid-cooled rigs by keeping the card cooler + quieter at near-zero perf cost; on air-cooled it's a soft no-op that just makes the throttling explicit.
 
-For dual-card: combined power at 330W cap each = ~660W under heavy load — verify your PSU has at least 850W single rail. Do not assume the single-card knee carries over: the TP=2 anchor below is already flat from 220–330W/card on `dual-fast`.
+For dual-card: combined power at 330W cap each = ~660W under heavy load — verify your PSU has at least 850W single rail. Do not assume the single-card knee carries over, in either direction: the TP=2 anchor below was flat from 220–330W/card on `dual-fast` on one rig, while a second TP=2 sweep lost 13% at 220W (see the caveat there).
 
 ### Cross-rig power-cap data (anchor points)
 
@@ -294,9 +294,11 @@ The cross-workload pattern: **both workload classes have efficiency knee at 400W
 *Single-card 3090, air-cooled + Qwen3.6-27B Q3_K_XL + mainline llama.cpp, 21-cap **prefill-heavy** sweep 190-390W via adaptive prompt calibration (probe TPS at 390W → size prompt for 10s prefill at high cap → 11K-token prompt used across all caps). **Total wall: ~6m.** Yellow callout: **250W sweet spot (3.633 prefill TPS/W, SM 1350 MHz)** at **68% of stock TDP** — different sweet spot than decode-single's 290W on the same rig because prefill is more compute-bound and reaches diminishing returns earlier. Boost-clock plateau visible at 330-370W: SM clock locks at 1605-1620 MHz across all five caps with identical 327W draw + 1050 prefill TPS. Plateau escapes at 380W → SM 1665 MHz, draw 355W, TPS 1080. Companion to the decode chart above; together they show **same card has different power-knee for different workload class** — and both workloads share the same firmware boost-clock plateau pattern, just with slightly different clock setpoints.*
 
 
-#### Dual-card TP=2 anchor — no decode knee above 220W/card
+#### Dual-card TP=2 anchor — no decode knee above 220W/card on one rig
 
 [@alesha-pro's 4× 3090 rig](https://github.com/noonghunna/club-3090/discussions/773) swept the two cards serving `dual-fast` TP=2 from **220 to 330W/card**. Decode TPS stayed flat within noise while combined draw rose **44%**, SM clock rose **24%**, and memory clock remained pinned at **9501 MHz**. That is a bandwidth-bound decode workload: extra core clock cannot buy token throughput. For this topology/workload, the measured knee is therefore **at or below 220W/card**; it does not contradict the 290W single-card anchor above.
+
+**Caveat — a second TP=2 sweep found a knee (2026-10-19).** [@jin89ho's 2× 3090 rig](https://github.com/noonghunna/club-3090/issues/1746) capped both cards serving Qwen3.8-27B (Swift 1.5, W4A16 AutoRound) at TP=2 on vLLM 0.31.0, replaying a 24-turn agent session on a 60K-token prompt. Against 260W/card, decode fell **13% at 220W**, **30% at 200W** and **45% at 180W** (101.9 → 88.4 → 71.5 → 55.6 tok/s); energy per token was lowest near 220W (6.86 vs 7.15 J/token at 260W). Both sweeps ran MTP with 3 draft tokens, but they overlap only between 220 and 260W, and they differ in model (Qwen3.8 vs Qwen3.6), vLLM version (0.31.0 vs 0.25.1), interconnect (NVLink vs PCIe with P2P) and workload (a long agent replay vs `power-cap-sweep.sh`'s short `decode-single` bench). Which of those moves the knee hasn't been tested, so read the anchor above as a measurement of that rig and config, not a rule for TP=2. The same rig's Strata peer layout ([#1745](https://github.com/noonghunna/club-3090/issues/1745), two cards but not TP) also tracked the primary card's cap up to about 300W.
 
 The missing cell is `--load-mode decode-concurrent` on the same TP=2 service. That sweep would show whether batching creates enough compute pressure to move the dual-card knee upward.
 
