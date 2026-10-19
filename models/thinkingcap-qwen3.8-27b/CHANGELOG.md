@@ -2,6 +2,12 @@
 
 Dated history for ThinkingCap-Qwen3.8-27B configs in this repo. Append-only — add a new entry, don't rewrite past ones.
 
+## 2026-10-19 — SGLang slugs move to v0.5.22
+
+Same bump as Qwen3.8-27B (see its CHANGELOG): the `sgl/thinkingcap38-*` slugs now run
+`lmsysorg/sglang:v0.5.22` with the same two patches. Not booted on this model; the Qwen3.8-27B
+dual-fast and dual-superfast boots cover the engine image and the two patches.
+
 ## 2026-10-09 — reasoning budget chosen by effort (vLLM + SGLang)
 
 Same as Qwen3.8-27B (see its CHANGELOG): low 4,096 · medium 16,384 · xhigh 32,768

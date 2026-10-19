@@ -1,6 +1,6 @@
 schema_version: 1
 id: sglang-stable
-display_name: SGLang stable v0.5.21
+display_name: SGLang stable v0.5.22
 type: sglang
 # #1365: the compose env var this engine's image is injected as.
 image_env: SGLANG_IMAGE
@@ -57,7 +57,10 @@ install:
   # ⚠️ An earlier single-boot A/B reported '-10% decode'. That was TWO BOOT
   # EXTREMES differenced, not an effect; the repeat-boot run retired it.
   # W4A8 overlay re-verified on this image: applies, boots, serves.
-  spec: lmsysorg/sglang:v0.5.21
+  # BUMPED v0.5.21 -> v0.5.22 on 2026-10-19 (boot tests only, no bench): both
+  # install-script patches apply unchanged (W4A8 + effort budget; selftest 54/54);
+  # dual-fast + dual-superfast boot, verify-full 9/9 each. docs/UPSTREAM.md pin row.
+  spec: lmsysorg/sglang:v0.5.22
 min_sm: 8.0
 supported_drafters:            # ⚠️ keys on spec_method, NOT drafter id.
   - mtp                       # ⭐ native in-checkpoint MTP head — RIG-VALIDATED
@@ -149,7 +152,8 @@ required_genesis: false
 notes: >-
   SGLang stable. WIRED: the qwen3.8-27b and thinkingcap-qwen3.8-27b SGLang composes target
   this engine (23 registered sgl/ slugs); first booted on the reference rig 2026-09-10
-  (v0.5.19) and re-booted on v0.5.21 (dual-fast + dual-superfast, 2026-10-09). STILL ABSENT
+  (v0.5.19) and re-booted on v0.5.21 (dual-fast + dual-superfast, 2026-10-09) and v0.5.22
+  (the same two, 2026-10-19). STILL ABSENT
   from arch_patches.yml, so generate_compose/pull-gate REFUSE an sglang pin ("engine pin
   has no loads:true match"): the arch/pin row this note asked to add with the first
   working compose has not been added yet.

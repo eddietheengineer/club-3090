@@ -17,7 +17,7 @@ export PYTHONUTF8="${PYTHONUTF8:-1}"
 #        vLLM       --reasoning-parser set at boot (v0.31.0 rejects the
 #                   per-request field otherwise — every scenario would 400).
 #        SGLang     --enable-strict-thinking + --reasoning-parser at boot, read
-#                   from /server_info first, docker second. v0.5.21 IGNORES
+#                   from /server_info first, docker second. v0.5.21+ IGNORES
 #                   custom_params.thinking_budget without strict thinking — no
 #                   error, the run only LOOKS bounded — so off is a refusal, and
 #                   the old --enable-custom-logit-processor no longer counts.
@@ -418,7 +418,8 @@ assert_contains K "$OUT" "/server_info reports enable_strict_thinking=true, reas
   || { echo "ASSERTION FAILED [K]: extra-body must be custom_params ONLY, was '$(arg_after --extra-body)'" >&2; FAILED=1; }
 assert_not_contains K "$ARGS" "custom_logit_processor"
 assert_contains K "$ARGS" "--thinking-max-tokens 12288"
-# nested readback shape (v0.5.21 groups the resolved args): still found, still verified
+# nested readback shape (v0.5.21 groups the resolved args; v0.5.22 serves them flat and again
+# under internal_states[0], 2026-10-19): still found, still verified
 run_wrapper CURL_MOCK_OWNED_BY=sglang 'CURL_MOCK_SERVER_INFO={"serving":{"enable_strict_thinking":true,"reasoning_parser":"glm45"},"exec":{"features":{"enable_custom_logit_processor":false}}}' -- --quick --thinking-budget 8192
 assert_rc K-nested 0 "$RUN_RC"
 assert_contains K-nested "$OUT" "enable_strict_thinking=true, reasoning_parser=glm45"
