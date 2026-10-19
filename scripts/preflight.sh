@@ -808,11 +808,12 @@ preflight_repo_drift() {
   return 0
 }
 
-# preflight_hf_token — verify HF_TOKEN is set; warn if not.
+# preflight_hf_token — note when HF_TOKEN is not set.
 #
-# Soft warning (returns 0) — Qwen3.6-27B is T&C-gated on HuggingFace, so
-# missing HF_TOKEN will cause `hf download` to fail with a generic error
-# later. Surfacing the issue early saves a round-trip.
+# Soft (returns 0). Most repos the catalog downloads are public and need no
+# token; a gated one (its Hugging Face page asks you to accept terms) fails
+# with a 401 without it. Name no model here: the old text said Qwen3.6-27B was
+# gated and linked Qwen3-Next-80B, neither true nor in the catalog (#1742).
 #
 # Skip via: PREFLIGHT_NO_HF_TOKEN=1
 preflight_hf_token() {
@@ -820,12 +821,10 @@ preflight_hf_token() {
     return 0
   fi
   if [[ -z "${HF_TOKEN:-}" ]]; then
-    echo "[preflight] WARNING: HF_TOKEN is not set in the environment." >&2
-    echo "[preflight]          Qwen3.6-27B is T&C-gated on HuggingFace; downloads will fail without a token." >&2
-    echo "[preflight]          Fix: visit https://huggingface.co/settings/tokens, create a read token," >&2
-    echo "[preflight]               accept the model T&C at https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Instruct" >&2
-    echo "[preflight]               (and any other Qwen3-Next variant you'll use)," >&2
-    echo "[preflight]               then save it: bash scripts/settings.sh set HF_TOKEN=hf_...   (goes to secrets.env, 0600)" >&2
+    echo "[preflight] note: HF_TOKEN is not set. Public repos download without it." >&2
+    echo "[preflight]       A gated repo (its Hugging Face page asks you to accept terms) needs one:" >&2
+    echo "[preflight]       accept the terms on that page, create a read token at https://huggingface.co/settings/tokens," >&2
+    echo "[preflight]       then save it: bash scripts/settings.sh set HF_TOKEN=hf_...   (goes to secrets.env, 0600)" >&2
     return 0
   fi
   # Sanity check token format — HF tokens start with hf_ and are 30+ chars
