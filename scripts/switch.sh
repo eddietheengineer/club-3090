@@ -510,6 +510,59 @@ topology_gpu_label() {
   esac
 }
 
+# Smallest card a slug would run on here, in GB, rounded the way launch.sh's
+# picker rounds (compose_hw_vram_gb). Reads the cards the topology filter counts:
+# the NVIDIA/CUDA_VISIBLE_DEVICES indices when one is set, else every card.
+# Prints 0 when that can't be known (no readable card, or a selector of GPU
+# UUIDs), which switches the card-size filter off: --list fails open rather than
+# hide slugs on a guess.
+list_min_card_vram_gb() {
+  local selector="${NVIDIA_VISIBLE_DEVICES:-${CUDA_VISIBLE_DEVICES:-}}" lines tok idx _name mib _sm gb min=0
+  local -A want=()
+  if [[ -n "$selector" && "$selector" != "all" && "$selector" != "void" ]]; then
+    IFS=',' read -ra _list_vram_tokens <<< "$selector"
+    for tok in "${_list_vram_tokens[@]}"; do
+      tok="${tok//[[:space:]]/}"
+      [[ -n "$tok" ]] || continue
+      if [[ ! "$tok" =~ ^[0-9]+$ ]]; then printf '0'; return 0; fi
+      want["$tok"]=1
+    done
+  fi
+  lines="$(compose_hw_detect_gpus 2>/dev/null)" || { printf '0'; return 0; }
+  while IFS=$'\t' read -r idx _name mib _sm; do
+    [[ "$mib" =~ ^[0-9]+$ ]] || continue
+    if [[ "${#want[@]}" -gt 0 && -z "${want[$idx]:-}" ]]; then continue; fi
+    gb="$(compose_hw_vram_gb "$mib")"
+    if [[ "$min" -eq 0 || "$gb" -lt "$min" ]]; then min="$gb"; fi
+  done <<< "$lines"
+  printf '%s' "$min"
+}
+
+# `Requires-min-vram-gb` of every listed compose, keyed by absolute path, read in
+# ONE grep pass: the first matching header line per file, the key matched the way
+# compose_meta_get normalises it (any case, '-', '_' or ' '). compose_meta_get per
+# file walks each header line by line, ~12 ms on the long CPU-offload headers.
+declare -A LIST_COMPOSE_MIN_VRAM=()
+list_load_compose_min_vram() {
+  local -a files=()
+  local v e d f p line rest
+  for v in "${!VARIANTS[@]}"; do
+    IFS='|' read -r e d f <<< "${VARIANTS[$v]}"
+    p="${ROOT_DIR}/${d}/${f}"
+    [[ -f "$p" ]] && files+=("$p")
+  done
+  [[ "${#files[@]}" -gt 0 ]] || return 0
+  while IFS= read -r line; do
+    p="${line%%:#*}"
+    rest="${line#"$p":}"
+    rest="${rest,,}"
+    if [[ "$rest" =~ ^#[[:space:]]*requires[-_\ ]min[-_\ ]vram[-_\ ]gb[[:space:]]*:[[:space:]]*([0-9]+) ]]; then
+      LIST_COMPOSE_MIN_VRAM["$p"]="${BASH_REMATCH[1]}"
+    fi
+  done < <(command grep -H -m1 -i -E '^#[[:space:]]*requires[-_ ]min[-_ ]vram[-_ ]gb[[:space:]]*:' "${files[@]}" 2>/dev/null)
+  return 0
+}
+
 list_variants() {
   # Grouped by model · topology so each slug's binding is visible at a glance.
   # VARIANTS stores "<engine>|<dir>|<file>" where
@@ -525,6 +578,9 @@ list_variants() {
   # DEVICES then nvidia-smi). `--list --all` (LIST_ALL=1) shows everything for
   # discoverability. Fail-open: if detection is unavailable we show ALL rather
   # than hide based on a failed probe.
+  # Card-size filter: a compose whose header declares `Requires-min-vram-gb` above
+  # the smallest card here is hidden too, the rule launch.sh's picker already
+  # applies (variant_survives_filter). Same fail-open and --all behaviour.
   # Provenance (#1202). Local rows were INDISTINGUISHABLE in this listing: nothing
   # rendered a marker, which mattered little while they lived under a `local/`
   # namespace and matters a lot now they share the curated <engine>/<name> shape.
@@ -564,6 +620,11 @@ list_variants() {
   else
     max_rank="$(topology_rank "$detected_topo")"
   fi
+  local min_card_gb=0
+  if [[ "$show_all" != "1" ]]; then
+    min_card_gb="$(list_min_card_vram_gb)"
+    if [[ "$min_card_gb" -gt 0 ]]; then list_load_compose_min_vram; fi
+  fi
 
   echo "Available variants — grouped by model · topology (right cols: <quant>/<serving>.yml · max-ctx + health):"
   echo "  Health: bare max-ctx = production · (caveats, <ctx>) = works w/ documented limits · (NA: …, <ctx>) = needs --force"
@@ -572,7 +633,7 @@ list_variants() {
   # Counts: split into VISIBLE vs HIDDEN by the hardware filter, so the header
   # reflects what's actually shown (+ how many were hidden). Health split is
   # over the VISIBLE set; the by-topology hidden tally drives the note.
-  local _prod=0 _cav=0 _na=0 _hidden=0 _dep_hidden=0 _gated_hidden=0 _inc_hidden=0
+  local _prod=0 _cav=0 _na=0 _hidden=0 _dep_hidden=0 _gated_hidden=0 _inc_hidden=0 _vram_hidden=0
   declare -A _seen_models=() _hidden_by_topo=()
   for v in "${!VARIANTS[@]}"; do
     IFS='|' read -r _e _d _f <<< "${VARIANTS[$v]}"
@@ -594,6 +655,10 @@ list_variants() {
     if [[ "$show_all" != "1" && "$_vrank" -gt "$max_rank" ]]; then
       _hidden=$((_hidden + 1))
       _hidden_by_topo["$_vtopo"]=$(( ${_hidden_by_topo["$_vtopo"]:-0} + 1 ))
+      continue
+    fi
+    if [[ "$min_card_gb" -gt 0 && "${LIST_COMPOSE_MIN_VRAM["${ROOT_DIR}/${_d}/${_f}"]:-0}" -gt "$min_card_gb" ]]; then
+      _vram_hidden=$((_vram_hidden + 1))
       continue
     fi
     if [[ "${LIST_LOCAL:-0}" == "1" && -z "${_is_local[$v]:-}" ]]; then
@@ -637,6 +702,10 @@ list_variants() {
   if [[ "$_inc_hidden" -gt 0 ]]; then
     _inc_note="  (+${_inc_hidden} incubating hidden — --all)"
   fi
+  local _vram_note=""
+  if [[ "$_vram_hidden" -gt 0 ]]; then
+    _vram_note="  (+${_vram_hidden} needing cards over ${min_card_gb} GB hidden — --all)"
+  fi
   if [[ -n "$_shadowed" ]]; then
     echo ""
     echo "  ⚠ shadowed local slug(s): ${_shadowed}"
@@ -644,7 +713,7 @@ list_variants() {
     echo "    Your registration is intact but unreachable by slug — rename it:"
     echo "      bash scripts/catalog.sh unregister --slug <slug>   # then re-register under another name"
   fi
-  echo "  Models: ${#_seen_models[@]} · variants: ${_visible} (${_prod} production · ${_cav} caveats · ${_na} NA)${_hidden_note}${_dep_note}${_gated_note}${_inc_note}"
+  echo "  Models: ${#_seen_models[@]} · variants: ${_visible} (${_prod} production · ${_cav} caveats · ${_na} NA)${_hidden_note}${_dep_note}${_gated_note}${_inc_note}${_vram_note}"
 
   {
     for v in "${!VARIANTS[@]}"; do
@@ -661,6 +730,9 @@ list_variants() {
         case "${VARIANT_STATUS[$v]:-production}" in deprecated|upstream-gated|incubating) continue ;; esac
       fi
       if [[ "$show_all" != "1" && "$rank" -gt "$max_rank" ]]; then
+        continue
+      fi
+      if [[ "$min_card_gb" -gt 0 && "${LIST_COMPOSE_MIN_VRAM["${ROOT_DIR}/${dir}/${file}"]:-0}" -gt "$min_card_gb" ]]; then
         continue
       fi
       marker="$(status_marker "${VARIANT_STATUS[$v]:-production}")"
@@ -694,6 +766,10 @@ list_variants() {
     _gpu_label="$(topology_gpu_label "$detected_topo")"
     echo
     echo "(showing ${detected_topo}-GPU configs for this ${_gpu_label}-GPU machine — use --list --all for ${_topo_list})"
+  fi
+  if [[ "$_vram_hidden" -gt 0 ]]; then
+    echo
+    echo "(hiding ${_vram_hidden} config(s) that need cards bigger than this machine's ${min_card_gb} GB — use --list --all to see them)"
   fi
   echo
   show_defaults_view
