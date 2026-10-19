@@ -428,7 +428,7 @@ After setup, run `bash scripts/launch.sh`. The wizard asks which model (filtered
 
 Two parts: *what's available* and *what happens if I don't have it yet.*
 
-**List what your machine can run.** `bash scripts/switch.sh --list` prints the variants runnable on *this* box — generated live from the compose registry (the single source of truth), then filtered to the topologies your GPU count supports (1 GPU → single-card configs only; 2 → single + dual; 4+ → everything). It prints a one-line note when it hides anything; add `--all` (`bash scripts/switch.sh --list --all`, or `--list-all`) to see every variant regardless of GPU count. Detection fails open — if it can't tell how many GPUs you have, it shows everything.
+**List what your machine can run.** `bash scripts/switch.sh --list` prints the variants runnable on *this* box — generated live from the compose registry (the single source of truth), then filtered to the topologies your GPU count supports (1 GPU → single-card configs only; 2 → single + dual; 4+ → everything) and to the configs your cards are big enough for (a compose's `Requires-min-vram-gb` against your smallest card). It prints a one-line note when it hides anything; add `--all` (`bash scripts/switch.sh --list --all`, or `--list-all`) to see every variant regardless of GPU count or card size. Detection fails open — if it can't tell how many GPUs you have, or how big they are, it shows everything.
 
 **Switch to one you've already downloaded.** Either re-run the wizard (`bash scripts/launch.sh`, which filters the menu to models present in `MODEL_DIR` and verifies the boot), or go direct by slug:
 
