@@ -2177,6 +2177,41 @@ class TestCatalogWired:
             assert "no compatible hardware" not in text2
 
     @pytest.mark.asyncio
+    async def test_supported_sm_miss_is_hidden_and_named(self):
+        """A slug whose supported_sm list leaves this card out (kv-calc gives
+        incompatible-hw with `supported_sm`, e.g. an sm_80-only slug on a 3090)
+        hides like a required_sm miss, and the warnings name the SMs it runs on
+        rather than asking for a newer GPU."""
+        from club3090_cockpit.data import FitVerdict
+
+        fv = FitVerdict.from_dict({
+            "verdict": "incompatible-hw", "supported_sm": [8.0], "card_sm": 8.6,
+            "error": "runs only on sm 8.0 (this card is sm_8.6)",
+        }, card="rtx-3090")
+        assert fv.supported_sm == [8.0] and fv.required_sm is None
+        assert fv.hw_requirement() == "runs only on sm 8.0"
+        assert FitVerdict(verdict="incompatible-hw", required_sm=9.0).hw_requirement() \
+            == "requires sm ≥ 9 (Hopper/Blackwell class)"
+
+        ok = self._label_entry("autoround-int4")
+        sm80 = self._label_entry("nvfp4")
+        sm80.fit = fv
+        app, _, _ = make_app()
+        async with app.run_test(size=(120, 40)) as pilot:
+            await _settle(pilot)
+            pane = app.query_one("#catalog-pane", CatalogPane)
+            pane.populate([ok, sm80], None)
+            assert [e.slug for e in pane._filtered_entries()] == ["x/autoround-int4"]
+            assert pane._incompatible_hidden_count() == 1
+
+            screen = ConfirmActionScreen.__new__(ConfirmActionScreen)
+            screen._serve_ctx = None
+            text = ConfirmActionScreen._download_card_text(screen, sm80)
+            assert "no compatible hardware detected" in text
+            assert "runs only on sm 8.0" in text and "sm_8.6" in text
+            assert "Hopper/Blackwell" not in text and "sm ≥" not in text
+
+    @pytest.mark.asyncio
     async def test_catalog_hides_deprecated_by_default_and_h_reveals(self):
         """🗑️ Deprecated slugs are HIDDEN from the catalog by default (mirrors
         `switch.sh --list`); [h] / toggle_deprecated() reveals them, and the banner

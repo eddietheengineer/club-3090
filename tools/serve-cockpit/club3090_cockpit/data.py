@@ -170,9 +170,10 @@ class FitVerdict:
     #   fits-clean | fits-constrained | wont-fit | incompatible-hw | unknown
     # plus the cockpit-internal "skip" (ik/llama kvcalc_key=SKIP — no vLLM fit).
     # "incompatible-hw" = the registry's required_sm exceeds the local card's
-    # compute capability (e.g. NVFP4 on Ampere) — VRAM is irrelevant, the
-    # kernels don't exist here. Drives the catalog default-hide + the
-    # download/serve hardware warning.
+    # compute capability (e.g. NVFP4 on Ampere), or the card's SM is missing
+    # from the registry's supported_sm list (e.g. an sm_80-only slug on a
+    # 3090) — VRAM is irrelevant, the kernels don't run here. Drives the
+    # catalog default-hide + the download/serve hardware warning.
     verdict: str = "unknown"          # fits-clean | fits-constrained | wont-fit | incompatible-hw | unknown | skip
     vram_est_gb: Optional[float] = None
     band_gb: Optional[float] = None
@@ -182,6 +183,9 @@ class FitVerdict:
     # Populated only for verdict == "incompatible-hw".
     required_sm: Optional[float] = None
     card_sm: Optional[float] = None
+    # The exact SMs a slug supports, when that (not required_sm) is what ruled
+    # this card out.
+    supported_sm: Optional[list[float]] = None
     # Populated when the card sits in a registry fallback band
     # (fallback_sm <= card_sm < required_sm): the slug RUNS here via a
     # weight-only fallback kernel (e.g. NVFP4 -> Marlin W4A16 on Ampere,
@@ -208,6 +212,15 @@ class FitVerdict:
             "unknown": "·",
         }.get(self.verdict, "·")
 
+    def hw_requirement(self) -> str:
+        """What an incompatible-hw slug needs, as a verb phrase for the
+        download/serve warnings: "runs only on sm 8.0" for a supported_sm list,
+        else "requires sm ≥ 9 (Hopper/Blackwell class)" for the required_sm floor."""
+        if self.supported_sm:
+            return "runs only on sm " + " / ".join(f"{x:.1f}" for x in self.supported_sm)
+        req = f"sm ≥ {self.required_sm:g}" if self.required_sm is not None else "a newer GPU architecture"
+        return f"requires {req} (Hopper/Blackwell class)"
+
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None, card: str = "") -> "FitVerdict":
         if not d:
@@ -221,6 +234,10 @@ class FitVerdict:
             error=str(d.get("error", "")),
             required_sm=_as_float(d.get("required_sm")),
             card_sm=_as_float(d.get("card_sm")),
+            supported_sm=(
+                [x for x in (_as_float(v) for v in d["supported_sm"]) if x is not None] or None
+                if isinstance(d.get("supported_sm"), list) else None
+            ),
             hw_fallback=d.get("hw_fallback") if isinstance(d.get("hw_fallback"), dict) else None,
         )
 

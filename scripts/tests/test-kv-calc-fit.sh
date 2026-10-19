@@ -229,10 +229,64 @@ check(d_single.get("verdict") != "incompatible-hw",
 check((d_single.get("hw_fallback") or {}).get("card_sm") == 8.6,
       f"(f) --fit-all on rtx-3090: single-nvfp4 carries hw_fallback (got {d_single.get('hw_fallback')!r})")
 
+# (g) supported_sm gate: an explicit list of SMs (compat C3 tests membership) makes a
+# card outside it incompatible-hw, before pricing AND before the SKIP short-circuit,
+# so the cockpit hides it like a required_sm miss. Shipped supported_sm slugs also
+# carry required_sm 8.6, and no --card kv-calc knows clears that floor while
+# missing their list, so the older floor gate would answer first and prove nothing.
+# Instead: kv-calc in-process, with synthetic registry rows shaped like
+# vllm/qwen38-flash-next-dual (supported_sm [8.0], no required_sm), one SKIP and
+# one priced (a copy of a priced row), on rtx-3090 (sm 8.6) and a100-40gb (sm 8.0).
+import importlib.util  # noqa: E402
+_spec = importlib.util.spec_from_file_location("kv_calc_g", str(KVCALC))
+kvc = importlib.util.module_from_spec(_spec)
+sys.modules[_spec.name] = kvc  # dataclasses resolve the module through sys.modules
+_spec.loader.exec_module(kvc)
+from scripts.lib.profiles.compose_registry import COMPOSE_REGISTRY as _REG  # noqa: E402
+_priced_src = "vllm/dual"
+check(_REG.get(_priced_src, {}).get("kvcalc_key") not in (None, "SKIP"), f"(g) fixture {_priced_src} is a priced row")
+_REG["x/sm80-only-skip"] = {**_REG[_priced_src], "kvcalc_key": "SKIP", "supported_sm": [8.0], "required_sm": None}
+_REG["x/sm80-only-priced"] = {**_REG[_priced_src], "supported_sm": [8.0], "required_sm": None}
+
+g = kvc._supported_sm_gate({"supported_sm": [8.0]}, 8.6)
+check(g is not None and g["verdict"] == "incompatible-hw" and g["supported_sm"] == [8.0] and g["card_sm"] == 8.6
+      and "runs only on sm 8.0" in g["error"], f"(g) gate: [8.0] vs sm 8.6 → incompatible-hw (got {g!r})")
+check(kvc._supported_sm_gate({"supported_sm": [8.0]}, 8.0) is None, "(g) gate: [8.0] vs sm 8.0 → allowed")
+check(kvc._supported_sm_gate({"supported_sm": [8.0]}, None) is None, "(g) gate: unknown card SM → no gate")
+check(kvc._supported_sm_gate({}, 8.6) is None, "(g) gate: no list → no gate")
+
+fa = kvc.fit_all_verdicts("rtx-3090", 24.0)["variants"]
+check(fa["x/sm80-only-skip"].get("verdict") == "incompatible-hw" and fa["x/sm80-only-skip"].get("supported_sm") == [8.0],
+      f"(g) --fit-all rtx-3090: SKIP row outside its list → incompatible-hw, not skip (got {fa['x/sm80-only-skip']!r})")
+check(fa["x/sm80-only-priced"].get("verdict") == "incompatible-hw",
+      f"(g) --fit-all rtx-3090: priced row outside its list → incompatible-hw (got {fa['x/sm80-only-priced']!r})")
+fb = kvc.fit_all_verdicts("a100-40gb", 24.0)["variants"]
+check(fb["x/sm80-only-skip"].get("verdict") == "skip",
+      f"(g) --fit-all a100-40gb (sm 8.0, in the list): SKIP row stays skip (got {fb['x/sm80-only-skip']!r})")
+check(fb["x/sm80-only-priced"].get("verdict") != "incompatible-hw",
+      f"(g) --fit-all a100-40gb: priced row in its list is priced (got {fb['x/sm80-only-priced']!r})")
+fv1 = kvc.fit_verdict("x/sm80-only-priced", "rtx-3090", 24.0)
+check(fv1.get("verdict") == "incompatible-hw" and fv1.get("supported_sm") == [8.0],
+      f"(g) --fit rtx-3090: priced row outside its list → incompatible-hw (got {fv1!r})")
+fv2 = kvc.fit_verdict("x/sm80-only-priced", "48", 24.0)
+check(fv2.get("verdict") != "incompatible-hw", f"(g) --fit with a bare-number card skips the gate (got {fv2.get('verdict')!r})")
+for _k in ("x/sm80-only-skip", "x/sm80-only-priced"):
+    _REG.pop(_k, None)
+
+# The rule over the real registry: every supported_sm miss on rtx-3090 / a100-40gb is
+# incompatible-hw (covers slugs added later, e.g. an sm_80-only slug on a 3090).
+for _card, _sm in (("rtx-3090", 8.6), ("a100-40gb", 8.0)):
+    rc_m, out_m, _ = run_fit("--fit-all", "--card", _card, "--json")
+    dm = (json.loads(out_m) if rc_m == 0 else {}).get("variants", {})
+    bad = sorted(s for s, e in _REG.items() if e.get("supported_sm")
+                 and round(_sm, 1) not in {round(float(x), 1) for x in e["supported_sm"]}
+                 and dm.get(s, {}).get("verdict") != "incompatible-hw")
+    check(rc_m == 0 and not bad, f"(g) --fit-all on {_card}: every supported_sm miss is incompatible-hw (not: {bad})")
+
 if failures:
     print(f"\n{len(failures)} assertion(s) failed.", file=sys.stderr)
     sys.exit(1)
-print("\nAll --fit / --fit-all JSON shape assertions passed (a-f).")
+print("\nAll --fit / --fit-all JSON shape assertions passed (a-g).")
 PY
 
 echo "test-kv-calc-fit.sh OK"
