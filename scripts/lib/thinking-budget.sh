@@ -20,7 +20,7 @@
 #               + --reasoning-parser <name>
 #
 # What each engine does WITHOUT its prerequisite (read from the pinned images,
-# vLLM v0.32.0 / SGLang v0.5.21 — scripts/lib/profiles/engines/*-stable.yml):
+# vLLM v0.32.0 / SGLang v0.5.22 — scripts/lib/profiles/engines/*-stable.yml):
 #   llama.cpp  nothing to send — the harness cannot set a boot flag per request,
 #              and a compose-shipped `--reasoning-budget "${REASONING_BUDGET:--1}"`
 #              boots UNBOUNDED (-1) with the flag visibly present. Presence of the
@@ -252,7 +252,7 @@ _thinking_budget_container_facts() {
   python3 -c "$_THINKING_BUDGET_FACTS_PY" "$1"
 }
 
-# SGLang's own readback: /server_info (v0.5.21) dumps the RESOLVED ServerArgs
+# SGLang's own readback: /server_info (v0.5.21, v0.5.22) dumps the RESOLVED ServerArgs
 # (server_args.resolved_dict()); /get_server_info is the deprecated alias.
 # Walks the whole document so a regrouping of the args (v0.5.20+ groups them)
 # cannot hide the key. stdout: `STRICT true|false PARSER <v|none|unknown>`, or
@@ -298,7 +298,8 @@ print("STRICT %s PARSER %s" % ("true" if st else "false", rp))
 # (think_excluded_tokens), which by itself switches strict thinking's token
 # filter ON — so a per-request budget is enforced with no further boot setting.
 # Read from lmsysorg/sglang:v0.5.21 (ReasoningParser.DetectorMap, each detector's
-# think_excluded_tokens; reasoner_grammar_backend.py:288). ⚠️ Re-read at every
+# think_excluded_tokens; reasoner_grammar_backend.py:288); re-read on v0.5.22, where
+# reasoning_parser.py and reasoner_grammar_backend.py are unchanged. ⚠️ Re-read at every
 # SGLang pin bump. A parser NOT listed here still works, but only when the server
 # booted with SGLANG_MAX_THINK_TOKENS >= 0 — which the club composes export from
 # scripts/lib/effort_budget.py (their `[effort-budget] v1 … engine=sglang` boot line).

@@ -1602,8 +1602,9 @@ patches:
           pin; posting the upstream equivalent is the drop path (plan D7, with the maintainer's go).
         evidence: >-
           models/qwen3.8-27b/sglang/patches/sglang-effort-thinking-budget/README.md; selftest.sh on
-          lmsysorg/sglang:v0.5.21 (stock control drops thinking_token_budget; negative controls;
-          request scenarios through the real patched functions); compose defaults low 4096 /
+          lmsysorg/sglang:v0.5.21 and v0.5.22 (2026-10-19, 54/54 on each; stock control drops
+          thinking_token_budget; negative controls; request scenarios through the real patched
+          functions); compose defaults low 4096 /
           medium 16384 / xhigh 32768 (maintainer-set 2026-10-09, same for both models); plan S1
           2026-10-09 verified strict-thinking enforcement live on sgl/qwen38-27b-dual-fast (EAGLE)
           and -dual-superfast (DFLASH): budget 128 -> 129 reasoning tokens then the answer, tool
@@ -1630,7 +1631,7 @@ patches:
       kind: boot
       check: >-
         bash models/qwen3.8-27b/sglang/patches/sglang-effort-thinking-budget/selftest.sh
-        lmsysorg/sglang:v0.5.21 -- offline, no GPU: the module's unit tests on the image python, a
+        lmsysorg/sglang:v0.5.22 -- offline, no GPU: the module's unit tests on the image python, a
         stock-behaviour control, negative controls (anchor removed / duplicated, half-patched tree,
         malformed map, module not mounted), install twice (second = no-op), AST checks that each
         hook sits at its call site, and request scenarios through the real patched functions. At

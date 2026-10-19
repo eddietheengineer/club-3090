@@ -2,6 +2,15 @@
 
 Dated history for Qwen3.8-27B configs in this repo. Append-only — add a new entry, don't rewrite past ones.
 
+## 2026-10-19 — SGLang slugs move to v0.5.22
+
+The `sgl/` slugs now run `lmsysorg/sglang:v0.5.22` (was v0.5.21). Both SGLang patches carry
+over unchanged: W4A8 (int8 activations, on by default on the autoround-int4 slugs) and the
+reasoning budget chosen by effort. On the reference rig, `sgl/qwen38-27b-dual-fast` and
+`-dual-superfast` boot with both, pass verify-full 9/9, and still honour effort per request
+and the budgets (`probe-effort-budget.sh`). Boot tests only: no new throughput numbers. The
+multi-card and fp8 `-max` slugs were not booted. Details: `docs/UPSTREAM.md`, SGLang pin row.
+
 ## 2026-10-14 — HyperQwen: a new engine and one single-card slug (🐣)
 
 New engine `vllm-hyperqwen`: syv-ai's [HyperQwen](https://github.com/syv-ai/HyperQwen), a
