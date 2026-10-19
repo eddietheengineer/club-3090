@@ -1850,6 +1850,29 @@ def _fit_verdict_llama(slug: str, model_id: str, vram: float) -> dict:
     }
 
 
+def _supported_sm_gate(entry: dict, card_sm: Optional[float]) -> Optional[dict]:
+    """incompatible-hw when the registry's `supported_sm` list leaves this card out.
+
+    `required_sm` is a floor; `supported_sm` is the exact set of SMs a slug was
+    built and measured for (compat C3 tests membership, `hw.sm not in supported_sm`).
+    e.g. vllm/qwen38-flash-next-dual is [8.0]: its overlays target the 64 GB sm_80
+    cards it was measured on, so a 3090 (sm_86) must not see it as runnable.
+    None when the slug has no list or the card's SM is unknown (bare-number --card).
+    """
+    supported = entry.get("supported_sm")
+    if not supported or card_sm is None:
+        return None
+    allowed = sorted({round(float(x), 1) for x in supported})
+    if round(float(card_sm), 1) in allowed:
+        return None
+    return {
+        "verdict": "incompatible-hw",
+        "supported_sm": allowed,
+        "card_sm": card_sm,
+        "error": f"runs only on sm {' / '.join(f'{x:.1f}' for x in allowed)} (this card is sm_{card_sm:g})",
+    }
+
+
 def fit_verdict(target: str, card: Optional[str], vram_default: float) -> dict:
     """Structured fit verdict for `--fit <slug|model> --card <gpu>`.
 
@@ -1903,6 +1926,9 @@ def fit_verdict(target: str, card: Optional[str], vram_default: float) -> dict:
                 "card_sm": _card_sm,
                 "error": f"requires sm >= {float(_req_sm):g} (this card is sm_{_card_sm:g})",
             }
+    _unsupported = _supported_sm_gate(_entry_reg, _card_sm)
+    if _unsupported is not None:
+        return _unsupported
 
     # llama.cpp-family slugs (llamacpp/*, ik-llama/*, beellama/*) price through
     # the llama.cpp projection (fixed-footprint engine, no mem-util budget).
@@ -1985,6 +2011,12 @@ def fit_all_verdicts(card: Optional[str], vram_default: float) -> dict:
                 "card_sm": _card_sm,
                 "error": f"requires sm >= {float(_req_sm):g} (this card is sm_{_card_sm:g})",
             }
+            continue
+        # supported_sm gate — also before the SKIP short-circuit, so a non-vLLM-priced
+        # slug restricted to other SMs reads incompatible-hw, not "skip".
+        _unsupported = _supported_sm_gate(entry, _card_sm)
+        if _unsupported is not None:
+            variants[slug] = _unsupported
             continue
         if entry.get("kvcalc_key") in (None, "SKIP"):
             variants[slug] = {"verdict": "skip"}

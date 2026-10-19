@@ -1863,7 +1863,9 @@ class CatalogPane(Container):
         # Hide 🗑️ deprecated slugs by default (mirrors `switch.sh --list`); [h]
         # reveals them. Hardware-INCOMPATIBLE slugs (fit verdict incompatible-hw —
         # the registry's required_sm exceeds this rig's card, e.g. NVFP4 on
-        # Ampere) share the SAME bucket: hidden by default, [h] reveals. The
+        # Ampere, or the card's SM isn't in the slug's supported_sm list, e.g.
+        # an sm_80-only slug on a 3090) share the SAME bucket: hidden by
+        # default, [h] reveals. The
         # verdict lands with async fit enrichment, so such rows may be visible
         # briefly on first paint, then fold away on refresh_enriched.
         # Slugs needing MORE GPUS than this rig has (multi4 / multi8 on a 2-card
@@ -2059,7 +2061,8 @@ class CatalogPane(Container):
     @staticmethod
     def _hw_incompatible(e: CatalogEntry) -> bool:
         """This rig's card can't run the slug's kernels (kv-calc fit verdict
-        incompatible-hw — required_sm above the local card's SM)."""
+        incompatible-hw — required_sm above the local card's SM, or the card's
+        SM missing from the slug's supported_sm list)."""
         try:
             return getattr(e.fit, "verdict", "") == "incompatible-hw"
         except Exception:
@@ -3842,13 +3845,11 @@ class ConfirmActionScreen(ModalScreen):
         _hw_warn = ""
         fv = getattr(entry, "fit", None) if entry is not None else None
         if fv is not None and getattr(fv, "verdict", "") == "incompatible-hw":
-            req = getattr(fv, "required_sm", None)
             got = getattr(fv, "card_sm", None)
-            req_s = f"sm ≥ {req:g}" if req is not None else "a newer GPU architecture"
             got_s = f" — this rig's card is sm_{got:g}" if got is not None else ""
             _hw_warn = (
-                f"  [red]⊘ no compatible hardware detected[/red] — this slug requires "
-                f"[bold]{req_s}[/bold] (Hopper/Blackwell class){got_s}.\n"
+                f"  [red]⊘ no compatible hardware detected[/red] — this slug "
+                f"[bold]{fv.hw_requirement()}[/bold]{got_s}.\n"
                 "  [yellow]It will NOT boot on this machine.[/yellow] You can still "
                 "download the weights\n"
                 "  (e.g. to stage them for another rig), but serving here will be refused.\n\n"
@@ -3922,13 +3923,11 @@ class ConfirmActionScreen(ModalScreen):
                     fit_line += f" / {float(fv.band_gb):.1f} GiB band"
             lines.append(f"  [bold]fit[/bold]    {fit_line}")
             if fv.verdict == "incompatible-hw":
-                req = fv.required_sm
                 got = fv.card_sm
-                req_s = f"sm ≥ {req:g}" if req is not None else "a newer GPU architecture"
                 got_s = f" — this rig's card is sm_{got:g}" if got is not None else ""
                 lines.append(
-                    f"  [red]⊘ no compatible hardware detected[/red] — requires "
-                    f"{req_s} (Hopper/Blackwell class){got_s}. "
+                    f"  [red]⊘ no compatible hardware detected[/red] — "
+                    f"{fv.hw_requirement()}{got_s}. "
                     "[yellow]Serving here will NOT boot.[/yellow]"
                 )
             # int8-activation knob (#609/#1010) — three shapes by slug class:
