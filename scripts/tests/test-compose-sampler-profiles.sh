@@ -232,6 +232,14 @@ def argv_under(text, env):
             stub = dp / "vllm"
         stub.write_text('#!/bin/bash\nfor a in "$@"; do printf "ARG:%s\\n" "$a"; done\nexit 0\n')
         stub.chmod(0o755)
+        # nvidia-smi too, so an entrypoint that reads the host's cards renders the
+        # same everywhere: no card can be listed, which every such check treats as
+        # "skip". With the real one, vllm/qwen38-flash-next-dual's 64 GB card
+        # check refuses on a 24 GB host before reaching its sampler rows (and
+        # passes on a host with no GPU).
+        smi = dp / "nvidia-smi"
+        smi.write_text("#!/bin/bash\nexit 1\n")
+        smi.chmod(0o755)
         etc = dp / "etc" / "club3090"
         etc.mkdir(parents=True, exist_ok=True)
         (etc / "detect_nvlink.sh").write_text("_NVLINK_ENABLED=0\n")
