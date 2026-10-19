@@ -24,4 +24,4 @@ Co-authored-by: Minachist <84688797+aiueonicked@users.noreply.github.com>
 exits 1 and the container does not start. Find the new text of each check in the installed
 vLLM and update `EDITS` in `patch_pp_ple_rank0.py`.
 
-Status: 🧪 experiment (dual CMP 170HX). Not yet in `scripts/lib/profiles/patches.yml`.
+Status: 🧪 experiment (dual CMP 170HX). Registered in `scripts/lib/profiles/patches.yml`.

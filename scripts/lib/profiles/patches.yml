@@ -1684,6 +1684,7 @@ patches:
       ref: "vllm#60234 (open: PP for Qwen4Exp PLE models and their MTP drafter; builds on #61016, merged 2026-10-15 after v0.32.0); also #56444 (open). Ours is a port of Minachist's local patch (huggingface.co/Minachist/Qwen3.8-Flash-Next-INT4-Mixed-AutoRound, vllm-patch/)"
       status: local-vendored
       drop_when: "vllm#60234 (or #56444) is in the vllm-stable pin; that pin will also carry #62129 (speculative warmup deadlock under PP, merged 2026-10-18, after v0.32.0)"
+      criticality: "EXCEPTION CLASS (AGENTS.md upstream-first; maintainer decision 2026-10-19, #1736: kept for vllm/qwen38-flash-next-dual only). Criticality: without it the slug cannot start. Stock vLLM (v0.31.0, v0.32.0) refuses PP > 1 for Qwen4Exp models with an n-gram PLE, and PP=2 is this slug's only layout. vllm#60234 covers it but builds on #61016, merged after v0.32.0, so it can't be vendored on this pin."
     status: verified
 
   - id: qwen4exp-mtp-pp
@@ -1718,6 +1719,7 @@ patches:
       ref: "vllm#60234 (open; covers the MTP drafter under PP too). Ours is Minachist's local vLLM patch (vllm-patch/3x24GB+MTP/)"
       status: local-vendored
       drop_when: "vllm#60234 is in the vllm-stable pin"
+      criticality: "EXCEPTION CLASS (AGENTS.md upstream-first; maintainer decision 2026-10-19, #1736: kept for vllm/qwen38-flash-next-dual only). Criticality: a crash. The MTP drafter hits `assert intermediate_tensors is not None` under PP in the memory-profiling run (v0.31.0, PP=2), and MTP is this slug's default. vllm#60234 covers it, with the same pin limit as qwen4exp-pp-ple-rank0."
     status: verified
 
   - id: qwen4exp-mtp-draft-head
@@ -1753,6 +1755,7 @@ patches:
       ref: "AlexBrandes/vllm 14457f89e (fork commit, not an upstream PR)"
       status: local-vendored
       drop_when: "stock vLLM lets an MTP/EAGLE drafter carry its own quantized lm_head"
+      criticality: "EXCEPTION CLASS (AGENTS.md upstream-first; maintainer decision 2026-10-19, #1736: kept for vllm/qwen38-flash-next-dual only). A speed patch, not a fix: an INT4 draft lm_head instead of the target's BF16 head, on by default. Measured +6-13% aggregate at c=1/c=8 on 2x CMP 170HX (2026-10-18), acceptance unchanged. Its source is a fork commit (AlexBrandes/vllm 14457f89e), with no upstream PR. Kept as a capability."
     status: verified
 
   - id: qwen4exp-ple-mmap
@@ -1787,6 +1790,7 @@ patches:
       ref: "vllm#58815 (open: host_file_gather, reads the PLE rows in place from the checkpoint shards). Ours is a port of Minachist's local vLLM patch set (decode-01/02/06, ttft-01)"
       status: local-vendored
       drop_when: "vllm#58815 is in the vllm-stable pin. Until then every pin bump needs a ple-mmap-v<version>.diff first (PLE_PLACEMENT=ram boots without it)"
+      criticality: "EXCEPTION CLASS (AGENTS.md upstream-first; maintainer decision 2026-10-19, #1736: kept for vllm/qwen38-flash-next-dual only). Not a crash fix: it keeps the 51.2 GB FP8 PLE table in a memory-mapped file instead of ~48 GiB of pinned host RAM, which the default PLE_PLACEMENT=nvme relies on. PLE_PLACEMENT=ram runs without it. vllm#58815 (open) does the same job a different way. Kept as a capability."
     status: verified
 
   - id: qwen4exp-qsa-fp8kv-ampere
@@ -1821,6 +1825,7 @@ patches:
       ref: "none open: vllm#59943 and #60491 (QSA FP8 KV below sm_89) closed unmerged; #54846 (open) targets SM120. To be filed upstream, crediting halt95/Merlin for the e4m3 decode (docs/UPSTREAM.md row)"
       status: ours
       drop_when: "stock QSA kernels read and write e4m3 without fp8e4nv on sm_80/86"
+      criticality: "EXCEPTION CLASS (AGENTS.md upstream-first; maintainer decision 2026-10-19, #1736: kept for vllm/qwen38-flash-next-dual only). Not a crash fix as shipped: stock QSA can't compile fp8_e4m3 below sm_89, so this slug's default fp8 KV needs it on sm_80. It halves the KV per token, which buys concurrency. No upstream PR (#59943 and #60491 closed unmerged; #54846 targets SM120). Kept as a capability."
     status: verified
 
   - id: w4a8-inc-moe
@@ -1855,4 +1860,5 @@ patches:
       ref: "bug 1 ~ vllm#49039 (open), bug 3 ~ #61405 (open, compressed-tensors side), bug 4 ~ #48926 / #59895 (open); bug 2 (inverted size_bits assert) has no PR. Companions of vllm#48904 / #48905 (dense path)"
       status: ours
       drop_when: "all four fixes are in the vllm-stable pin"
+      criticality: "EXCEPTION CLASS (AGENTS.md upstream-first; maintainer decision 2026-10-19, #1736: kept for vllm/qwen38-flash-next-dual only). Criticality: a measured corruption. With W4A8 on, every answer is `!!!!!!!!` on stock v0.31.0 plus w4a8-int8-act. W4A8 is opt-in here (W4A8=0 by default), and the patch is a no-op without int8 activations. Bugs 1, 3 and 4 have open PRs (#49039, #61405, #48926 / #59895); bug 2 has none."
     status: verified
