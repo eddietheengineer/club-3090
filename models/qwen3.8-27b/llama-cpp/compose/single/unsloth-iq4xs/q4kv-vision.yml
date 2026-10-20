@@ -7,7 +7,8 @@
 #              Toggle: SPEC_N=<n> sets depth; SPEC_N=0 (or SPEC=off) disables
 #   KV:        q4_0 K + q4_0 V  ⚠️ SUB-Q8 — trades KV precision for the full 262K (see "KV choice")
 #   Vision:    YES — mmproj-F16 (928 MB) mounted; multimodal input enabled
-#   Template:  native (GGUF-embedded) via --jinja
+#   Template:  the GGUF's own, vendored with two effort clamps (minimal -> low, max -> xhigh)
+#              via --jinja --chat-template-file (patches/qwen38-gguf-reasoning-effort-template)
 #   Max ctx:   262144 (full n_ctx_train) — reached by halving the KV with q4_0.
 #              ⚠️ The q4@262K + projector COMBINATION is boot-verified for fit on
 #              this rig (see MEASURED below); NOT depth-validated (no NIAH/soak/8pk).
@@ -158,6 +159,9 @@ services:
       - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8022}}:8080"
     volumes:
       - "${MODEL_DIR:-../../../../../../models-cache}:/models:ro"
+      # The GGUF's own chat template plus two effort clamps (minimal -> low, max -> xhigh);
+      # without it those efforts return HTTP 500. See patches/qwen38-gguf-reasoning-effort-template/.
+      - ../../../patches/qwen38-gguf-reasoning-effort-template/chat_template.jinja:/etc/qwen38-gguf-chat-template.jinja:ro
     environment:
       # Drafter toggle - docker forwards only what is declared here.
       - SPEC_N=${SPEC_N:-}
@@ -188,7 +192,8 @@ services:
       - PRESENCE_PENALTY
       # Default reasoning effort = low; ACTIVE on every request since the 2026-09-01
       # thinking flip. INERT only under INSTRUCT=1 (which passes enable_thinking:false).
-      # (See the q8_0 sibling header for the full `high`->xhigh template trap on this engine.)
+      # (See the q8_0 sibling header for the full `high`->xhigh template trap on this engine,
+      # and for the `minimal`/`max` clamps the vendored template adds.)
       # ⚠️⚠️ `medium`, NOT `low`. Upstream's card: low "is not supported and when
       # selected the model will behave close to xhigh" — so a `low` default buys
       # FULL xhigh reasoning cost while the config claims the cheapest tier.
@@ -355,6 +360,7 @@ services:
       --spec-type draft-mtp
       --spec-draft-n-max ${SPEC_N:-${MTP_DRAFT_N_MAX:-2}}
       --jinja
+      --chat-template-file /etc/qwen38-gguf-chat-template.jinja
       --reasoning-format ${REASONING_FORMAT:-deepseek}
       --top-k ${TOP_K:-20}
       --min-p ${MIN_P:-0.0}

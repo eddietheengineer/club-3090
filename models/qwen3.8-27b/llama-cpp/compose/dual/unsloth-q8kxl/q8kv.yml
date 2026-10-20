@@ -10,7 +10,8 @@
 #              (removes the flags — n-max=0 would leave the draft context allocated)
 #   KV:        q8_0 K + q8_0 V (serving-grade KV floor — see "KV choice" below)
 #   Vision:    no (base is VL-capable; mmproj NOT fetched, NOT mounted — text-only ship)
-#   Template:  native (GGUF-embedded) via --jinja
+#   Template:  the GGUF's own, vendored with two effort clamps (minimal -> low, max -> xhigh)
+#              via --jinja --chat-template-file (patches/qwen38-gguf-reasoning-effort-template)
 #   Max ctx:   262144 — the ARCHITECTURAL ceiling (config.json
 #              max_position_embeddings); allocation MEASURED (22.5 GB/card), never filled
 #   Genesis:   N/A — llama.cpp engine; Genesis is vLLM/Qwen3-Next-specific
@@ -201,6 +202,9 @@ services:
       - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8087}}:8080"
     volumes:
       - "${MODEL_DIR:-../../../../../../models-cache}:/models:ro"
+      # The GGUF's own chat template plus two effort clamps (minimal -> low, max -> xhigh);
+      # without it those efforts return HTTP 500. See patches/qwen38-gguf-reasoning-effort-template/.
+      - ../../../patches/qwen38-gguf-reasoning-effort-template/chat_template.jinja:/etc/qwen38-gguf-chat-template.jinja:ro
     environment:
       # Drafter toggle - docker forwards only what is declared here.
       - SPEC_N=${SPEC_N:-}
@@ -254,6 +258,16 @@ services:
       # ⚠️ This corrects two claims previously in this header: `high` does NOT
       # raise on this path, and the template DOES emit the instruction with no
       # tools present (it has a no-tools else-branch at template line ~90).
+      # 2026-10-20: that template also RAISED on `minimal` and `max` (HTTP 500, both as
+      # the request's reasoning_effort and inside chat_template_kwargs). This compose
+      # now serves the GGUF's template from patches/qwen38-gguf-reasoning-effort-template,
+      # which clamps minimal -> low and max -> xhigh, as the vLLM and SGLang slugs'
+      # template does. That template maps `high` -> xhigh too, so the divergence
+      # described above is gone. `none` is NOT thinking off on this engine: inside
+      # chat_template_kwargs it still raises, and as the request's top-level
+      # reasoning_effort llama-server drops it, so the template's own default applies
+      # and the request runs at xhigh (measured 2026-10-20). Turn thinking off per
+      # request with chat_template_kwargs {"enable_thinking": false}, or INSTRUCT=1.
       # ⚠️⚠️ `medium`, NOT `low`. Upstream's card: low "is not supported and when
       # selected the model will behave close to xhigh" — so a `low` default buys
       # FULL xhigh reasoning cost while the config claims the cheapest tier.
@@ -498,6 +512,7 @@ services:
       --spec-type draft-mtp
       --spec-draft-n-max ${SPEC_N:-${MTP_DRAFT_N_MAX:-2}}
       --jinja
+      --chat-template-file /etc/qwen38-gguf-chat-template.jinja
       --reasoning-format ${REASONING_FORMAT:-deepseek}
       --top-k ${TOP_K:-20}
       --min-p ${MIN_P:-0.0}

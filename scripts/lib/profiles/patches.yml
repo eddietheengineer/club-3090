@@ -434,6 +434,78 @@ patches:
       drop_when: "upstream Qwen accepts `high` as a valid rung at all (costs them nothing), OR vLLM's Anthropic router stops forwarding a `high` it cannot know is unsupported. The later-system-message rule (#1447) goes when upstream's template accepts a system message after the first. Re-vendor from the model dir if Qwen ships a corrected template and re-run the drift guard (test-qwen38-template)."
     status: verified
 
+  - id: qwen38-gguf-reasoning-effort-template
+    model: [qwen3.8-27b]
+    files:
+      - models/qwen3.8-27b/llama-cpp/patches/qwen38-gguf-reasoning-effort-template/chat_template.jinja
+    load_bearing_when:
+      - composes:
+          - llamacpp/qwen38-27b-single-iq4xs
+          - llamacpp/qwen38-27b-dual-q8kxl
+        reason: >-
+          The chat template embedded in unsloth's Qwen3.8-27B GGUFs (byte-identical in
+          UD-IQ4_XS and UD-Q8_K_XL, sha256 12827f24…aadce) maps `high` -> xhigh itself but
+          raise_exception()s on any other value outside xhigh / medium / low. llama-server
+          turns that into HTTP 500, both for the request's top-level reasoning_effort and
+          inside chat_template_kwargs, while /health and /v1/models stay 200. `minimal` and
+          `max` are the two values the wider OpenAI-compatible vocabulary sends (Hermes
+          Agent, OpenRouter-shaped clients), and llama-server's own --reasoning-effort help
+          lists both. Measured on llamacpp/qwen38-27b-single-iq4xs 2026-10-20: max and
+          minimal 500, high / medium / xhigh / low 200. The pinned mainline image has no
+          effort allow-list (PrismML's --reasoning-effort-allow is a fork flag), so the fix
+          has to be the template. The override is the GGUF's own template plus one block
+          that clamps minimal -> low and max -> xhigh, the same clamps the vLLM and SGLang
+          slugs' template carries (qwen38-reasoning-effort-template); low / medium / xhigh /
+          high render byte-identically to stock, and an unknown value is still rejected.
+          The vLLM template is NOT a drop-in here: it is built from Qwen's safetensors
+          template, which differs from the GGUF's (system-message merging, tool rendering,
+          the raise rules), so serving it would change how every prompt on these slugs is
+          built.
+        evidence: "models/qwen3.8-27b/llama-cpp/patches/qwen38-gguf-reasoning-effort-template/PROVENANCE.md"
+    delivery:               # DEPRECATED/READ-ONLY (test-only) -- see header
+      dockerfile_bake: false
+      entrypoint_invoke: false
+      genesis: false
+    delivery_gaps: []
+    delivery_mechanism: chat_template
+    delivery_spec:
+      jinja: models/qwen3.8-27b/llama-cpp/patches/qwen38-gguf-reasoning-effort-template/chat_template.jinja
+      mounted_at: /etc/qwen38-gguf-chat-template.jinja
+      mount_mode: ro
+      invoke: --chat-template-file /etc/qwen38-gguf-chat-template.jinja
+      wired_at: [volumes, command]
+      note: >-
+        Mounted read-only and selected with --chat-template-file next to --jinja, so
+        llama-server renders it instead of the GGUF's embedded copy. A GGUF_FILE override
+        on these composes still gets this template; it is the Qwen3.8 GGUF template, so
+        point GGUF_FILE only at another Qwen3.8 GGUF.
+    drift_guard:
+      kind: behavioral
+      check: >-
+        scripts/tests/test-qwen38-gguf-template.sh is the offline half: the vendored file
+        with its club-3090 block removed must hash to the recorded GGUF template
+        (12827f24…aadce), so everything but the clamps is the GGUF's own; it renders
+        minimal == low, max == xhigh, high == xhigh, and a bogus value still raises; every
+        llama-cpp compose that mounts the file selects it with --chat-template-file; and,
+        when MODEL_DIR is exported and the GGUFs are there, each GGUF's embedded template
+        must still hash to the recorded one. A different hash means unsloth re-pushed the
+        GGUF with a new template: re-extract it, re-apply the block, update the recorded
+        hash. Live: with the template mounted, GET /props must return it (the club-3090
+        PATCH marker present) and a thinking-mode request with reasoning_effort minimal /
+        max must return HTTP 200, top-level and in chat_template_kwargs. Any
+        behavioral/TPS comparison the guard performs MUST use the SELF-CONTAINED
+        symmetric restart+settle protocol: identical docker restart on BOTH arms ->
+        healthy -> fixed 60s settle -> >=3 bench.sh runs/arm -> compare the grand mean,
+        never a single run.
+      on_fail: capability-degraded   # serves the stock GGUF template: minimal / max return HTTP 500
+    capability: chat-template-override
+    foundational: false
+    upstream:
+      ref: "unsloth/Qwen3.8-27B-GGUF embedded tokenizer.chat_template (UD-IQ4_XS and UD-Q8_K_XL, read 2026-10-20); no upstream issue filed"
+      status: local-vendored
+      drop_when: "unsloth's GGUF template accepts minimal and max (or stops raising on unknown efforts), or the pinned mainline llama-server gains an effort allow-list. Re-vendor from the GGUF if unsloth re-pushes it with a changed template."
+    status: verified
+
   - id: vllm-51581-dflash-dense-kv
     # Successor to `vllm-dflash2-backport`, which bundled TWO upstream fixes.
     # vllm#52816 (the DFlash2 model classes) is native since v0.29.0; vllm#51581

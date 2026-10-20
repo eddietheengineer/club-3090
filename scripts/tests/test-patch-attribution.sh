@@ -197,6 +197,7 @@ _ct_homes = {
     "qwen-froggeric-chat-template": "vllm/minimal",
     "qwen38-reasoning-effort-template": "vllm/qwen38-27b-dual-max",
     "apex-qwen-chat-template": "ik-llama/apex-mtp-compact",
+    "qwen38-gguf-reasoning-effort-template": "llamacpp/qwen38-27b-single-iq4xs",
 }
 _ct_targets = list(_ct_homes.items()) + [("qwen38-reasoning-effort-template", "sgl/qwen38-27b-dual-fast")]
 for _owner, _slug in _ct_targets:
