@@ -13,6 +13,8 @@ from typing import Optional
 
 import httpx
 
+from .engine_auth import get_with_engine_key
+
 # Engine-internal ports: 8000=vLLM, 8080=llama.cpp, 30000=SGLang, 5000=TabbyAPI
 # (exllamav3, #1360). Every use applies a name filter first (ENGINE_PREFIXES, a
 # registry claim, or the cockpit's container kind), so 5000 — also a common port
@@ -283,10 +285,11 @@ async def detect_endpoint(
     else:
         target.health = "serving"
 
-    # Step 4: probe /v1/models
+    # Step 4: probe /v1/models, with the engine's API key once it asks for one (Strata 0.2+ answers
+    # nothing but /health without it; engine_auth.py)
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(f"{target.url}/v1/models")
+            resp = await get_with_engine_key(client, f"{target.url}/v1/models", target.container)
             if resp.status_code == 200:
                 data = resp.json().get("data", [])
                 if data:
@@ -295,6 +298,8 @@ async def detect_endpoint(
                         pass  # keep multiple
                     else:
                         target.health = "serving"
+            elif resp.status_code == 401:
+                pass  # it answers but refuses our key: reachable, model unknown (not "unreachable")
             else:
                 target.health = "unreachable"
     except Exception:

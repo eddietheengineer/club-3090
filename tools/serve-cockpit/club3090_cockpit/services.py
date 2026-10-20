@@ -46,6 +46,7 @@ from club3090_tui_core.detect import (
     get_gpu_info as core_get_gpu_info,
     match_target_to_registry,
 )
+from club3090_tui_core.engine_auth import get_with_engine_key
 from club3090_tui_core.registry import VariantRow, parse_variant_rows
 from club3090_tui_core.runner import CoreRunState, SubprocessRunner
 
@@ -3139,7 +3140,9 @@ class CockpitData:
                 import httpx  # local import — only the real probe needs it
 
                 async with httpx.AsyncClient(timeout=5.0) as client:
-                    resp = await client.get(f"{url}/v1/models")
+                    # with the engine's API key once it asks (Strata 0.2+; club3090_tui_core.engine_auth)
+                    resp = await get_with_engine_key(client, f"{url}/v1/models", container,
+                                                     repo_root=self.repo_root)
                     if resp.status_code == 200:
                         data = (resp.json() or {}).get("data", []) or []
                         if data:

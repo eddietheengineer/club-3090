@@ -11498,8 +11498,13 @@ class CockpitApp(App):
             if url:
                 try:
                     import httpx
+                    from club3090_tui_core.engine_auth import get_with_engine_key
                     async with httpx.AsyncClient(timeout=1.5) as client:
-                        r = await client.get(f"{url.rstrip('/')}/v1/models")
+                        # with the engine's API key once it asks (Strata 0.2+)
+                        r = await get_with_engine_key(
+                            client, f"{url.rstrip('/')}/v1/models",
+                            getattr(state.target, "container", "") or "",
+                            repo_root=getattr(self._data, "repo_root", None))
                     if r.status_code == 200:
                         import time as _t
                         self._docker_burst_until = _t.monotonic() + 6.0
