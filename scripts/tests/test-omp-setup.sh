@@ -139,8 +139,8 @@ PY
 #    key omp treated them as non-reasoning, sent NO effort, and every request ran at
 #    the server's slowest default. Two engines name the model themselves, so their ids
 #    are derived the way they derive them: Strata as "<family name>-<quant>" (its
-#    setup.py; the family is the compose's entrypoint argument, the quant the
-#    launcher's MODEL=), Project Maya from its launcher's model_name. A compose whose
+#    setup; the family is the argument after strata-entrypoint.sh in the compose's
+#    entrypoint, the quant the launcher's MODEL=), Project Maya from its launcher's model_name. A compose whose
 #    id this can't tell fails, rather than going unchecked.
 python3 - "$ROOT" <<'PY' || bad "omp-setup.sh FLASH_NEXT_IDS / GLM53_IDS must equal the ids the Flash-Next / GLM composes serve"
 import ast, glob, io, os, re, sys
@@ -151,7 +151,7 @@ def listed(name):
 STRATA_FAMILY = {"qwen": "qwen3.8-flash-next", "swift": "swift-1.5"}   # Strata setup.py FAMILIES[...]["name"]
 def read(p): return io.open(p, encoding="utf-8").read()
 def strata_quant(engine_dir):
-    m = re.search(r"^MODEL=(\S+)$", read(f"{engine_dir}/launcher/strata-entrypoint.sh"), re.M)
+    m = re.search(r"^(?:export )?MODEL=(\S+)", read(f"{engine_dir}/launcher/strata-entrypoint.sh"), re.M)
     return m.group(1).lower() if m else None
 def maya_name(engine_dir):
     m = re.search(r'"model_name":\s*"([^"]+)"', read(f"{engine_dir}/launcher/maya_prepare.py"))
@@ -183,7 +183,8 @@ def compose_ids(f):
     if engine == "strata":
         m = re.search(r"entrypoint:\s*\[([^\]]*)\]", read(f))
         args = re.findall(r'"([^"]+)"', m.group(1)) if m else []
-        fam = args[2] if len(args) > 2 else "qwen"
+        at = next((i for i, a in enumerate(args) if a.endswith("strata-entrypoint.sh")), None)   # the family follows it
+        fam = args[at + 1] if at is not None and len(args) > at + 1 else "qwen"
         q = strata_quant(engine_dir)
         if fam in STRATA_FAMILY and q: out.add(f"{STRATA_FAMILY[fam]}-{q}")
     elif engine == "strata-maya":

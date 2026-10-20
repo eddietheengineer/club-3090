@@ -1,6 +1,6 @@
 schema_version: 1
 id: strata
-display_name: Strata (club-3090's portable image of the upstream release)
+display_name: Strata (upstream's official image)
 type: strata
 stability: experimental
 min_sm: 7.5
@@ -9,16 +9,19 @@ lineage:
   base: null
   base_version: null
   source: "https://github.com/Niko1221/Strata"
-  source_ref: "477ac13cbe8e582c20484871ce459d20d82df09d"
+  source_ref: "90767252f420e25223c739d604145ad15911d48b"
   chain: []
-  delta: "Independent C++/CUDA engine for Qwen3.8-Flash-Next with its own Python server; uses ggml's CPU backend and llama.cpp's mtmd/gguf-py as libraries. Our image builds upstream's Dockerfile at the release commit with ggml's CPU code on an AVX2 baseline (STRATA_PORTABLE=ON), an image-provenance exception (docs/ADDING_ENGINES.md)"
+  delta: "Independent C++/CUDA engine for Qwen3.8-Flash-Next with its own Python server and Terminal; uses ggml's CPU backend and llama.cpp's mtmd/gguf-py as libraries. Pinned to the image upstream publishes (ghcr.io/niko1221/strata:<release>-cuda13, from 0.2.1 on), built from its signed engine packages"
 image_env: STRATA_IMAGE
 install:
   method: docker_image
-  # v0.1.45 (upstream 477ac13c), CI run 39016933357: archs 75;80;86;89;120 + the image encoder.
-  # Pinned 2026-10-17; replaced v0.1.44.1 (fb97d83b, 2026-10-14), which replaced v0.1.43.1
+  # Strata 0.2.1 (upstream 90767252; engine 0.1.46, the image's com.strata.engine label), upstream's
+  # own image `0.2.1-cuda13` (RTX 20-50, driver >= 580), built by their docker-images workflow from the
+  # signed engine packages. Pinned 2026-10-20 after switch.sh boots + verify-full of the four dual and
+  # single slugs on this digest. Replaced club-3090's own builds of upstream's Dockerfile
+  # (strata-club3090): v0.1.45 (75deea40, 2026-10-17), v0.1.44.1 (fb97d83b, 2026-10-14), v0.1.43.1
   # (7f8643c8, 2026-10-13, the one that also carried sm_90).
-  spec: ghcr.io/noonghunna/strata-club3090@sha256:75deea401784c424810e8c0c40e8798ab3727276ee6d4dd64515042b491d70e1
+  spec: ghcr.io/niko1221/strata@sha256:a0398afb7a60253f1442ec149326aa7d80e0137e9f1ffe304bb0e84a6939ee8e
 supported_model_families:
   - qwen4exp              # Qwen3.8-Flash-Next family: Strata is written for this model only
 supported_weight_formats:
@@ -28,11 +31,14 @@ supported_kv_formats:
 supported_drafters: []    # MTP is Strata's built-in draft layer (--spec), not a club drafter
 notes: >
   Strata (github.com/Niko1221/Strata, MIT): its own C++/CUDA engine for Qwen3.8-Flash-Next plus a
-  Python server (setup.py), not a llama.cpp fork; it uses ggml's CPU backend and llama.cpp's
-  mtmd / gguf-py as libraries. Upstream publishes no Linux image or engine, so club-3090 builds
-  one per release (models/qwen3.8-flash-next/strata/image/, an image-provenance exception in
-  docs/ADDING_ENGINES.md): upstream's Dockerfile at the release commit, ggml's CPU code on an
-  AVX2 baseline, archs 75;80;86;89;120 + the image encoder. Host needs NVIDIA driver >= 580
-  (CUDA 13) and an AVX2 CPU; x86-64 only (no DGX Spark). Serves on 8080 and answers /props like
-  llama-server; its runtime numbers come from GET /metrics (scripts/lib/strata_metrics.py), as
-  its per-request log lines stay in a file inside the container. Engine kind `strata` (#1672).
+  Python server and a Terminal (`strata launch`), not a llama.cpp fork; it uses ggml's CPU backend
+  and llama.cpp's mtmd / gguf-py as libraries. From 0.2.1 upstream publishes a Docker image per
+  release (ghcr.io/niko1221/strata:<release>-<flavor>; cuda13 for RTX 20-50 with driver >= 580),
+  which these slugs pin by digest; club-3090's launcher (models/qwen3.8-flash-next/strata/launcher/)
+  writes the launch settings into setup's run config and then runs the image's own entrypoint. The
+  server needs an API key for everything but GET /health; the composes set one (club-3090's
+  default unless STRATA_API_KEY is set) and our tooling sends it (scripts/lib/engine-auth.sh).
+  x86-64 with AVX2 only (no DGX Spark). Serves on 8080 and answers /props like llama-server; its
+  runtime numbers come from GET /metrics (scripts/lib/strata_metrics.py), as its per-request lines
+  go to a file inside the container (/data/state/strata/launch/<preset>.engine.log). Engine kind
+  `strata` (#1672).

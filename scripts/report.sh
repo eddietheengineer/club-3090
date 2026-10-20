@@ -180,6 +180,7 @@ redact() {
       -e 's|HF_TOKEN=[^ "]*|HF_TOKEN=<REDACTED>|g' \
       -e 's|HUGGING_FACE_HUB_TOKEN=[^ "]*|HUGGING_FACE_HUB_TOKEN=<REDACTED>|g' \
       -e 's|api_key=[^ "]*|api_key=<REDACTED>|gi' \
+      -e 's|API key  *[^ ]*|API key <REDACTED>|g' \
       -e 's|hf_[A-Za-z0-9]\{30,\}|hf_<REDACTED>|g' \
       -e 's|/opt/ai|<STACK_ROOT>|g' \
       -e 's|/mnt/[a-z]/Users/[^ /]*|/mnt/<DRIVE>/Users/<REDACTED>|g' \
@@ -1222,7 +1223,7 @@ else
     subsection "Setup log (docker logs, first 200 lines)"
     docker logs "$CONTAINER" 2>&1 | head -200 | redact | details "First 200 lines of docker logs"
     subsection "Engine log (last 200 lines)"
-    docker exec "$CONTAINER" sh -c 'tail -200 /opt/strata/strata-*.log' 2>&1 | redact | details "Last 200 lines of the engine log inside the container"
+    docker exec "$CONTAINER" sh -c 'tail -200 /data/state/strata/launch/*.engine.log /opt/strata/strata-*.log 2>/dev/null' 2>&1 | redact | details "Last 200 lines of the engine log inside the container"
 
   else
   # ---- vLLM probe set (default for engine=vllm or unknown) ----

@@ -208,18 +208,21 @@ This is the "free 30 GB of disk" moment.
 
 ### Strata
 
-- Pinned by digest to `ghcr.io/noonghunna/strata-club3090`, which the maintainer builds on the reference rig
-  from each upstream release we take (`build.sh --tag <vX.Y.Z> --push` from a clean master checkout; the push
-  guard refuses anything else; recipe in `models/qwen3.8-flash-next/strata/image/`). A published
-  image is not a pin: boot one `strata/` slug of each model family on the new digest (an ISTA slug and a Swift
-  one: a release can break one family's setup and not the other's), run `verify-full` on each, then
-  `scripts/engine-pin-bump.sh strata ghcr.io/noonghunna/strata-club3090@sha256:<digest>` and update
-  `lineage.source_ref` to the image's `club3090.upstream.revision` label.
-- The volatile parts are upstream's Dockerfile build step (the image build's `portable.py` refuses when its
-  anchors move) and the `setup.py` flags `launcher/strata-entrypoint.sh` passes (the image build fails when one
-  disappears). Both stop the build rather than publish a broken image.
-- The data volume carries one pack per model family and the shared MTP layer between versions; a release that
-  changes the pack format re-prepares a family's pack at that family's first start (`REINSTALL=1` forces it).
+- Pinned by digest to upstream's own image, `ghcr.io/niko1221/strata:<release>-cuda13`, which Strata's
+  `docker-images` workflow builds from the release's signed engine packages (from 0.2.1 on; until 2026-10-20 we built
+  `strata-club3090` ourselves). The workflow is run by hand and was run several times for 0.2.1, so resolve the tag
+  to a digest just before pinning and pin the digest you booted. Boot one `strata/` slug of each model family on it
+  (an ISTA slug and a Swift one: a release can break one family's setup and not the other's), run `verify-full` on
+  each, then `scripts/engine-pin-bump.sh strata ghcr.io/niko1221/strata@sha256:<digest>`, update
+  `lineage.source_ref` to the release's commit, and re-record the settings evidence
+  (`python3 scripts/lib/profiles/engine_config_reads.py verify strata --record`).
+- The volatile parts are the image's own entrypoint (`/opt/strata/entrypoint.sh` and the settings it reads:
+  `MODEL`, `FAMILY`, `MODEL_PATH`, `CONTEXT`, `KV`, `VISION`, `GPUS`, `PRESET`, `API_KEY`), the run config setup writes
+  (`/data/install/strata-<family>.json`, where `launcher/strata_config.py` puts the launch settings) and how setup
+  keeps an option it doesn't choose itself (`user_args`). Re-read the release notes for those.
+- The data volume (`strata-data-v2`) carries one pack per model family and the shared MTP layer between versions,
+  in a folder every topology shares; a release that changes the pack format re-prepares a family's pack at its first
+  start in each topology.
 
 ### strata-maya
 

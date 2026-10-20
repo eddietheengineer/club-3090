@@ -532,7 +532,7 @@ case "$ENGINE_KIND" in
       LOG_CMD="docker logs ${CONTAINER} 2>&1 | tail -50"
     fi ;;
   # Strata's engine writes to a log file inside the container; docker logs has only setup
-  strata) LOG_CMD="docker exec ${CONTAINER} sh -c 'tail -50 /opt/strata/strata-*.log'" ;;
+  strata) LOG_CMD="docker exec ${CONTAINER} sh -c 'tail -50 /data/state/strata/launch/*.engine.log /opt/strata/strata-*.log 2>/dev/null'" ;;   # Strata 0.2+, then 0.1.x
   *) LOG_CMD="check your engine's stdout/stderr or container logs" ;;
 esac
 
