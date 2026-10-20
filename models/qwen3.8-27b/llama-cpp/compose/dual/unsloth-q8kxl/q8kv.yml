@@ -232,9 +232,10 @@ services:
       - TEMPERATURE
       - TOP_P
       - PRESENCE_PENALTY
-      # ⭐ Default reasoning effort = low when thinking is on (2026-08-16),
-      # matching the vLLM composes. NOW ACTIVE on every request: thinking became
-      # the default 2026-09-01. It goes INERT only under INSTRUCT=1, because the
+      # ⭐ Default reasoning effort = medium when thinking is on. It was low from
+      # 2026-08-16, matching the vLLM composes, until 2026-09-19 (see below); the vLLM
+      # and SGLang composes still default low. NOW ACTIVE on every request: thinking
+      # became the default 2026-09-01. It goes INERT only under INSTRUCT=1, because the
       # template reads reasoning_effort inside
       # `if enable_thinking is undefined or true`, and --reasoning off passes
       # enable_thinking:false.
