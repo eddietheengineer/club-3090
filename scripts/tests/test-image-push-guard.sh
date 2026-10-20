@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Guard: the image recipes refuse `build.sh --push` unless the image's recipe labels would name
-# the code that built it (scripts/lib/image-push-guard.sh). Since 2026-10-17 strata-club3090 and
-# strata-maya-club3090 are pushed from the maintainer's rig, not GitHub CI, and a rig build from a
-# dirty or unpublished tree was seen labelled with the wrong commit.
+# the code that built it (scripts/lib/image-push-guard.sh). Since 2026-10-17 strata-maya-club3090 is
+# pushed from the maintainer's rig, not GitHub CI (as strata-club3090 was until Strata published its
+# own images, 2026-10-20), and a rig build from a dirty or unpublished tree was seen labelled with the
+# wrong commit.
 #
-# For each recipe (Strata, Project Maya), in a throwaway repo with its own bare "origin":
+# For the recipe (Project Maya), in a throwaway repo with its own bare "origin":
 #   1. clean, at a commit on origin/master   → the guard passes (positive control);
 #   2. a modified tracked file in the recipe → refused;
 #   3. an untracked file in the recipe       → refused;
@@ -47,8 +48,7 @@ run() {  # <clone> <recipe dir> [build.sh args...]  → prints output, returns b
   IMAGE_PUSH_GUARD_ONLY=1 bash "$clone/$recipe/build.sh" "$@" 2>&1
 }
 
-for pair in "strata:models/qwen3.8-flash-next/strata/image:portable.py" \
-            "maya:models/glm-5.3-flash/strata-maya/image:Dockerfile"; do
+for pair in "maya:models/glm-5.3-flash/strata-maya/image:Dockerfile"; do
   IFS=: read -r name recipe file <<<"$pair"
   echo "== $name ($recipe)"
   clone="$(fixture "$name" "$recipe")"

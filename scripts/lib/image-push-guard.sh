@@ -1,7 +1,8 @@
-# image-push-guard.sh — sourced by the image recipes' build.sh (Strata, Project Maya).
+# image-push-guard.sh — sourced by the image recipe's build.sh (Project Maya; Strata's too, until
+# Strata published its own images on 2026-10-20).
 #
-# We publish strata-club3090 and strata-maya-club3090 from the maintainer's rig with
-# `build.sh --push` (since 2026-10-17; GitHub CI built them before). CI always built a clean
+# We publish strata-maya-club3090 from the maintainer's rig with `build.sh --push` (since
+# 2026-10-17; GitHub CI built it before). CI always built a clean
 # checkout of a pushed commit, so the image's recipe labels (org.opencontainers.image.revision,
 # club3090.recipe) named the code that built it. A rig checkout makes no such promise: on
 # 2026-10-17 a test build was labelled with its worktree's base commit while it ran an
