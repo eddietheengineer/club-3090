@@ -2092,4 +2092,8 @@ fi
 if [[ "$WAIT" -eq 1 ]]; then
   bash "$(dirname "$0")/lib/litellm-sync.sh" --quiet || true
 fi
-echo "[switch] done. Try:  curl -s ${READY_URL%/v1/models}/v1/models | jq ."
+if [[ -n "${CLUB_ENGINE_API_KEY:-}" ]]; then   # the engine wants its key (engine-auth.sh, in wait_ready)
+  echo "[switch] done. Try:  curl -s -H \"Authorization: Bearer \$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' ${VARIANT_CONTAINER[$VARIANT]:-<container>} | sed -n 's/^API_KEY=//p')\" ${READY_URL%/v1/models}/v1/models | jq ."
+else
+  echo "[switch] done. Try:  curl -s ${READY_URL%/v1/models}/v1/models | jq ."
+fi

@@ -4,7 +4,7 @@
 
 ## What it is
 
-[Strata](https://github.com/Niko1221/Strata) (MIT, Niko1221) is its own C++/CUDA engine, written for one model, plus a Python server (`setup.py`) that installs, configures and serves it. It is not a llama.cpp or vLLM fork. It uses three pieces of llama.cpp as libraries, pinned in `setup.py`'s `LLAMA_CPP_COMMIT`:
+[Strata](https://github.com/Niko1221/Strata) (MIT, Niko1221) is its own C++/CUDA engine, written for one model, plus a Python server and a Terminal (`strata launch`) that set it up and serve it. It is not a llama.cpp or vLLM fork. It uses three pieces of llama.cpp as libraries:
 - ggml's CPU backend, which computes the expert rows that run on the CPU;
 - mtmd, for its image encoder;
 - gguf-py, to read the GGUF files.
@@ -17,47 +17,48 @@ Its profile declares `type: strata` and `lineage.relation: new`, and the tooling
 
 ## Image
 
-Strata publishes Windows zips and a Dockerfile, but no Linux image and no Linux engine. So club-3090 builds `ghcr.io/noonghunna/strata-club3090` for each release, an image-provenance exception recorded in [ADDING_ENGINES.md](../ADDING_ENGINES.md).
-- **Build:** upstream's Dockerfile at the release commit, with one change. ggml's CPU code and the image encoder are built for an AVX2 baseline (`STRATA_PORTABLE=ON`) instead of the build machine's CPU, so the image runs on other CPUs.
-- **Archs:** upstream's `75;80;86;89;120` (RTX 20–50 and the A-series), plus the image encoder. H100 (sm_90) isn't built; `setup.py` compiles the engine for it at each fresh container's first start, which is untested. The `v0.1.43.1` image pinned on 2026-10-13 carried sm_90 as well; `v0.1.44.1` and the pinned `v0.1.45` don't.
-- **Recipe, checks, publishing and pin flow:** [models/qwen3.8-flash-next/strata/image/](../../models/qwen3.8-flash-next/strata/image/README.md).
+From 0.2.1 Strata publishes its own Docker images, built by its `docker-images` workflow from the signed engine packages of each release: `ghcr.io/niko1221/strata:<release>-<flavor>`. The slugs pin the digest of `<release>-cuda13` (RTX 20–50 and the A-series, NVIDIA driver 580 or newer), and the launchers inject it as `STRATA_IMAGE`. Export `STRATA_IMAGE` in the shell to try another image for one launch; a saved value loses to the pin.
 
-The profile pins a digest, and the launchers inject it as `STRATA_IMAGE`. Export `STRATA_IMAGE` in the shell to try another build for one launch; a saved value loses to the pin.
+- **Pinned:** 0.2.1 (engine 0.1.46), since 2026-10-20.
+- **Before 0.2.1** upstream published no Linux image, and club-3090 built `ghcr.io/noonghunna/strata-club3090` from upstream's Dockerfile, with ggml's CPU code for an AVX2 baseline (the last one, v0.1.45, until 2026-10-20). Upstream's image now builds that way itself.
+- x86-64 with AVX2 only (no DGX Spark).
 
-**Bumping:** the maintainer publishes a release from the rig with `build.sh --tag <vX.Y.Z> --push` (`:<tag>`, `:sha-<commit>`), but publishing doesn't pin. To move the pin:
-1. boot a slug of each model family (ISTA and Swift) on the new digest through `switch.sh`;
-2. run `verify-full`;
-3. run `scripts/engine-pin-bump.sh strata ghcr.io/noonghunna/strata-club3090@sha256:<digest>`.
-
-A release that renames a `setup.py` flag the entrypoint passes fails the image build, so the recipe and the entrypoint move together.
+**Bumping:** take the new release's `<release>-cuda13` digest, then:
+1. run `scripts/engine-pin-bump.sh strata ghcr.io/niko1221/strata@sha256:<digest>`;
+2. boot a slug of each model family (ISTA and Swift) on it through `switch.sh`;
+3. run `verify-full`, which also checks that the launch settings still reach the server (`engine_config_reads.py verify strata --record`).
 
 ## Slugs
 
 | Slug | Cards | Port | Notes |
 |---|---|---|---|
 | `strata/qwen3.8-flash-next-iq3s-dual` | 2, layer split | 8018 | the fastest offloaded Flash-Next measured on the reference rig |
-| `strata/qwen3.8-flash-next-iq3s-single` | 1 | 8019 | the same install, started with `--gpu 0` |
+| `strata/qwen3.8-flash-next-iq3s-single` | 1 | 8019 | the same model, on one card (its own topology folder) |
 | `strata/qwen3.8-flash-next-swift15-abliterated-iq3s-dual` | 2, layer split | 8024 | SC117's abliterated Swift 1.5 |
-| `strata/qwen3.8-flash-next-swift15-abliterated-iq3s-single` | 1 | 8025 | the same install, started with `--gpu 0` |
-| `strata/qwen3.8-flash-next-swift15-abliterated-iq3s-multi4` | 4, layer split | 8046 | the same install on `--gpus 0,1,2,3`; never booted here (two cards): community-validated |
+| `strata/qwen3.8-flash-next-swift15-abliterated-iq3s-single` | 1 | 8025 | the same model, on one card (its own topology folder) |
+| `strata/qwen3.8-flash-next-swift15-abliterated-iq3s-multi4` | 4, layer split | 8046 | the same model on cards 0–3; never booted here (two cards): community-validated |
 
 **Weights:**
 - The first two run ISTA-DASLab's GSQ-RCO IQ3_S of the original model (`ista-iq3s`, 83.6 GB in two shards).
 - The `swift15-abliterated` pair runs SC117's abliterated GSQ-RCO IQ3_S of UkisAI's Swift 1.5 (`sc117-swift15-abliterated-iq3s`, 83.55 GB in two shards, pinned to revision `2b89cf3f`). Swift 1.5 is a fine-tune of Qwen3.8-Flash-Next that thinks much shorter. SC117 replaced its 144 residual-writer tensors with ones from orcarouter's abliterated release, which removes the refusal direction. Its README says it has no reliable built-in guardrails, so put your own moderation in front of anything user-facing. It is under the Swift Open License 1.0 (commercial use is free only below US$1M annual revenue) as well as the Qwen licence. Strata serves it as its `swift` model family.
 
-**Data volume:** all five slugs share one volume, `strata-data` under the data directory (`~/.local/share/club-3090` by default; `STRATA_DATA_DIR` overrides). It holds Strata's MTP draft layer, which every slug shares, and one links folder, config and prepared pack per model family (`strata-iq3_s` for ISTA, `strata-swift-iq3_s` for Swift).
+**Data volume:** `strata-data-v2` under the data directory (`~/.local/share/club-3090` by default; `STRATA_DATA_DIR` overrides), in Strata 0.2's layout; 0.1.x's `strata-data` isn't read by it. It has:
+- one folder per topology (`dual`, `single`, `multi4`): the run configs setup writes, the presets and Strata's state. Setup writes the cards into a model's run config, so a dual and a single start sharing one would set the model up again each time;
+- `Strata-data`, shared by every slug: one prepared pack per model family (`iq3_s` for ISTA, `swift-iq3_s` for Swift) and the MTP draft layer.
 
-**First start:** the first start of each model family runs Strata's setup. It checks the shards, prepares that family's pack, and, unless the volume already has it, range-reads about 5 GB of MTP tensors from `Qwen/Qwen3.8-Flash-Next`, so it needs the network. Swift 1.5 ships no draft layer of its own, so its slugs use the same one. On the reference rig it took about 14 minutes (image pull ~2, MTP fetch ~10, MTP pack ~2), longer than `switch.sh`'s 10-minute wait. Give the first launch `READY_TIMEOUT=1800`, or run `switch.sh` again once it times out (the container keeps going). Later starts take about 30 seconds. `SETUP_ONLY=1` runs just the setup.
+**First start:** the first start of a model in a topology runs Strata's setup. It checks the shards, prepares that family's pack and, unless the volume already has it, range-reads about 5 GB of MTP tensors from `Qwen/Qwen3.8-Flash-Next`, so it needs the network. Swift 1.5 ships no draft layer of its own, so its slugs use the same one. While setup runs, the server answers on a port the compose doesn't publish, so nothing outside talks to it before the launch settings are in. On a fresh volume it took 511 seconds on the reference rig with the image already pulled. Give the first launch `READY_TIMEOUT=1800`. A model already prepared for another topology starts in about 45 seconds, later starts in about 25.
 
-**Requests and readiness:** every Strata slug takes one request at a time. `/health` reports `loaded` before the engine has filled its expert cache. The `ready: http` line in `docker logs` is the real gate; `switch.sh`'s readiness probe (one completion) waits for it.
+**API key:** Strata 0.2+ answers nothing but `GET /health` without a key, so every slug has one: club-3090's default, `club-3090-strata-local-key`, unless you set `STRATA_API_KEY` (`bash scripts/settings.sh set STRATA_API_KEY=…`; 16 characters or more). Clients send `Authorization: Bearer <key>`. Our scripts read the key from the running container and send it themselves (`scripts/lib/engine-auth.sh`); for a remote URL set `ENGINE_API_KEY`. The default is public, so set your own before you publish the port beyond this machine.
+
+**Requests and readiness:** Strata picks how many requests run at once (`--parallel 3` on the reference rig, on one card and on two). `switch.sh`'s readiness probe sends one completion, so its ready means the engine generates.
 
 Measurements, with dates and settings, are in each compose's header and in [BENCHMARKS.md](../../BENCHMARKS.md) (Qwen3.8-Flash-Next, the Strata table).
 
 ## What club-3090 adds
 
-- **One entrypoint for every compose** (`models/qwen3.8-flash-next/strata/launcher/strata-entrypoint.sh`). It replaces the image's own entrypoint, which can't take a `--gguf-dir`. Strata's setup deletes a shard whose SHA-256 doesn't match, so the entrypoint points it at symlinks on the data volume and the read-only model tree is never written. Each link takes the name setup expects for the model family, which is how SC117's `-abliterated` files load as Swift 1.5. The compose passes the family as the entrypoint's one argument (`qwen` when absent, or `swift`), not as a setting, so no saved value can point a slug at the other model's files. The entrypoint also passes the setup flags and starts the configured install on the cards `STRATA_START_GPUS` names.
+- **One launcher for every compose** (`models/qwen3.8-flash-next/strata/launcher/strata-entrypoint.sh`), run under the image's `tini`. It hands the image's own entrypoint our model folder (read-only, `MODEL_PATH=/gguf`), the model family, the cards `STRATA_START_GPUS` names, `CONTEXT`, `KV` and the API key, and writes the launch settings below into setup's run config. The compose passes the family as the launcher's one argument (`qwen` when absent, or `swift`), not as a setting, so no saved value can point a slug at the other model's files. Pictures are off (`VISION=off`), as before.
 - **Runtime numbers from `/metrics`.** Strata writes its per-request lines (throughput, drafts accepted, expert-cache hits) to a log file inside the container, not to `docker logs`. `health.sh`, `verify-full` (its MTP acceptance check), `bench.sh` and `report.sh` read them from `GET /metrics` through `scripts/lib/strata_metrics.py` instead.
-- **Launch settings, written into Strata's own config at every boot** (`launcher/strata_config.py`). Strata reads these from the config its setup writes to the data volume, and setup writes none of them, so before this a setting only took effect if you edited the JSON by hand. The entrypoint keeps setup's output as `config/strata-<family>.setup.json` and rebuilds the live config from it plus your settings each time, so a setting you remove is gone at the next boot. A bad value stops the boot with the reason. `REASONING_EFFORT`, `ENABLE_THINKING` and `SPEC_N` are catalogued, so `bash scripts/switch.sh --set <slug> REASONING_EFFORT=low` saves them for one slug; `--set` refuses the others, so save those with `bash scripts/settings.sh set TEMP=0.7` (they apply to every slug that reads them) or give them as a shell prefix.
+- **Launch settings, written into Strata's own config at every boot** (`launcher/strata_config.py`). Strata reads these from the run config setup writes (`/data/install/strata-<family>.json`), and setup writes none of them. Its launcher rebuilds the live config from that file at every start, so that file is where they go, before the server starts. Each apply first takes out what the last one wrote, so a setting you remove is gone at the next boot. Strata 0.2's setup keeps keys it doesn't write itself and folds an `--spec` of ours into its own record. When setup runs during a start anyway (after `CONTEXT` or `KV` changed), the launcher checks what the server runs from once it answers, and restarts Strata once if a setting didn't survive. A bad value stops the boot with the reason. `REASONING_EFFORT`, `ENABLE_THINKING` and `SPEC_N` are catalogued, so `bash scripts/switch.sh --set <slug> REASONING_EFFORT=low` saves them for one slug; `--set` refuses the others, so save those with `bash scripts/settings.sh set TEMP=0.7` (they apply to every slug that reads them) or give them as a shell prefix.
 
   | Setting | Strata config | Values | Unset |
   |---|---|---|---|

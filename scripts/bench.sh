@@ -2359,7 +2359,7 @@ if [[ "${CONTAINER:-}" != "none" ]] && command -v docker >/dev/null 2>&1 \
   # the drafter was running fine.
   if [[ "$ENGINE_KIND" == "strata" ]]; then
     # Strata writes these to its engine log file inside the container, not to docker logs
-    docker exec "${CONTAINER}" sh -c 'grep -h "drafts accepted" /opt/strata/strata-*.log 2>/dev/null | tail -3' 2>/dev/null || true
+    docker exec "${CONTAINER}" sh -c 'grep -h "drafts accepted" /data/state/strata/launch/*.engine.log /opt/strata/strata-*.log 2>/dev/null | tail -3' 2>/dev/null || true
   else
     docker logs "${CONTAINER}" 2>&1 \
       | command grep -E "SpecDecoding metrics|accept len:|draft acceptance" | tail -3 || true

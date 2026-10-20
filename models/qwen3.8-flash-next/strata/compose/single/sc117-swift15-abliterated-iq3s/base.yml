@@ -3,8 +3,8 @@
 #   Model:     Swift 1.5 (UkisAI's fine-tune of Qwen3.8-Flash-Next), SC117's abliterated GSQ-RCO
 #              IQ3_S (2 shards, 44.85 + 38.70 GB; the 28.8 GB per-layer embedding table sits in
 #              shard 1). Served as Strata's swift family; setup checks both shards are whole GGUFs.
-#   Engine:    Strata 0.1.45 — ghcr.io/noonghunna/strata-club3090, built by club-3090 from
-#              upstream's Dockerfile at the release commit (models/qwen3.8-flash-next/strata/image/)
+#   Engine:    Strata 0.2.1 (engine 0.1.46) — upstream's own image ghcr.io/niko1221/strata:0.2.1-cuda13,
+#              pinned by digest; club-3090's launcher (../../../launcher/) applies the launch settings
 #   Topology:  Single 3090 (GPU0; ESTATE_GPUS picks another), Strata `--gpu 0`. Shares the data
 #              volume (install, pack, MTP layer, config) with the dual slug; only the start flag differs.
 #   Drafter:   MTP — Strata's own draft layer (--spec 4, min-p 0.5), the one the ISTA slugs use
@@ -19,14 +19,14 @@
 #              only below US$1M annual revenue) on top of the Qwen licence. Upstream documents the
 #              IQ3_S tier only in passing (its measured costs are IQ2_XS: decode -2%, MTP acceptance
 #              62.5% vs 66.8% with the base draft layer). Not gate-passing yet: quality unmeasured
-#              (8-pack pending). One request at a time. Needs ~86 GB of free host RAM when the model
+#              (8-pack pending). Up to 3 requests at once (Strata's pick here). Needs ~86 GB of free host RAM when the model
 #              disk is rotational (setup then keeps the 28.8 GB n-gram table in RAM; on an SSD it stays
 #              on disk), NVIDIA driver >= 580 (CUDA 13) and an AVX2 CPU; x86-64 only. Strata reasons by
 #              default, at the template's xhigh (what SC117 recommends; as the bucko-vllm Flash-Next slugs).
 #              Launch settings (REASONING_EFFORT, ENABLE_THINKING, THINKING_BUDGET, SPEC_N, the sampler;
 #              docs/engines/STRATA.md) are written into Strata's config at every boot. The first start
 #              builds this model's pack on the shared data volume (~45 s when the MTP layer is already
-#              there).
+#              there; setup serves on an unpublished port until it is done).
 #              Measured 2026-10-14 on 0.1.44.1 at 370 W: 93.9 / 105.8 decode, 1,952 / 2,302 prefill
 #              @10K/@90K, MTP acceptance 65.7% (BENCHMARKS.md, Qwen3.8-Flash-Next / Strata).
 # CPU-Offload-Host-RAM-GB: 86
@@ -42,33 +42,39 @@
 # ../../single/ista-iq3s/base.yml serves ISTA's GSQ-RCO of the original model on the same data volume
 # (its own links folder, config and pack; the MTP layer is shared).
 #   bash scripts/switch.sh --force strata/qwen3.8-flash-next-swift15-abliterated-iq3s-single
-# The first start runs Strata's one-time setup for this model (shard check, pack; config kept on the
-# data volume). By hand: SETUP_ONLY=1 docker compose -f base.yml run --rm strata, then up -d.
+# The first start runs Strata's one-time setup for this model (shard check, pack; the run config is
+# kept in this topology's folder on the data volume, the packs and MTP layer in a folder all of them
+# share). Every request needs `Authorization: Bearer <key>`: the container's API_KEY, club-3090's
+# default (club-3090-strata-local-key) unless STRATA_API_KEY is set; our scripts send it themselves.
 # ⚠️ Strata sizes its RAM tiers from FREE memory at start, so drop the page cache first on a
 #   box that just read large files. /health says loaded before the engine has filled its expert
-#   cache; the `ready: http` line in docker logs is the real gate.
+#   cache; switch.sh's generation probe (one token) is the real gate.
 services:
   strata:
-    image: ${STRATA_IMAGE:-ghcr.io/noonghunna/strata-club3090@sha256:75deea401784c424810e8c0c40e8798ab3727276ee6d4dd64515042b491d70e1}
+    image: ${STRATA_IMAGE:-ghcr.io/niko1221/strata@sha256:a0398afb7a60253f1442ec149326aa7d80e0137e9f1ffe304bb0e84a6939ee8e}
     container_name: ${ESTATE_CONTAINER:-strata-qwen38-flash-next-swift15-abl-iq3s-single}
     restart: ${CLUB3090_RESTART:-unless-stopped}
     # root, with the launcher's group: what Strata writes to the data volume stays
     # removable by the user (the entrypoint sets umask 0002)
     user: "0:${DOCKER_GID:-1000}"
-    # the argument picks setup.py's family: the mounted folder holds Swift 1.5 shards
-    entrypoint: ["/bin/sh", "/opt/club3090/strata-entrypoint.sh", "swift"]
+    # tini first, as in the image: it reaps the launcher's children and passes `docker stop` on
+    entrypoint: ["/usr/bin/tini", "--", "/bin/sh", "/opt/club3090/strata-entrypoint.sh", "swift"]
     ulimits:
       memlock: -1            # Strata pins (locks) RAM for the GPU; upstream's docker run uses -1
+    shm_size: "2g"           # and --shm-size 2g
+    stop_grace_period: 120s  # and --stop-timeout 120: on `docker stop` the server drains, then stops the model
     ports:
       - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8025}}:8080"
     environment:
       CONTEXT: "${CONTEXT:-131072}"
       KV: "${KV:-}"
-      SETUP_ONLY: "${SETUP_ONLY:-0}"
-      REINSTALL: "${REINSTALL:-0}"
       STRATA_START_GPUS: "${STRATA_START_GPUS:-0}"
+      # Strata 0.2+ serves nothing but /health without a key, so one is always set: club-3090's
+      # default unless STRATA_API_KEY is (bash scripts/settings.sh set STRATA_API_KEY=...). Our
+      # tooling reads it back from this container (scripts/lib/engine-auth.sh).
+      API_KEY: "${STRATA_API_KEY:-club-3090-strata-local-key}"
       # Strata run-config settings, written into its config at every boot by strata_config.py
-      # (mounted below); unset = Strata's own default. CONTEXT and KV re-run setup when changed.
+      # (mounted below); unset = Strata's own default. CONTEXT and KV run setup again when changed.
       REASONING_EFFORT:
       ENABLE_THINKING:
       THINKING_BUDGET:
@@ -79,11 +85,14 @@ services:
       MIN_P:
       PRESENCE_PENALTY:
       REPEAT_PENALTY:
-      # the entrypoint passes --host 0.0.0.0 and --port 8080 itself (API_KEY, when set, too)
     volumes:
       - "${MODEL_DIR:-../../../../../../models-cache}/qwen3.8-flash-next-swift15-abliterated-gsq-rco-gguf/IQ3_S:/gguf:ro"
-      # packs, MTP layer and config; the launchers put it under ~/.local/share/club-3090
-      - "${STRATA_DATA_DIR:-${CLUB3090_DATA_DIR:-../../..}/strata-data}:/data"
+      # Strata 0.2's layout (0.1.x's strata-data is not read by it), under ~/.local/share/club-3090 from
+      # the launchers: run configs, presets and state per topology (setup bakes the cards into a model's
+      # run config, so a dual and a single start would set the model up again each time), and the
+      # packs and MTP layer shared by all of them
+      - "${STRATA_DATA_DIR:-${CLUB3090_DATA_DIR:-../../..}/strata-data-v2}/single:/data"
+      - "${STRATA_DATA_DIR:-${CLUB3090_DATA_DIR:-../../..}/strata-data-v2}/Strata-data:/data/Strata-data"
       - "../../../launcher/strata-entrypoint.sh:/opt/club3090/strata-entrypoint.sh:ro"
       - "../../../launcher/strata_config.py:/opt/club3090/strata_config.py:ro"
     deploy:

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Apply club-3090's launch settings to Strata's run config at every boot (#1695 follow-up).
 
-The entrypoint runs this inside the container (with the image's python) after setup. Strata reads
-these keys from its config (serve/server.py in v0.1.45), but setup.py writes none of them, so a
-setting only reached Strata if someone edited the JSON by hand:
+The entrypoint runs this inside the container (with the image's python), on the run config setup
+writes, /data/install/strata-<tag>.json, before the server starts (Strata 0.2's launcher makes the
+live launch config from it at every start, so an edit there is lost). Strata reads these keys from
+its config (serve/server.py, 0.2.1), but setup writes none of them:
 
-  knob                   config key                    Strata's own rule (server.py v0.1.45)
+  knob                   config key                    Strata's own rule (server.py)
   REASONING_EFFORT       reasoning_effort              none | low | medium | high (high = the template's xhigh)
   ENABLE_THINKING=false  reasoning_effort: none        thinking off for requests that don't ask for it
   THINKING_BUDGET        reasoning_budget_tokens       whole tokens, 0 = no budget
@@ -19,26 +20,32 @@ A new setting here needs its key's evidence in scripts/lib/profiles/engine-confi
 pinned server reads it): test-strata-config-knobs fails until it has some.
 
 MAX_TOKENS is not one of them: Strata reads no default output cap from the run config (its max_tokens
-there is the vision encoder's, serve/runconfig.py doesn't list it); a default cap comes only from the
-Chat settings its web page saves (POST /settings).
+there is the vision encoder's); a default cap comes only from the Chat settings its web page saves.
 
-The live config is rebuilt from the copy setup wrote (<config>.setup.json) every time, so a
-setting removed is a setting gone: nothing we wrote lingers. CONTEXT and KV belong to setup
-itself (they size the KV and the expert cache), so `needs-setup` reports when they differ from
-what setup was given and the entrypoint runs setup again.
+A setting removed is a setting gone: `apply` first takes out every key it manages (Strata 0.2's setup
+keeps keys it doesn't write itself across a new setup, so they would otherwise linger) and puts --spec
+back to setup's own value, then writes the settings in the environment. SPEC_N goes into args; at its next
+run setup keeps it as an option of the user's (user_args, folded into args and args_written), which is how
+a later apply knows it is ours. Setup's own --spec is remembered in CLUB3090_STRATA_SETUP_SPEC_FILE, since
+after an override setup writes ours instead. CONTEXT and KV
+belong to setup (they size the KV and the expert cache): Strata's own entrypoint passes them to
+`strata launch`, which runs setup again when they change; here they are only checked.
 
-  strata_config.py validate                      check the settings in the environment (exit 2 on a bad one)
-  strata_config.py needs-setup <setup.json>      exit 0 (and say why) when CONTEXT / KV need a new setup
-  strata_config.py apply <setup.json> <config>   write <config> = <setup.json> + the settings
+  strata_config.py validate               check the settings in the environment (exit 2 on a bad one)
+  strata_config.py apply <in> <out>       write <out> = <in> with the settings (<in> = <out>: in place;
+                                          an unchanged result is not written, so its bytes stay put)
+  strata_config.py effective <config>     print what the server runs from (args and the managed keys;
+                                          not setup's own bookkeeping, args_written and user_args)
 """
 import json
 import os
 import sys
 
-DEFAULT_CONTEXT = 131072          # the entrypoint's ${CONTEXT:-131072}
 EFFORTS = {"none": "none", "low": "low", "medium": "medium", "high": "high",
            "xhigh": "high", "max": "high"}     # our other engines' names for Strata's "high" (the template's xhigh)
-KV_FORMATS = ("fp16", "int8", "q4_0", "k8v4")  # the engine's --kv choices (strata --help, v0.1.45)
+KV_FORMATS = ("fp16", "int8", "q4_0", "k8v4")  # `strata launch --kv` choices (0.2.1)
+MANAGED = ("reasoning_effort", "reasoning_budget_tokens")
+MANAGED_SAMPLING = ("temperature", "top_p", "top_k", "min_p", "presence_penalty", "repetition_penalty")
 
 
 class Bad(ValueError):
@@ -112,6 +119,9 @@ def settings():
     context = env("CONTEXT")
     if context is not None:
         as_int("CONTEXT", context, lo=4096)
+    key = env("API_KEY")                              # read by Strata's own entrypoint; here only checked
+    if key is not None and len(key) < 16:
+        notes.append(f"API_KEY is {len(key)} characters; Strata warns below 16 (openssl rand -hex 24 makes one)")
     return keys, sampling, spec, notes
 
 
@@ -119,33 +129,75 @@ def arg_value(args, flag):
     return args[args.index(flag) + 1] if flag in args[:-1] else None
 
 
-def needs_setup(setup_cfg):
-    args = setup_cfg.get("args") or []
-    want_ctx = int(env("CONTEXT") or DEFAULT_CONTEXT)
-    have_ctx = arg_value(args, "--max-context")
-    why = []
-    if have_ctx is not None and int(have_ctx) != want_ctx:
-        why.append(f"CONTEXT {have_ctx} -> {want_ctx}")
-    kv = env("KV")
-    have_kv = arg_value(args, "--kv")
-    if kv is not None and kv != have_kv:
-        why.append(f"KV {have_kv or '(setup default)'} -> {kv}")
-    return why
+SETUP_SPEC = "4"   # `strata --help` (0.2.1): "--spec N ... (setup writes 4)"; used when setup's own was never seen
 
 
-def apply(setup_cfg):
+def setup_spec_record(value=None):
+    """Setup's own --spec, kept beside the run config (CLUB3090_STRATA_SETUP_SPEC_FILE, set by the entrypoint):
+    once we override it, setup writes ours instead, so its value is remembered from a run config we haven't."""
+    path = os.environ.get("CLUB3090_STRATA_SETUP_SPEC_FILE", "")
+    if not path:
+        return None
+    if value is not None:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(value + "\n")
+        return value
+    try:
+        return open(path, encoding="utf-8").read().strip() or None
+    except OSError:
+        return None
+
+
+def set_arg(args, flag, value):
+    args = list(args)
+    if flag in args[:-1]:
+        args[args.index(flag) + 1] = value
+    else:
+        args += [flag, value]
+    return args
+
+
+def strip_managed(cfg):
+    """Take out what an earlier apply wrote: the managed keys, and --spec back to setup's own value.
+
+    Strata 0.2's setup keeps an option it doesn't choose itself as user_args (what args has beyond
+    args_written) and folds it into both at its next run, so an --spec of ours is recognised by user_args."""
+    for k in MANAGED:
+        cfg.pop(k, None)
+    sampling = {k: v for k, v in (cfg.get("sampling") or {}).items() if k not in MANAGED_SAMPLING}
+    if sampling:
+        cfg["sampling"] = sampling
+    else:
+        cfg.pop("sampling", None)
+    user = list(cfg.get("user_args") or [])
+    if "--spec" not in user[:-1]:                      # no --spec of ours: setup's value is the one there
+        theirs = arg_value(cfg.get("args_written") or [], "--spec") or arg_value(cfg.get("args") or [], "--spec")
+        if theirs is not None:
+            setup_spec_record(theirs)
+            if "--spec" in (cfg.get("args") or [])[:-1]:
+                cfg["args"] = set_arg(cfg["args"], "--spec", theirs)
+        return cfg
+    i = user.index("--spec")
+    del user[i:i + 2]
+    if user:
+        cfg["user_args"] = user
+    else:
+        cfg.pop("user_args", None)
+    theirs = setup_spec_record() or SETUP_SPEC
+    for key in ("args", "args_written"):
+        if key in cfg:
+            cfg[key] = set_arg(cfg[key] or [], "--spec", theirs)
+    return cfg
+
+
+def apply(in_cfg):
     keys, sampling, spec, notes = settings()
-    cfg = json.loads(json.dumps(setup_cfg))           # a deep copy: the setup copy is never touched
+    cfg = strip_managed(json.loads(json.dumps(in_cfg)))   # a deep copy: the input is never touched
     cfg.update(keys)
     if sampling:
         cfg["sampling"] = {**(cfg.get("sampling") or {}), **sampling}
-    if spec is not None:
-        args = list(cfg.get("args") or [])
-        if "--spec" in args[:-1]:
-            args[args.index("--spec") + 1] = str(spec)
-        else:
-            args += ["--spec", str(spec)]
-        cfg["args"] = args
+    if spec is not None:                              # setup records it as user_args itself at its next run
+        cfg["args"] = set_arg(cfg.get("args") or [], "--spec", str(spec))
     shown = [f"{k}={v}" for k, v in keys.items()] + [f"sampling.{k}={v}" for k, v in sampling.items()]
     if spec is not None:
         shown.append(f"--spec {spec}")
@@ -156,28 +208,30 @@ def main(argv):
     cmd = argv[1] if len(argv) > 1 else ""
     try:
         if cmd == "validate":
-            settings()
+            for n in settings()[3]:
+                print(f"[strata-recipe] {n}")
             return 0
-        if cmd == "needs-setup" and len(argv) == 3:
-            why = needs_setup(json.load(open(argv[2], encoding="utf-8")))
-            if why:
-                print("[strata-recipe] setup again: " + "; ".join(why))
-                return 0
-            return 1
+        if cmd == "effective" and len(argv) == 3:       # what the server runs from: args and our keys
+            cfg = json.load(open(argv[2], encoding="utf-8"))
+            print(json.dumps({k: cfg.get(k) for k in ("args", "sampling", *MANAGED)}, sort_keys=True))
+            return 0
         if cmd == "apply" and len(argv) == 4:
-            cfg, shown, notes = apply(json.load(open(argv[2], encoding="utf-8")))
+            cur = json.load(open(argv[2], encoding="utf-8"))
+            cfg, shown, notes = apply(cur)
+            for n in notes:
+                print(f"[strata-recipe] {n}")
+            print("[strata-recipe] settings: " + (", ".join(shown) if shown else "none (Strata's defaults)"))
+            if cfg == cur and os.path.realpath(argv[2]) == os.path.realpath(argv[3]):
+                return 0                                      # unchanged, in place: leave the bytes alone
             tmp = argv[3] + ".tmp"
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(cfg, f, indent=2)
             os.replace(tmp, argv[3])
-            for n in notes:
-                print(f"[strata-recipe] {n}")
-            print("[strata-recipe] settings: " + (", ".join(shown) if shown else "none (Strata's defaults)"))
             return 0
     except Bad as e:
         print(f"[strata-recipe] {e}", file=sys.stderr)
         return 2
-    print("usage: strata_config.py validate | needs-setup <setup.json> | apply <setup.json> <config>", file=sys.stderr)
+    print("usage: strata_config.py validate | apply <in.json> <out.json> | effective <config.json>", file=sys.stderr)
     return 64
 
 

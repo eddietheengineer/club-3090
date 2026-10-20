@@ -3,16 +3,16 @@
  "engines": {
   "strata": {
    "engine_profile": "scripts/lib/profiles/engines/strata.yml",
-   "verified_image": "ghcr.io/noonghunna/strata-club3090@sha256:75deea401784c424810e8c0c40e8798ab3727276ee6d4dd64515042b491d70e1",
+   "verified_image": "ghcr.io/niko1221/strata@sha256:a0398afb7a60253f1442ec149326aa7d80e0137e9f1ffe304bb0e84a6939ee8e",
    "render": "strata_config",
    "programs": [
     "models/qwen3.8-flash-next/strata/launcher/strata_config.py"
    ],
    "fixture": {
-    "exe": "/opt/strata/engine/strata",
+    "exe": "component:strata-engine",
     "args": [
      "--pack",
-     "/data/packs/iq3_s",
+     "/data/Strata-data/packs/iq3_s",
      "--prefill",
      "auto",
      "--spec",
@@ -20,7 +20,25 @@
      "--spec-min-p",
      "0.5",
      "--mtp",
-     "/data/mtp/rt",
+     "/data/Strata-data/mtp/rt",
+     "--max-context",
+     "131072",
+     "--kv",
+     "int8",
+     "--kv-resident",
+     "32768"
+    ],
+    "args_written": [
+     "--pack",
+     "/data/Strata-data/packs/iq3_s",
+     "--prefill",
+     "auto",
+     "--spec",
+     "4",
+     "--spec-min-p",
+     "0.5",
+     "--mtp",
+     "/data/Strata-data/mtp/rt",
      "--max-context",
      "131072",
      "--kv",
@@ -34,7 +52,8 @@
      0,
      1
     ],
-    "host": "0.0.0.0"
+    "gpus_asked": true,
+    "layer_split": "auto"
    },
    "settings": {
     "REASONING_EFFORT": "low",
@@ -49,13 +68,15 @@
     "REPEAT_PENALTY": "1.1"
    },
    "setup_only": {
-    "CONTEXT": "the entrypoint passes it to setup.py as --max-context (setup owns it: it sizes the KV and expert cache); strata_config.py only compares it",
-    "KV": "the entrypoint passes it to setup.py as --kv; strata_config.py only compares it"
+    "CONTEXT": "Strata's own entrypoint passes it to `strata launch --context` (setup owns it: it sizes the KV and expert cache); strata_config.py only checks it",
+    "KV": "Strata's own entrypoint passes it to `strata launch --kv`; strata_config.py only checks it",
+    "API_KEY": "Strata's own entrypoint passes it to `strata launch` (--api-key-env); strata_config.py only checks its length"
    },
-   "server": "/opt/strata/serve/server.py",
+   "server": "/opt/strata/terminal/serve/server.py",
    "engine_help": [
-    "/opt/strata/engine/strata",
-    "--help"
+    "/bin/sh",
+    "-c",
+    "exec /opt/strata/components/engine/*/strata --help"
    ],
    "config_receivers": [
     "cfg"
