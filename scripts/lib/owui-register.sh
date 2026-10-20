@@ -69,8 +69,9 @@ fi
 SECRET="$(docker exec "$OWUI" cat /app/backend/.webui_secret_key 2>/dev/null || true)"
 if [[ -z "$SECRET" ]]; then log "couldn't read OWUI secret key — skipping."; exit 0; fi
 
-docker exec -i "$OWUI" python3 - "$SECRET" "$PORT" "$_OWNED_PORTS" <<'PY'
-import sys, sqlite3, hmac, hashlib, base64, json, urllib.request, urllib.error
+# -e NAME (no value) copies the variable from this environment without putting it on a command line
+docker exec -i -e CLUB_ENGINE_API_KEY "$OWUI" python3 - "$SECRET" "$PORT" "$_OWNED_PORTS" <<'PY'
+import os, sys, sqlite3, hmac, hashlib, base64, json, urllib.request, urllib.error
 secret = sys.argv[1].encode(); port = sys.argv[2]
 owned = {p for p in (sys.argv[3] if len(sys.argv) > 3 else "").split(",") if p}
 db = "/app/backend/data/webui.db"
@@ -123,11 +124,16 @@ for u, k in zip(urls, keys):
         pruned.append(u); continue
     kept_u.append(u); kept_k.append(k)
 
-added = False
+# The launched engine's API key (Strata 0.2+ requires one), which switch.sh's wait_ready found
+# (scripts/lib/engine-auth.sh); engines without one keep the placeholder.
+url_key = os.environ.get("CLUB_ENGINE_API_KEY") or "sk-noauth"
+added = rekeyed = False
 if url and url not in kept_u:
-    kept_u.append(url); kept_k.append("sk-noauth"); added = True
+    kept_u.append(url); kept_k.append(url_key); added = True
+elif url and kept_k[kept_u.index(url)] != url_key:
+    kept_k[kept_u.index(url)] = url_key; rekeyed = True
 
-if not added and not pruned:
+if not added and not pruned and not rekeyed:
     print("[owui-register] no change (%d connection(s); %s)"
           % (len(kept_u), ("already registered: %s" % url) if url else "nothing dead to prune"))
     sys.exit(0)
@@ -138,6 +144,8 @@ try:
     call("/openai/config/update", new)
     for u in pruned:
         print("[owui-register] ✂ pruned dead connection: %s" % u)
+    if rekeyed:
+        print("[owui-register] ✓ updated the API key of %s" % url)
     if added:
         served = [m["id"] for m in call("/openai/models").get("data", [])]
         print("[owui-register] ✓ wired %s into Open WebUI; picker now lists: %s"

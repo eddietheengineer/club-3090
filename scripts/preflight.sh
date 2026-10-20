@@ -1605,7 +1605,20 @@ preflight_kv_format_hint() {
 #                  no local container publishes
 #
 # Skip via: PREFLIGHT_NO_AUTODETECT=1
+#
+# Whichever CONTAINER this settles on (detected, given, or none), the engine's API key, when it
+# has one, is then sent with this shell's curl requests (scripts/lib/engine-auth.sh): Strata 0.2+
+# answers nothing but GET /health without it, and every autodetecting script comes through here.
 preflight_autodetect_endpoint() {
+  _preflight_autodetect_endpoint "$@"
+  local rc=$?
+  [[ "$(type -t club_engine_auth_enable)" == function ]] \
+    || source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/engine-auth.sh"
+  club_engine_auth_enable "${CONTAINER:-}"
+  return "$rc"
+}
+
+_preflight_autodetect_endpoint() {
   if [[ "${PREFLIGHT_NO_AUTODETECT:-0}" == "1" ]]; then
     return 0
   fi
