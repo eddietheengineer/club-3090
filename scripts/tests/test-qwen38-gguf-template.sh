@@ -9,12 +9,13 @@
 # turns that into HTTP 500 while /health stays 200. `minimal` and `max` are what
 # OpenAI-compatible clients send. models/qwen3.8-27b/llama-cpp/patches/
 # qwen38-gguf-reasoning-effort-template/chat_template.jinja clamps them, and is otherwise
-# the GGUF's own template. Four ways that silently breaks, one check each:
+# the GGUF's own template. Qwen3.8-Flash-Next's GGUF embeds the same template, so its
+# moe-cache composes mount the file too. Four ways that silently breaks, one check each:
 #   1. a re-vendor drops the clamp block, or edits something else in the file
 #      -> with the block removed, the file must hash to the recorded GGUF template;
 #   2. the clamps stop rendering as low / xhigh -> render them (needs jinja2);
-#   3. a compose mounts the file but does not select it -> every llama-cpp compose that
-#      mounts it must pass --chat-template-file with the mounted path;
+#   3. a compose mounts the file but does not select it -> every compose that mounts it
+#      must pass --chat-template-file with the mounted path (folded or list-form command);
 #   4. unsloth re-pushes the GGUF with a different template -> when MODEL_DIR is exported
 #      and the GGUFs are there, their embedded template must hash to the recorded one.
 set -uo pipefail
@@ -87,19 +88,25 @@ else:
     if render() != xhigh:
         fails.append("no effort must still default to xhigh")
 
-# 3. every llama-cpp compose that mounts the file selects it
+# 3. every compose that mounts the file selects it. Folded `command: >-` puts the flag and
+#    the path on one line; a list-form command puts each on its own `- '...'` item.
 mount = re.compile(r"qwen38-gguf-reasoning-effort-template/chat_template\.jinja:([^:\s]+):ro")
 composes = []
-for f in sorted(root.glob("models/*/llama-cpp/compose/**/*.yml")):
+for f in sorted(root.glob("models/*/*/compose/**/*.yml")):
+    if "_archive" in f.parts:
+        continue
     s = f.read_text(encoding="utf-8")
     m = mount.search(s)
     if not m:
         continue
     composes.append((f, s))
-    if not re.search(r"\n\s*--chat-template-file " + re.escape(m.group(1)) + r"\n", s):
+    folded = r"\n\s*--chat-template-file " + re.escape(m.group(1)) + r"\n"
+    listed = r"\n\s*- '--chat-template-file'\n\s*- '" + re.escape(m.group(1)) + r"'\n"
+    if not (re.search(folded, s) or re.search(listed, s)):
         fails.append(f"{f.relative_to(root)}: mounts {m.group(1)} but does not pass it as --chat-template-file")
-if not composes:
-    fails.append("no llama-cpp compose mounts the template: the glob or the mount pattern is stale")
+if len(composes) < 5:
+    fails.append(f"only {len(composes)} composes mount the template (expected the 2 qwen3.8-27b + 3 "
+                 "Flash-Next ones): the glob or the mount pattern is stale")
 
 # 4. the GGUFs on disk still carry the template this file was made from
 model_dir = os.environ.get("MODEL_DIR", "")
@@ -108,11 +115,16 @@ if not model_dir:
 else:
     sys.path.insert(0, str(root / "scripts/lib/profiles"))
     from deriver import read_gguf_header
+    seen = set()
     for f, s in composes:
-        m = re.search(r"-m /models/\$\{GGUF_FILE:-([^}]+)\}", s)
+        m = (re.search(r"-m /models/\$\{GGUF_FILE:-([^}]+)\}", s)
+             or re.search(r"\n\s*- '-m'\n\s*- '/models/([^']+)'\n", s))
         if not m:
-            fails.append(f"{f.relative_to(root)}: no `-m /models/${{GGUF_FILE:-...}}` default to check")
+            fails.append(f"{f.relative_to(root)}: no `-m /models/...` model path to check")
             continue
+        if m.group(1) in seen:
+            continue
+        seen.add(m.group(1))
         gguf = pathlib.Path(model_dir) / m.group(1)
         if not gguf.is_file():
             notes.append(f"GGUF re-check skipped for {gguf.name} (not downloaded)")
