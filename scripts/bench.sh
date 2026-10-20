@@ -801,6 +801,10 @@ python3 - "$URL" "$MODEL" "$WARMUPS" "$RUNS" "$QUIET" "$ONLY" \
             "$PROMPT_NARR" "$MAX_TOKENS_NARR" \
             "$PROMPT_CODE" "$MAX_TOKENS_CODE" << 'PYEOF'
 import json, os, random, re, shutil, string, subprocess, sys, time, urllib.request, statistics as s
+# the engine's API key (Strata 0.2+), set by scripts/lib/engine-auth.sh when one applies
+_HEADERS = {"Content-Type": "application/json"}
+if os.environ.get("CLUB_ENGINE_API_KEY"):
+    _HEADERS["Authorization"] = "Bearer " + os.environ["CLUB_ENGINE_API_KEY"]
 
 (URL, MODEL, WARMUPS, RUNS, QUIET, ONLY,
  CONTAINER, PP_MODE, PP_FALLBACK_TOKENS, PP_MAX_TOKENS,
@@ -940,7 +944,7 @@ def token_ratio():
     try:
         body = json.dumps({"content": sample}).encode()
         req = urllib.request.Request(f"{URL}/tokenize", data=body,
-                                     headers={"Content-Type": "application/json"})
+                                     headers=_HEADERS)
         with urllib.request.urlopen(req, timeout=20) as r:
             obj = json.loads(r.read().decode("utf-8", errors="ignore"))
         toks = obj.get("tokens", obj if isinstance(obj, list) else [])
@@ -1015,7 +1019,7 @@ def run_once(prompt, max_tokens, force=0):
         req_body["ignore_eos"] = True
     body = json.dumps(req_body).encode()
     req = urllib.request.Request(f"{URL}{path}", data=body,
-                                 headers={"Content-Type": "application/json"})
+                                 headers=_HEADERS)
     t_send = time.time()
     ttft = None
     completion_tokens = 0

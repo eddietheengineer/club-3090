@@ -35,8 +35,9 @@ draft counts (drafts_offered=0), as before.
 Exit 0 with the lines; 2 on bad usage; 3 when /metrics is unreachable, is not JSON, or is not
 Strata's (no `engine.version` / `engine.maya_version` or `totals`), or when a Maya log named by a
 given container can't be read. A consumer must report exit 3 as "could not read",
-never as "no drafts" or "nothing ran". STRATA_API_KEY, when set, is sent as a bearer token
-(Strata gates /metrics behind its API key when it has one). Standard library only.
+never as "no drafts" or "nothing ran". The engine's API key, when set (CLUB_ENGINE_API_KEY from
+scripts/lib/engine-auth.sh, else STRATA_API_KEY), is sent as a bearer token: Strata gates /metrics
+behind its key when it has one, and Strata 0.2+ always has one. Standard library only.
 """
 import json
 import os
@@ -58,7 +59,8 @@ def fetch(base):
     url = base.rstrip("/") + "/metrics"
     # Accept: application/json, because Strata answers text/plain with Prometheus text instead
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
-    key = os.environ.get("STRATA_API_KEY", "")
+    # CLUB_ENGINE_API_KEY: what scripts/lib/engine-auth.sh found (the container's own key, first)
+    key = os.environ.get("CLUB_ENGINE_API_KEY", "") or os.environ.get("STRATA_API_KEY", "")
     if key:
         req.add_header("Authorization", f"Bearer {key}")
     try:

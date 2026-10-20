@@ -1837,6 +1837,11 @@ wait_ready() {
     exit 1
   fi
 
+  # The engine's API key, when it has one (Strata 0.2+ answers nothing but /health without it),
+  # goes with every curl from here on: the poll below, the served-model read, the generation probe.
+  source "${ROOT_DIR}/scripts/lib/engine-auth.sh"
+  club_engine_auth_enable "$container"
+
   echo "[switch] waiting for ${READY_URL} (container=${container}, timeout ${READY_TIMEOUT}s)..."
   local elapsed=0 step=4 last_marker=""
   # #1099 — baseline the restart counter. Under a restart policy (`restart:
@@ -1933,7 +1938,9 @@ wait_ready() {
   ready_probe "$container" "$_served" || exit 1
 
   echo "[switch] ✓ ready (${elapsed}s)"
-  echo "[switch] ▶ API:  http://${_lanip}:${_port}/v1   (model: ${_served:-?} · OpenAI-compatible · no auth)"
+  local _auth="no auth"
+  [[ -n "${CLUB_ENGINE_API_KEY:-}" ]] && _auth="API key required: Authorization: Bearer <the container's API_KEY>"
+  echo "[switch] ▶ API:  http://${_lanip}:${_port}/v1   (model: ${_served:-?} · OpenAI-compatible · ${_auth})"
 }
 
 # --- arg parsing ---
