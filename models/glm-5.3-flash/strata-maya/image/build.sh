@@ -27,6 +27,8 @@
 #      - serve/server.py and tools/iq_pack.py still offer every flag our launcher passes, and
 #        the expert profile the configs name is there;
 #      - gguf-py imports and the pack builder indexes the release's synthetic GLM-5 model;
+#      - every package in the release's setup.py PY_PACKAGES (less cmake / ninja) is installed in
+#        the .venv at a version it accepts;
 #   5. with --push: push :<tag> and :sha-<commit7>, then print the digest and the facts the pin PR
 #      cites. A push needs a clean recipe folder at a commit on origin/master, checked before
 #      anything else runs (scripts/lib/image-push-guard.sh), so the recipe labels name the code
@@ -153,6 +155,39 @@ $help"
   [[ "$(tail -1 <<<"$packed")" == ok ]] || die "gguf-py or the pack builder doesn't work in the image:
 $packed"
   say "check: gguf-py imports and the pack builder indexes the release's synthetic GLM-5 model"
+
+  # the release's setup.py, read in the image itself (not the list the Dockerfile recorded), so an image
+  # whose recipe missed a package fails here: v1.1.18's jsonschema, for the Responses API's structured
+  # output, was missing from the hand-kept list the recipe had until then
+  pkgs="$(docker run --rm -i --entrypoint /opt/maya/.venv/bin/python "$ref" - 2>&1 <<'PY'
+import ast, sys
+from importlib import metadata
+from pip._vendor.packaging.requirements import Requirement
+tree = ast.parse(open("/opt/maya/setup.py", encoding="utf-8").read())
+found = [node.value for node in ast.walk(tree) if isinstance(node, ast.Assign)
+         and any(isinstance(t, ast.Name) and t.id == "PY_PACKAGES" for t in node.targets)]
+if len(found) != 1:
+    sys.exit("setup.py has no single PY_PACKAGES list")
+bad, n = [], 0
+for spec in ast.literal_eval(found[0]):
+    req = Requirement(spec)
+    if req.name.lower() in ("cmake", "ninja"):
+        continue
+    n += 1
+    try:
+        version = metadata.version(req.name)
+    except metadata.PackageNotFoundError:
+        bad.append(f"{spec}: not installed")
+        continue
+    if req.specifier and not req.specifier.contains(version, prereleases=True):
+        bad.append(f"{spec}: {version} installed")
+print("\n".join(bad))
+print("ok" if n and not bad else "failed")
+PY
+)" || true
+  [[ "$(tail -1 <<<"$pkgs")" == ok ]] || die "the image's .venv lacks packages the release's setup.py installs:
+$pkgs"
+  say "check: every package in setup.py's PY_PACKAGES (less cmake / ninja) is installed at a version it accepts"
 }
 
 # ── 1. the release and its commit ────────────────────────────────────────────────
