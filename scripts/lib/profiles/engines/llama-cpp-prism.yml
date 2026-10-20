@@ -11,15 +11,23 @@ lineage:
   base: "llama.cpp"
   base_version: null
   source: "https://github.com/PrismML-Eng/llama.cpp"
-  source_ref: "d00e252587db851cb38ec70006e89a0cb189bebb"
+  source_ref: "73bfe6cc485554822f80c473a3c0c4f25e80f41b"
   chain: []
-  delta: "PrismML's fork with ternary (PQ2_0) kernels, release prism-b10776-d00e252. Our image wraps their release tarball unmodified (predates the maintainer-published-image rule)"
+  delta: "PrismML's fork with ternary (PQ2_0) kernels, release prism-b10787-73bfe6c. Our image wraps their release tarball unmodified (predates the maintainer-published-image rule)"
 install:
   method: docker_image
   # Digest-pinned, not tag-pinned: tags move, digests do not (#940 precedent).
   # Built by WRAPPING upstream's own release tarball — NOT from source. Recipe:
   # models/qwen3.8-27b/llama-cpp-prism/image/Dockerfile (checked in 2026-09-24;
   # the b10685 image's recipe existed only in its layers).
+  #   2026-10-20  prism-b10787-73bfe6c  `llama-prism-b10787-73bfe6c-bin-linux-cuda-12.8-x64.tar.gz`
+  #               sha256 f61ac818…c5181cdfe1 (= the release asset's published digest).
+  #               Image tag b10787-73bfe6c, registry digest sha256:8426b957…c8677cd5.
+  #               SASS sm_86/89/120a (cuobjdump). 11 commits past b10776, among them #354 (MTP
+  #               rollback kept across seq_cp; MTP depth defaults to 2 on CUDA, but our MTP slug
+  #               passes --spec-draft-n-max itself) and #321 (--reasoning-effort-allow/-fallback,
+  #               --reasoning-max-tokens-floor, all off by default). Both slugs boot on it,
+  #               verify-full passes; SPEC_N=2 output matches SPEC_N=0 (the #189 check, 2 prompts).
   #   2026-10-14  prism-b10776-d00e252  `llama-prism-b10776-d00e252-bin-linux-cuda-12.8-x64.tar.gz`
   #               sha256 b6cfbe1b…e640417c (= the release asset's published digest).
   #               Image tag b10776-d00e252, registry digest sha256:e4ad4998…0250da3.
@@ -57,7 +65,7 @@ install:
   # ⚠️ `libgomp1` is INSTALLED BY THE IMAGE and is REQUIRED. The CUDA runtime
   # base does not carry it, and without it EVERY binary in the tarball fails at
   # exec with `libgomp.so.1: cannot open shared object file`. Found by booting.
-  spec: ghcr.io/noonghunna/llamacpp-prism@sha256:e4ad4998ce120070b7b88389f708102b76755817da87a324c620058570250da3
+  spec: ghcr.io/noonghunna/llamacpp-prism@sha256:8426b9578fe9d23f06882f7f5d0bd925778fd4682a655bf54124b7adc8677cd5
 
 # ---------------------------------------------------------------------------
 # WHY A SEPARATE ENGINE RATHER THAN A FLAG ON AN EXISTING ONE
