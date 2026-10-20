@@ -7,9 +7,11 @@
 > architectures, neither shippable on sm_86 yet. Statements below marked **RE-CHECK**
 > were verified on v0.5.19 only.
 
-**Current state (2026-09-14): SGLang IS shipped** — 13 composes for Qwen3.8-27B across
-dual/multi4/multi8, 11 registered `sgl/` slugs, all `🧪 experimental`. Stock
-`lmsysorg/sglang:v0.5.22`, no engine patches apart from the W4A8 overlay, which is ON by default since 2026-09-19 (`W4A8=0` reverts to W4A16).
+**Current state (2026-10-20): SGLang IS shipped** — 23 registered `sgl/` slugs, all `🧪 experimental`:
+12 for Qwen3.8-27B (single/dual/multi4/multi8) and 11 for ThinkingCap-Qwen3.8-27B (dual/multi4/multi8).
+Stock `lmsysorg/sglang:v0.5.22` plus two install-script patches of ours on every SGLang compose
+(`scripts/lib/profiles/patches.yml`): the AutoRound W4A8 kernel, ON by default since 2026-09-19 (`W4A8=0`
+reverts to W4A16), and the effort thinking budget (#1603, 2026-10-10).
 
 ⚠️ This page was previously titled *"EAGLE-3 path PARKED; no shipped variant on this stack"* and
 described the 2026-05 Qwen3.6-27B investigation. That is now [archived below](#archive--the-2026-05-qwen3627b-eagle-3-investigation-superseded).

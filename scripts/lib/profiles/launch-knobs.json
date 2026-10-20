@@ -662,7 +662,7 @@
      "default": "",
      "source": {
       "file": "models/qwen3.8-27b/llama-cpp/compose/single/unsloth-iq4xs/q4kv-vision.yml",
-      "what": "the entrypoint maps it onto the compose's own row switch: false selects the INSTRUCT row (as INSTRUCT=1: --reasoning off and the instruct sampler), true keeps the THINKING row (the default); any other value stops the boot. INSTRUCT / THINKING / REASONING win when set, with a boot note"
+      "what": "the entrypoint maps it onto the compose's own row switch: false selects the INSTRUCT row (as INSTRUCT=1: --reasoning off and the instruct sampler), true keeps the THINKING row (the default); any other value stops the boot. INSTRUCT / REASONING win when set, and THINKING too where the compose declares it (not the two prism composes), with a boot note"
      },
      "checks": [
       {

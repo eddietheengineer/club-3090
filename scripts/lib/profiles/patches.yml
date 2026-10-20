@@ -1641,7 +1641,7 @@ patches:
     capability: sglang-effort-thinking-budget
     foundational: false
     upstream:
-      ref: "none equivalent; related sgl-project/sglang#36750 (max_thinking_tokens on chat completions, open), #40634 (preferred_sampling_params custom_params clobbered, open), #23953 (strict thinking, merged)"
+      ref: "none equivalent; related sgl-project/sglang#36750 (max_thinking_tokens on chat completions, closed unmerged 2026-10-12), #40634 (preferred_sampling_params custom_params clobbered, open), #23953 (strict thinking, merged)"
       status: ours
       drop_when: >-
         SGLang ships, in the sglang-stable pin, a per-request reasoning budget chosen from the
