@@ -126,6 +126,16 @@ services:
       # silently buy the most expensive reasoning mode while claiming the cheapest.
       # This is the same class of trap as GLM's reasoning_effort coercion.
       - LLAMA_ARG_CHAT_TEMPLATE_KWARGS=${LLAMA_ARG_CHAT_TEMPLATE_KWARGS:-{"reasoning_effort":"${REASONING_EFFORT:-medium}"}}
+      # ⚠️ Bonsai 2's chat template accepts reasoning_effort xhigh / medium / low only and RAISES on
+      # anything else: "high" (what Cline, Kilo Code and Open WebUI send by default) or "max" was an
+      # HTTP 500 for every request, and REASONING_EFFORT=high above did it to every request that names
+      # no effort of its own. The server (PrismML #321) replaces any other value, from a request or
+      # from the line above, with the fallback before the template sees it: xhigh, as our other
+      # Qwen3.8 engines run high / max. Turn thinking off with a request's top-level
+      # `reasoning_effort: "none"` (the server's own switch, which never reaches this check) or
+      # `enable_thinking: false`: a "none" inside chat_template_kwargs is replaced by the fallback too.
+      - LLAMA_ARG_REASONING_EFFORT_ALLOW=${LLAMA_ARG_REASONING_EFFORT_ALLOW:-xhigh,medium,low}
+      - LLAMA_ARG_REASONING_EFFORT_FALLBACK=${LLAMA_ARG_REASONING_EFFORT_FALLBACK:-xhigh}
       # Single card by default — the model is 7.21 GB and splitting it across two
       # cards buys nothing but cross-PCIe traffic.
       - CUDA_VISIBLE_DEVICES=${ESTATE_GPUS:-${CUDA_VISIBLE_DEVICES:-0}}
