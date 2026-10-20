@@ -3,7 +3,10 @@
 The chat template embedded in unsloth's Qwen3.8-27B GGUFs, served from a file, with one
 change: the reasoning efforts `minimal` and `max` are clamped to `low` and `xhigh` instead
 of raising. Mounted by the two mainline llama.cpp slugs,
-`llamacpp/qwen38-27b-single-iq4xs` and `llamacpp/qwen38-27b-dual-q8kxl`.
+`llamacpp/qwen38-27b-single-iq4xs` and `llamacpp/qwen38-27b-dual-q8kxl`, and since
+2026-10-20 by the three Qwen3.8-Flash-Next moe-cache slugs
+(`llamacpp-club3090/qwen38-flash-next-{dual,multi4,multi8}-q4kxl-moecache`), whose GGUF
+embeds the same template.
 
 ## The defect
 
@@ -78,6 +81,23 @@ Both slugs, 2026-10-20, booted with `switch.sh`:
 | `POST /apply-template`, both forms: `minimal` = `low`; `max` = `high` = `xhigh`, byte for byte | yes | yes |
 | `verify-full.sh` | 9/9 | not run |
 
+`llamacpp-club3090/qwen38-flash-next-dual-q4kxl-moecache`, 2026-10-20, booted with `switch.sh` on its
+default instruct row (`--reasoning off`), thinking turned on per request with
+`chat_template_kwargs: {"enable_thinking": true}`. Positive control first: with that, `xhigh` and `low`
+render their reasoning instructions, so the requests reach the effort branch.
+
+| check | result |
+|---|---|
+| `GET /props` serves the vendored file (club-3090 PATCH marker); tool capabilities | yes; all true |
+| `high` `max` `minimal` `medium` `xhigh` `low`, top-level and in kwargs | 200 |
+| `bogus`, both forms; `none` in kwargs | 500 |
+| `POST /apply-template`, both forms: `minimal` = `low`; `max` = `high` = `xhigh`, byte for byte | yes |
+| `verify-full.sh` | 9/9 |
+
+The stock-template 500 was not re-measured on Flash-Next: it follows from the identical template
+(the raise is in the template, not the engine). On this instruct server a top-level `none` with no
+`enable_thinking` renders thinking closed, because the server's own `--reasoning off` applies.
+
 ## Why not reuse the vLLM template
 
 It is built from Qwen's safetensors `chat_template.jinja`, which differs from the GGUF's:
@@ -93,6 +113,7 @@ these slugs is built, not just the effort handling.
 |---|---|
 | `Qwen3.8-27B-UD-IQ4_XS.gguf` | `12827f24b742ea4e80cdc12dbcf9622227056b9f797252a3149263d4f9aaadce` |
 | `Qwen3.8-27B-UD-Q8_K_XL.gguf` | `12827f24b742ea4e80cdc12dbcf9622227056b9f797252a3149263d4f9aaadce` |
+| `Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf` (`unsloth/Qwen3.8-Flash-Next-GGUF`) | `12827f24b742ea4e80cdc12dbcf9622227056b9f797252a3149263d4f9aaadce` |
 
 9,993 bytes, no trailing newline. `scripts/tests/test-qwen38-gguf-template.sh` removes the
 club-3090 block and checks the rest still hashes to this, so nothing else can change

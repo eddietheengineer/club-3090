@@ -435,13 +435,16 @@ patches:
     status: verified
 
   - id: qwen38-gguf-reasoning-effort-template
-    model: [qwen3.8-27b]
+    model: [qwen3.8-27b, qwen3.8-flash-next]
     files:
       - models/qwen3.8-27b/llama-cpp/patches/qwen38-gguf-reasoning-effort-template/chat_template.jinja
     load_bearing_when:
       - composes:
           - llamacpp/qwen38-27b-single-iq4xs
           - llamacpp/qwen38-27b-dual-q8kxl
+          - llamacpp-club3090/qwen38-flash-next-dual-q4kxl-moecache
+          - llamacpp-club3090/qwen38-flash-next-multi4-q4kxl-moecache
+          - llamacpp-club3090/qwen38-flash-next-multi8-q4kxl-moecache
         reason: >-
           The chat template embedded in unsloth's Qwen3.8-27B GGUFs (byte-identical in
           UD-IQ4_XS and UD-Q8_K_XL, sha256 12827f24…aadce) maps `high` -> xhigh itself but
@@ -460,7 +463,11 @@ patches:
           The vLLM template is NOT a drop-in here: it is built from Qwen's safetensors
           template, which differs from the GGUF's (system-message merging, tool rendering,
           the raise rules), so serving it would change how every prompt on these slugs is
-          built.
+          built. FLASH-NEXT SCOPE 2026-10-20: unsloth's Qwen3.8-Flash-Next-UD-Q4_K_XL GGUF
+          embeds the byte-identical template (sha256 12827f24…aadce, read from shard 1 of 4),
+          so the three llamacpp-club3090 moe-cache slugs mount the same file from the
+          qwen3.8-27b patch dir. They ship the instruct row (--reasoning off), so the raise
+          only fires when a request or THINKING=1 turns thinking on.
         evidence: "models/qwen3.8-27b/llama-cpp/patches/qwen38-gguf-reasoning-effort-template/PROVENANCE.md"
     delivery:               # DEPRECATED/READ-ONLY (test-only) -- see header
       dockerfile_bake: false
@@ -478,7 +485,10 @@ patches:
         Mounted read-only and selected with --chat-template-file next to --jinja, so
         llama-server renders it instead of the GGUF's embedded copy. A GGUF_FILE override
         on these composes still gets this template; it is the Qwen3.8 GGUF template, so
-        point GGUF_FILE only at another Qwen3.8 GGUF.
+        point GGUF_FILE only at another Qwen3.8 GGUF. The Flash-Next moe-cache composes
+        mount it across models (../../../../../qwen3.8-27b/llama-cpp/patches/…), as the
+        vLLM Flash-Next compose does with qwen38-reasoning-effort-template; their image
+        (llamacpp-club3090) has jinja on by default and takes --chat-template-file.
     drift_guard:
       kind: behavioral
       check: >-
@@ -486,7 +496,7 @@ patches:
         with its club-3090 block removed must hash to the recorded GGUF template
         (12827f24…aadce), so everything but the clamps is the GGUF's own; it renders
         minimal == low, max == xhigh, high == xhigh, and a bogus value still raises; every
-        llama-cpp compose that mounts the file selects it with --chat-template-file; and,
+        compose that mounts the file selects it with --chat-template-file; and,
         when MODEL_DIR is exported and the GGUFs are there, each GGUF's embedded template
         must still hash to the recorded one. A different hash means unsloth re-pushed the
         GGUF with a new template: re-extract it, re-apply the block, update the recorded

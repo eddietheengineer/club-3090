@@ -27,7 +27,9 @@
 #   Thinking:  ✅ ON by default (template: `enable_thinking` undefined ⇒ true).
 #              Disable per request with chat_template_kwargs {enable_thinking:false}.
 #              REASONING_EFFORT is per-request, not a compose flag. Valid values
-#              are ONLY xhigh (default) | medium | low — anything else RAISES.
+#              are xhigh (default) | medium | low, plus minimal -> low and max -> xhigh,
+#              which the vendored template clamps (qwen3.8-27b/llama-cpp/patches/
+#              qwen38-gguf-reasoning-effort-template) — anything else RAISES.
 #              ⚠️⚠️ `high` is SILENTLY REMAPPED TO xhigh by the template, so a
 #              "high" request costs full xhigh reasoning. Read from the GGUF's
 #              own chat_template, not a model card.
@@ -116,6 +118,9 @@ services:
       - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8123}}:8080"
     volumes:
       - "${MODEL_DIR:-../../../../../../models-cache}:/models:ro"
+      # The GGUF's own chat template plus two effort clamps (minimal -> low, max -> xhigh), shared
+      # with the qwen3.8-27b llama.cpp slugs: this GGUF embeds the byte-identical template.
+      - ../../../../../qwen3.8-27b/llama-cpp/patches/qwen38-gguf-reasoning-effort-template/chat_template.jinja:/etc/qwen38-gguf-chat-template.jinja:ro
     environment:
       # Drafter toggle - docker forwards only what is declared here.
       # Expert-cache tuning — every value MEASURED on 2×24 GB, see Caveats.
@@ -352,6 +357,10 @@ services:
       - '8080'
       - '--alias'
       - 'qwen3.8-flash-next'
+      # Without the vendored template, reasoning_effort minimal / max return HTTP 500 whenever
+      # thinking is on. See qwen3.8-27b/llama-cpp/patches/qwen38-gguf-reasoning-effort-template/.
+      - '--chat-template-file'
+      - '/etc/qwen38-gguf-chat-template.jinja'
       # Slots. ⚠️ `-np N` SPLITS `-c` into ctx/N per slot, so the pool and the
       # compute buffer change with it — a concurrency A/B must re-measure, not
       # reuse single-stream rows. Default 1 keeps shipped behaviour identical.
