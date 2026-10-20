@@ -190,8 +190,9 @@ services:
       - TEMPERATURE
       - TOP_P
       - PRESENCE_PENALTY
-      # Default reasoning effort = low; ACTIVE on every request since the 2026-09-01
-      # thinking flip. INERT only under INSTRUCT=1 (which passes enable_thinking:false).
+      # Default reasoning effort = medium (it was low until 2026-09-19, see below); ACTIVE on
+      # every request since the 2026-09-01 thinking flip. INERT only under INSTRUCT=1 (which
+      # passes enable_thinking:false).
       # (See the q8_0 sibling header for the full `high`->xhigh template trap on this engine,
       # and for the `minimal`/`max` clamps the vendored template adds.)
       # ⚠️⚠️ `medium`, NOT `low`. Upstream's card: low "is not supported and when
