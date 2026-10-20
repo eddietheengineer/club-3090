@@ -4,7 +4,7 @@
 
 ## What it is
 
-[Project Maya](https://github.com/mw00/project-maya) (MIT, mw00) is a fork of [Strata](https://github.com/Niko1221/Strata) rewritten for one model, Z.ai's GLM-5.3-Flash (320.76B MoE), with its own quants ([peasantsmith/GLM-5.3-Flash-Maya-GGUF](https://huggingface.co/peasantsmith/GLM-5.3-Flash-Maya-GGUF)). It keeps Strata's shape: a C++/CUDA engine (`build/strata`) with ggml's CPU backend as a library, and a Python server (`serve/server.py`) on port 8080 with an OpenAI API (`/v1/chat/completions`), an Anthropic one (`/v1/messages`) and a dashboard.
+[Project Maya](https://github.com/mw00/project-maya) (MIT, mw00) is a fork of [Strata](https://github.com/Niko1221/Strata) rewritten for one model, Z.ai's GLM-5.3-Flash (320.76B MoE), with its own quants ([peasantsmith/GLM-5.3-Flash-Maya-GGUF](https://huggingface.co/peasantsmith/GLM-5.3-Flash-Maya-GGUF)). It keeps Strata's shape: a C++/CUDA engine (`build/maya`; `build/strata` before v1.1.16) with ggml's CPU backend as a library, and a Python server (`serve/server.py`) on port 8080 with an OpenAI API (`/v1/chat/completions`), an Anthropic one (`/v1/messages`) and a dashboard.
 
 Where the experts live:
 - **VRAM:** a per-layer expert pool on each card, filled from a shipped routing profile and promoted as it runs;
