@@ -321,11 +321,11 @@ fork is required, not optional. We vendor nothing for it since 2026-10-06 (both 
 
 Its own C++/CUDA engine for Qwen3.8-Flash-Next, behind the `strata` engine. From 0.2.1 (2026-10-20) upstream publishes its
 own Docker images (`ghcr.io/niko1221/strata:<release>-<flavor>`), which we pin. Until then we built
-`ghcr.io/noonghunna/strata-club3090` from its Dockerfile at each release (`models/qwen3.8-flash-next/strata/image/`).
+`ghcr.io/noonghunna/strata-club3090` from its Dockerfile at each release (that recipe was removed afterwards).
 
 | Issue / PR | Status | Why it matters | Workaround |
 |---|---|---|---|
-| [#1490](https://github.com/Niko1221/Strata/pull/1490) — Dockerfile `ARG PORTABLE=0` (+ a GHCR workflow), by nullata | ⛔ **Closed unmerged** 2026-10-19; moot since 0.2.1: upstream's own Dockerfile builds with `STRATA_PORTABLE=ON`, and upstream publishes its images. (Was: open since 2026-10-08; we commented 2026-10-14 with our build's evidence and limits, [comment](https://github.com/Niko1221/Strata/pull/1490#issuecomment-6160519777)) | The Dockerfile builds ggml's CPU code and the image encoder for the build machine's CPU (`-march=native`), so an image built once and pulled elsewhere can stop with an illegal instruction. The arg threads `STRATA_PORTABLE` into both cmake calls: the same two edits our recipe makes. Its Dockerfile change still applies cleanly at v0.1.44.1. | None needed from 0.2.1 (we pin upstream's image). `portable.py` goes with our image recipe. |
+| [#1490](https://github.com/Niko1221/Strata/pull/1490) — Dockerfile `ARG PORTABLE=0` (+ a GHCR workflow), by nullata | ⛔ **Closed unmerged** 2026-10-19; moot since 0.2.1: upstream's own Dockerfile builds with `STRATA_PORTABLE=ON`, and upstream publishes its images. (Was: open since 2026-10-08; we commented 2026-10-14 with our build's evidence and limits, [comment](https://github.com/Niko1221/Strata/pull/1490#issuecomment-6160519777)) | The Dockerfile builds ggml's CPU code and the image encoder for the build machine's CPU (`-march=native`), so an image built once and pulled elsewhere can stop with an illegal instruction. The arg threads `STRATA_PORTABLE` into both cmake calls: the same two edits our recipe makes. Its Dockerfile change still applies cleanly at v0.1.44.1. | None needed from 0.2.1 (we pin upstream's image); `portable.py` was removed with our image recipe. |
 
 ---
 
