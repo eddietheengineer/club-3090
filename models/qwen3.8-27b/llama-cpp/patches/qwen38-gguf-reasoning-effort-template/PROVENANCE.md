@@ -49,7 +49,7 @@ so the mainline slugs now accept the same effort vocabulary.
 
 Unchanged: `low`, `medium`, `xhigh` and `high` render byte for byte as before; a request
 with no effort still defaults to the server's `LLAMA_ARG_CHAT_TEMPLATE_KWARGS`
-(`medium`), and a template call with none at all to `xhigh`; an unknown value is still
+(`medium`), and a template call with no effort at all to `xhigh`; an unknown value is still
 rejected. `none` inside `chat_template_kwargs` still raises, as it does on the vLLM
 template.
 
@@ -67,16 +67,16 @@ the think block), or server-wide with `INSTRUCT=1`.
 
 ## Measured with the patch
 
-`llamacpp/qwen38-27b-single-iq4xs`, 2026-10-20, booted with `switch.sh`:
+Both slugs, 2026-10-20, booted with `switch.sh`:
 
-| check | result |
-|---|---|
-| `GET /props` `chat_template` | the vendored file (club-3090 PATCH marker present) |
-| `supports_tools` / `supports_tool_calls` / `supports_parallel_tool_calls` | all true |
-| `high` `max` `minimal` `medium` `xhigh` `low`, top-level and in kwargs | 200 |
-| `bogus`, both forms; `none` in kwargs | 500, as before |
-| `POST /apply-template`, both forms | `minimal` = `low`; `max` = `high` = `xhigh`, byte for byte |
-| `verify-full.sh` | 9/9 |
+| check | `single-iq4xs` | `dual-q8kxl` |
+|---|---|---|
+| `GET /props` `chat_template` is the vendored file (club-3090 PATCH marker) | yes | yes |
+| `supports_tools` / `supports_tool_calls` / `supports_parallel_tool_calls` | all true | all true |
+| `high` `max` `minimal` `medium` `xhigh` `low`, top-level and in kwargs | 200 | 200 |
+| `bogus`, both forms; `none` in kwargs | 500, as before | 500, as before |
+| `POST /apply-template`, both forms: `minimal` = `low`; `max` = `high` = `xhigh`, byte for byte | yes | yes |
+| `verify-full.sh` | 9/9 | not run |
 
 ## Why not reuse the vLLM template
 
