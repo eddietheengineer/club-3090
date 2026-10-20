@@ -11,6 +11,10 @@
 # ⚠️ Declaring it as `- FOO=${FOO:-}` does NOT fix it: that sets FOO to the EMPTY
 # STRING, which differs from unset and, for numeric knobs, atoi("") == 0 silently
 # DISABLES the feature. Use the bare form `- FOO`.
+#
+# A map-form `environment:` (`FOO: "${FOO:-3}"`) declares FOO as well. Until
+# 2026-10-20 this guard read only the list form and failed the two bucko composes'
+# MTP_DEPTH, which always reached the container.
 set -euo pipefail
 export CLUB3090_CONFIG_DIR=/nonexistent/club-3090-test-config   # tests never read your real settings (#1466)
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -45,6 +49,18 @@ for f in files:
     t='\n'.join(l for l in raw.split('\n') if not l.lstrip().startswith('#'))
     read=set(re.findall(r'\$\$\{([A-Z][A-Z0-9_]{2,})[:\-\}]', t))
     env=set(re.findall(r'^\s+-\s+([A-Z][A-Z0-9_]*)(?:=|\s*$)', t, re.M))
+    # `environment:` can also be a map (`FOO: "${FOO:-3}"`, the bucko composes): its keys
+    # are declared too. Counted only inside an environment: block, so an uppercase key
+    # elsewhere (a build arg, say, which never reaches the container) isn't credited.
+    lines=t.split('\n')
+    for i,l in enumerate(lines):
+        m=re.match(r'^(\s*)environment:\s*$', l)
+        if not m: continue
+        for l2 in lines[i+1:]:
+            if not l2.strip(): continue
+            if len(l2)-len(l2.lstrip()) <= len(m.group(1)): break
+            k=re.match(r'^\s+([A-Z][A-Z0-9_]*):(?:\s|$)', l2)
+            if k: env.add(k.group(1))
     assigned=set(re.findall(r'^\s*([A-Z][A-Z0-9_]*)=', t, re.M)) | \
              set(re.findall(r'export\s+([A-Z][A-Z0-9_]*)=', t))
     missing = read - env - assigned - RUNTIME
