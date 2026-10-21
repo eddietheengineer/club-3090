@@ -71,10 +71,10 @@ profile moves to a new digest only after a rig boot and verify-full (`engine-pin
 
 ```bash
 bash models/glm-5.3-flash/strata-maya/image/build.sh                       # newest release: build + check
-bash models/glm-5.3-flash/strata-maya/image/build.sh --tag v1.1.19 --push --jobs 32  # publish (see below)
-bash models/glm-5.3-flash/strata-maya/image/build.sh --tag v1.1.19 --verify ghcr.io/noonghunna/strata-maya-club3090:v1.1.19
+bash models/glm-5.3-flash/strata-maya/image/build.sh --tag v1.1.20 --push --jobs 32  # publish (see below)
+bash models/glm-5.3-flash/strata-maya/image/build.sh --tag v1.1.20 --verify ghcr.io/noonghunna/strata-maya-club3090:v1.1.20
 CUDA_ARCHITECTURES=86 STRATA_MAYA_IMAGE=strata-maya-local \
-  bash models/glm-5.3-flash/strata-maya/image/build.sh --tag v1.1.19 --jobs 16 --force   # a quick local build for one card
+  bash models/glm-5.3-flash/strata-maya/image/build.sh --tag v1.1.20 --jobs 16 --force   # a quick local build for one card
 ```
 
 A local image name needs `--force`: the "already published?" probe can't tell an unpublished local
