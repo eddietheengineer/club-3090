@@ -9,17 +9,18 @@ lineage:
   base: "strata"
   base_version: null
   source: "https://github.com/mw00/project-maya"
-  source_ref: "3bf6867d344212166c09d2a5fe086b9ab90ac2fb"
+  source_ref: "35bb2b22a2e2c65b91e24a41d4b026bfa4e89557"
   chain: []
   delta: "Strata's C++/CUDA engine and Python server rewritten for GLM-5.3-Flash only (the GLM5-Next runner, a per-layer VRAM expert pool, a pinned RAM tier and a CPU lane priced against PCIe, MTP drafting across a two-card split), with its own quants (peasantsmith/GLM-5.3-Flash-Maya-GGUF). Upstream publishes no image, Dockerfile or Linux engine; our image compiles each release with our own Dockerfile (upstream's STRATA_PORTABLE option for an AVX2 baseline, text only), an image-provenance exception (docs/ADDING_ENGINES.md)"
 image_env: STRATA_MAYA_IMAGE
 install:
   method: docker_image
-  # v1.1.19 (upstream 3bf6867d), pushed from the rig (recipe 2a452292): archs 75;80;86;89;120, text only.
-  # Pinned 2026-10-21 after switch.sh boots + verify-full of the six dual and single slugs on this digest. Replaces
-  # v1.1.17 (upstream 8d9a9b5d) `1564614d…` (#1759, 2026-10-20; v1.1.18 was skipped), which replaced v1.1.16
+  # v1.1.20 (upstream 35bb2b22), pushed from the rig (recipe 8a64f12b): archs 75;80;86;89;120, text only.
+  # Pinned 2026-10-21 after smoke boots of the local build (dual + single Maya-L) and a switch.sh boot + verify-full
+  # of dual Maya-S on this digest. Replaces v1.1.19 (upstream 3bf6867d) `1db76650…` (#1773, same day), which
+  # replaced v1.1.17 (upstream 8d9a9b5d) `1564614d…` (#1759, 2026-10-20; v1.1.18 was skipped), which replaced v1.1.16
   # (upstream abc09c74) `bd8f12a8…` (#1757, same day), which replaced v1.1.11 `c6680830…` (CI, 2026-10-15).
-  spec: ghcr.io/noonghunna/strata-maya-club3090@sha256:1db76650b063df074392494f00a04f44ae2ff4796c811fb618f05f378af296ef
+  spec: ghcr.io/noonghunna/strata-maya-club3090@sha256:1918560b4a436e2f03abdad1ef9e51f47e2ba043e9c2d5e59312ae9c0ead4ce6
 supported_model_families:
   - glm5next-moe          # GLM-5.3-Flash: Project Maya is written for this model only
 supported_weight_formats:
