@@ -27,8 +27,10 @@ Two stages on NVIDIA's CUDA 13.0 images (so the host needs a driver ≥ 580):
      user's own cards: a fat binary, one cubin per arch.
 2. **Runtime** (`-runtime`, which carries cudart and cuBLAS): the release's files in `/opt/maya`
    (less `.git`, tests, benches and test dumps), llama.cpp's `gguf-py` in `third_party/llama.cpp/` where `setup.py` puts it (the pack builder reads the tokenizer with it), the engine at `/opt/maya/build/maya` (`build/strata` for releases before v1.1.16, which renamed its programs after Maya), and a
-   `.venv` with `setup.py`'s `PY_PACKAGES` less the build tools (the versions pip took are in
-   `/opt/club3090/maya-pip-freeze.txt`). `MAYA_UPDATE_CHECK=0`: the dashboard's self-update does a
+   `.venv` with `setup.py`'s `PY_PACKAGES` less the build tools, read from the release's own `setup.py` at
+   build time, so a package a release adds is installed with it (the list is in
+   `/opt/club3090/maya-py-packages.txt`, the versions pip took in `/opt/club3090/maya-pip-freeze.txt`).
+   `MAYA_UPDATE_CHECK=0`: the dashboard's self-update does a
    `git` fast-forward, which an image can't do.
 
 **Text only.** The vision encoder and the DFlash2 drafter are not built or fetched (the drafter's
@@ -60,6 +62,7 @@ same open question).
 | `ldd` on the engine: everything resolves except `libcuda` / `libnvidia-*` | a runtime library missing from the runtime stage |
 | `serve/server.py --help` and `tools/iq_pack.py --help` still offer every flag the launcher passes; the expert profile is there | a release renaming a flag that every launch depends on |
 | llama.cpp's `gguf-py` imports the way Maya's tools look for it, and `iq_pack.py` indexes the release's 12 MB synthetic GLM-5 model (`data/glm5-synth.gguf`; it carries no tokenizer, so the check wants the index and dense weights) | a pack builder that can't run in the image (the first local build lacked `gguf-py` and failed exactly there) |
+| every package in `setup.py`'s `PY_PACKAGES` (less `cmake` / `ninja`), read from the image's own copy of `setup.py`, is installed in the `.venv` at a version the release accepts | a package a release adds missing from the image (v1.1.18's `jsonschema`, which the Responses API's structured output needs, was missing from the hand-kept list the recipe had until then) |
 
 None needs a GPU, so they run on any build machine. **A published image is not a pin.** The `strata-maya` engine
 profile moves to a new digest only after a rig boot and verify-full (`engine-pin-bump.sh`).

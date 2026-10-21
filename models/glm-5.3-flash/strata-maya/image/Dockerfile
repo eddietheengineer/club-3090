@@ -63,11 +63,23 @@ RUN rm -rf /opt/maya/.git /opt/maya/tests /opt/maya/bench /opt/maya/ref /opt/may
 # llama.cpp's gguf-py, where setup.py puts it (tools/_paths.py looks there): the pack builder reads the
 # tokenizer with it
 COPY --from=build /llama.cpp/gguf-py /opt/maya/third_party/llama.cpp/gguf-py
-# setup.py's PY_PACKAGES, less cmake / ninja (build tools); the versions pip took are recorded
+# setup.py's PY_PACKAGES, read from the release's own setup.py so a package a release adds reaches the
+# image (v1.1.18 added jsonschema, which the Responses API's structured output needs; a hand-kept list
+# here missed it), less cmake / ninja (build tools). The list and the versions pip took are recorded.
+RUN mkdir -p /opt/club3090 && python3 - > /opt/club3090/maya-py-packages.txt <<'PY'
+import ast, re
+tree = ast.parse(open("/opt/maya/setup.py", encoding="utf-8").read())
+found = [node.value for node in ast.walk(tree) if isinstance(node, ast.Assign)
+         and any(isinstance(t, ast.Name) and t.id == "PY_PACKAGES" for t in node.targets)]
+assert len(found) == 1, "setup.py: expected one PY_PACKAGES list"
+packages = [p for p in ast.literal_eval(found[0])
+            if re.split(r"[<>=!~;\[ ]", p, maxsplit=1)[0].lower() not in ("cmake", "ninja")]
+assert "numpy" in packages, packages
+print("\n".join(packages))
+PY
 RUN python3 -m venv /opt/maya/.venv \
     && /opt/maya/.venv/bin/pip install --no-cache-dir --upgrade pip \
-    && /opt/maya/.venv/bin/pip install --no-cache-dir numpy jinja2 regex pyyaml tqdm requests pillow psutil \
-    && mkdir -p /opt/club3090 \
+    && /opt/maya/.venv/bin/pip install --no-cache-dir -r /opt/club3090/maya-py-packages.txt \
     && /opt/maya/.venv/bin/pip freeze > /opt/club3090/maya-pip-freeze.txt
 # the engine under the release's own name: /opt/maya/build/maya (v1.1.16 on) or /opt/maya/build/strata
 COPY --from=build /out/bin/ /opt/maya/build/
