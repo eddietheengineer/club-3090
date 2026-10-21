@@ -9,16 +9,17 @@ lineage:
   base: "strata"
   base_version: null
   source: "https://github.com/mw00/project-maya"
-  source_ref: "8d9a9b5d705049a87da853717cdc59440252de30"
+  source_ref: "3bf6867d344212166c09d2a5fe086b9ab90ac2fb"
   chain: []
   delta: "Strata's C++/CUDA engine and Python server rewritten for GLM-5.3-Flash only (the GLM5-Next runner, a per-layer VRAM expert pool, a pinned RAM tier and a CPU lane priced against PCIe, MTP drafting across a two-card split), with its own quants (peasantsmith/GLM-5.3-Flash-Maya-GGUF). Upstream publishes no image, Dockerfile or Linux engine; our image compiles each release with our own Dockerfile (upstream's STRATA_PORTABLE option for an AVX2 baseline, text only), an image-provenance exception (docs/ADDING_ENGINES.md)"
 image_env: STRATA_MAYA_IMAGE
 install:
   method: docker_image
-  # v1.1.17 (upstream 8d9a9b5d), pushed from the rig (recipe d1dc30c1): archs 75;80;86;89;120, text only.
-  # Pinned 2026-10-20 after switch.sh boots + verify-full of the six dual and single slugs on this digest. Replaces
-  # v1.1.16 (upstream abc09c74) `bd8f12a8…` (#1757, same day), which replaced v1.1.11 `c6680830…` (CI, 2026-10-15).
-  spec: ghcr.io/noonghunna/strata-maya-club3090@sha256:1564614da89ff688671bc400dda43c8db98a4f5b1e62e8d6dc338fd357ac5425
+  # v1.1.19 (upstream 3bf6867d), pushed from the rig (recipe 2a452292): archs 75;80;86;89;120, text only.
+  # Pinned 2026-10-21 after switch.sh boots + verify-full of the six dual and single slugs on this digest. Replaces
+  # v1.1.17 (upstream 8d9a9b5d) `1564614d…` (#1759, 2026-10-20; v1.1.18 was skipped), which replaced v1.1.16
+  # (upstream abc09c74) `bd8f12a8…` (#1757, same day), which replaced v1.1.11 `c6680830…` (CI, 2026-10-15).
+  spec: ghcr.io/noonghunna/strata-maya-club3090@sha256:1db76650b063df074392494f00a04f44ae2ff4796c811fb618f05f378af296ef
 supported_model_families:
   - glm5next-moe          # GLM-5.3-Flash: Project Maya is written for this model only
 supported_weight_formats:
