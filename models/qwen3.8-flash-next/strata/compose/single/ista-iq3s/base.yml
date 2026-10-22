@@ -80,6 +80,7 @@ services:
       MIN_P:
       PRESENCE_PENALTY:
       REPEAT_PENALTY:
+      SERVED_NAME:
     volumes:
       - "${MODEL_DIR:-../../../../../../models-cache}/qwen3.8-flash-next-gsq-rco-gguf/IQ3_S:/gguf:ro"
       # Strata 0.2's layout (0.1.x's strata-data is not read by it), under ~/.local/share/club-3090 from

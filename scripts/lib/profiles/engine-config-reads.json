@@ -65,7 +65,8 @@
     "TOP_K": "10",
     "MIN_P": "0.05",
     "PRESENCE_PENALTY": "0.5",
-    "REPEAT_PENALTY": "1.1"
+    "REPEAT_PENALTY": "1.1",
+    "SERVED_NAME": "llm"
    },
    "setup_only": {
     "CONTEXT": "Strata's own entrypoint passes it to `strata launch --context` (setup owns it: it sizes the KV and expert cache); strata_config.py only checks it",
@@ -94,7 +95,8 @@
     "sampling.min_p": "sampling_defaults_from_config()",
     "sampling.presence_penalty": "sampling_defaults_from_config()",
     "sampling.repetition_penalty": "sampling_defaults_from_config()",
-    "args:--spec": "the engine's own flag: the MTP drafter's verify window"
+    "args:--spec": "the engine's own flag: the MTP drafter's verify window",
+    "aliases": "main(): svc.set_aliases(), other names the model answers to (Strata #297), each listed in /v1/models"
    }
   },
   "strata-maya": {
@@ -116,7 +118,8 @@
     "MIN_P": "0.05",
     "PRESENCE_PENALTY": "0.5",
     "REPEAT_PENALTY": "1.1",
-    "CONTEXT": "65536"
+    "CONTEXT": "65536",
+    "SERVED_NAME": "llm"
    },
    "setup_only": {},
    "server": "/opt/maya/serve/server.py",
@@ -141,7 +144,8 @@
     "sampling.presence_penalty": "sampling_defaults_from_config()",
     "sampling.repetition_penalty": "sampling_defaults_from_config()",
     "args:--kv": "the engine's own flag (its GLM path reads only int8: the launcher refuses q4_0 / k8v4, a value rule this gate doesn't check)",
-    "args:--max-context": "the engine's own flag: KV/state capacity"
+    "args:--max-context": "the engine's own flag: KV/state capacity",
+    "model_name": "main(): the served name (/v1/models, /props, every answer's model field)"
    }
   }
  },

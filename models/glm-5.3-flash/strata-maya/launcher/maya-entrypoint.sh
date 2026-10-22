@@ -16,15 +16,16 @@
 #                       Maya's own `maya.sh --calibrate` tunes. Unset: the engine's own choice
 #   MAYA_CPU_LANE       the engine's STRATA_GLM_CPU_LANE (CPU threads per card), the same way
 #   REASONING_EFFORT, ENABLE_THINKING, THINKING_BUDGET, KV,
-#   TEMP, TOP_P, TOP_K, MIN_P, PRESENCE_PENALTY, REPEAT_PENALTY
+#   TEMP, TOP_P, TOP_K, MIN_P, PRESENCE_PENALTY, REPEAT_PENALTY, SERVED_NAME
 #                       written into maya.json at every boot by maya_prepare.py through maya_settings.py
 #                       (its header maps each to Maya's key); unset = the defaults below. A bad value
 #                       stops the boot before the SHA-256 check.
 #
 # The server's defaults for requests that name none, with nothing set: effort max (as the other
 # GLM-5.3-Flash slugs; Maya's own setup writes high), temperature 1.0 / top_p 0.95 (GLM-5.3's vendor
-# sampling) and Maya's own 32K thinking budget. A request's own reasoning_effort / chat_template_kwargs win,
-# and so do the Chat settings saved from Maya's web page (maya.shared-settings.json next to the config).
+# sampling), Maya's own 32K thinking budget and the name glm-5.3-flash. A request's own
+# reasoning_effort / chat_template_kwargs win, and so do the Chat settings saved from Maya's web page
+# (maya.shared-settings.json next to the config).
 #
 # Its one argument is the quant (maya-s | maya-m | maya-l), fixed by the compose, never a setting, so
 # a saved value can't point a slug at another quant's pack. Each quant has its own folder on /data.
