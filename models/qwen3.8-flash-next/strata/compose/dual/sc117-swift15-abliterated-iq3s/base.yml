@@ -3,7 +3,7 @@
 #   Model:     Swift 1.5 (UkisAI's fine-tune of Qwen3.8-Flash-Next), SC117's abliterated GSQ-RCO
 #              IQ3_S (2 shards, 44.85 + 38.70 GB; the 28.8 GB per-layer embedding table sits in
 #              shard 1). Served as Strata's swift family; setup checks both shards are whole GGUFs.
-#   Engine:    Strata 0.2.1 (engine 0.1.46) — upstream's own image ghcr.io/niko1221/strata:0.2.1-cuda13,
+#   Engine:    Strata 0.2.2 (engine 0.1.47) — upstream's own image ghcr.io/niko1221/strata:0.2.2-cuda13,
 #              pinned by digest; club-3090's launcher (../../../launcher/) applies the launch settings
 #   Topology:  Dual 3090, Strata layer split (--gpus 0,1, layer split auto): each card
 #              caches the experts of its own layers; one hand-off per verify window, no
@@ -52,7 +52,7 @@
 #   cache; switch.sh's generation probe (one token) is the real gate.
 services:
   strata:
-    image: ${STRATA_IMAGE:-ghcr.io/niko1221/strata@sha256:a0398afb7a60253f1442ec149326aa7d80e0137e9f1ffe304bb0e84a6939ee8e}
+    image: ${STRATA_IMAGE:-ghcr.io/niko1221/strata@sha256:17e96f76fb85ee47b445b38ebfe9e4190b96ebde522e109d40efa2f2404a4503}
     container_name: ${ESTATE_CONTAINER:-strata-qwen38-flash-next-swift15-abl-iq3s}
     restart: ${CLUB3090_RESTART:-unless-stopped}
     # root, with the launcher's group: what Strata writes to the data volume stays
