@@ -333,6 +333,8 @@ ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # the rules live in ONE place and every consumer delegates to them.
 # shellcheck source=lib/engine-kind.sh
 source "${ROOT_DIR}/scripts/lib/engine-kind.sh"
+# strata_maya_log_path: Project Maya's engine log, which is not where Strata's is (#1706, #1752)
+source "${ROOT_DIR}/scripts/lib/strata-log.sh"
 
 # --- per-rig #249 record: self-tee stdout so the ceiling-ladder line (the ctx
 # ceiling this stress run validates) can be parsed at the end for the corpus
@@ -532,7 +534,13 @@ case "$ENGINE_KIND" in
       LOG_CMD="docker logs ${CONTAINER} 2>&1 | tail -50"
     fi ;;
   # Strata's engine writes to a log file inside the container; docker logs has only setup
-  strata) LOG_CMD="docker exec ${CONTAINER} sh -c 'tail -50 /data/state/strata/launch/*.engine.log /opt/strata/strata-*.log 2>/dev/null'" ;;   # Strata 0.2+, then 0.1.x
+  strata)
+    _maya_log="$(strata_maya_log_path "$CONTAINER")"
+    if [[ -n "$_maya_log" ]]; then
+      LOG_CMD="docker exec ${CONTAINER} tail -50 ${_maya_log}"   # Project Maya
+    else
+      LOG_CMD="docker exec ${CONTAINER} sh -c 'tail -50 /data/state/strata/launch/*.engine.log /opt/strata/strata-*.log 2>/dev/null'"   # Strata 0.2+, then 0.1.x
+    fi ;;
   *) LOG_CMD="check your engine's stdout/stderr or container logs" ;;
 esac
 
