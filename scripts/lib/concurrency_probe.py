@@ -27,6 +27,7 @@ import re
 import statistics
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 
@@ -314,7 +315,100 @@ def pct(xs, q):
     return ss[min(len(ss) - 1, int(q * len(ss)))]
 
 
-def engine_stats(container):
+GAUGE_RUNNING = "vllm:num_requests_running"
+GAUGE_WAITING = "vllm:num_requests_waiting"
+
+
+def metrics_gauges(text):
+    """(running, waiting) from a Prometheus text page: each gauge summed over its samples (one per engine),
+    None for a gauge the page doesn't have. Names match exactly, so vllm:num_requests_waiting_by_reason is not
+    the waiting gauge."""
+    found = {GAUGE_RUNNING: None, GAUGE_WAITING: None}
+    for line in text.splitlines():
+        if not line or line.startswith("#"):
+            continue
+        name = line.split("{", 1)[0].split(None, 1)[0]
+        if name not in found:
+            continue
+        rest = line[line.rindex("}") + 1:] if "{" in line else line[len(name):]
+        try:
+            value = float(rest.split()[0])
+        except (IndexError, ValueError):
+            continue
+        found[name] = (found[name] or 0.0) + value
+    run, wait = found[GAUGE_RUNNING], found[GAUGE_WAITING]
+    return (None if run is None else int(run), None if wait is None else int(wait))
+
+
+class GaugePoller:
+    """The peaks of the engine's running / waiting gauges while a round runs, read from /metrics every
+    ``interval`` seconds on a thread (#1782).
+
+    vLLM's `Running: N reqs` log line comes once per VLLM_LOG_STATS_INTERVAL (10 s by default), so a round of
+    a few seconds gets one sample at most, and one sample taken as a stream finishes reads below N though
+    every stream ran. /metrics has the same gauges at any moment. ``available`` is False when the first page
+    has neither gauge (an engine that doesn't publish them); the caller then falls back to the log lines."""
+
+    def __init__(self, url, interval=0.1):
+        self.url = url.rstrip("/") + "/metrics"
+        self.interval = interval
+        self.run_max = self.wait_max = None
+        self.samples = 0
+        self.available = True
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+
+    def _read(self):
+        try:
+            with urllib.request.urlopen(self.url, timeout=2) as r:
+                return metrics_gauges(r.read().decode("utf-8", "replace"))
+        except Exception:
+            return (None, None)
+
+    def _loop(self):
+        while not self._stop.is_set():
+            run, wait = self._read()
+            if run is None and wait is None:
+                if self.samples == 0:
+                    self.available = False          # nothing to poll: stop asking
+                    return
+            else:
+                self.samples += 1
+                if run is not None:
+                    self.run_max = run if self.run_max is None else max(self.run_max, run)
+                if wait is not None:
+                    self.wait_max = wait if self.wait_max is None else max(self.wait_max, wait)
+            self._stop.wait(self.interval)
+
+    def __enter__(self):
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._stop.set()
+        self._thread.join(timeout=5)
+        if self.samples == 0:
+            self.available = False
+        return False
+
+
+def _docker_logs(args):
+    """``docker logs <args>`` as text (stdout and stderr), or None when docker fails."""
+    try:
+        out = subprocess.run(
+            ["docker", "logs", *args],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except Exception:
+        return None
+    return (out.stdout or "") + (out.stderr or "")
+
+
+def engine_stats(container, since=None, until=None):
     # vLLM logs "Running: N reqs, Waiting: M reqs" and a prefix-cache hit rate.
     # Running is the concurrency the scheduler ACTUALLY admits, which can be far
     # below max_num_seqs when --max-num-batched-tokens caps the per-step budget:
@@ -326,23 +420,30 @@ def engine_stats(container):
     # last sample is racy — taken at an arbitrary moment relative to request
     # lifetimes, so a request that finished first reads ``running < N`` though it
     # was admitted and ran. (Peak tracking from @voiceagentscc's #1212.)
+    #
+    # ``since`` / ``until`` (Unix seconds) are the round's start and end. Running and
+    # Waiting are read only from lines docker logged inside that window (#1782): vLLM
+    # prints them every VLLM_LOG_STATS_INTERVAL (10 s by default), so a round shorter
+    # than that usually has no line of its own, and the recent tail holds only lines
+    # from other moments: the idle `Running: 0` after an MTP request that took 1.5 s,
+    # or an earlier rung's peak. Read as this round's peak, those failed admission and
+    # stopped the sweep at N=1. No line inside the window is no data, which
+    # admission_ok() does not fail. The hit rate still comes from the recent tail: it is
+    # a rolling figure, and the line that covers this round can land after it ends.
     if not container:
         return (None, None, None, None, None)
-    try:
-        out = subprocess.run(
-            ["docker", "logs", "--tail", "400", container],
-            capture_output=True,
-            text=True,
-            timeout=20,
-            encoding="utf-8",
-            errors="replace",
-        )
-        txt = (out.stdout or "") + (out.stderr or "")
-    except Exception:
+    txt = _docker_logs(["--tail", "400", container])
+    if txt is None:
         return (None, None, None, None, None)
+    gauges = txt
+    if since is not None:
+        window = ["--since", f"{since:.6f}"]
+        if until is not None:
+            window += ["--until", f"{until:.6f}"]
+        gauges = _docker_logs(window + [container]) or ""
     run = wait = run_max = wait_max = hit = None
     for m in re.finditer(
-        r"Running:\s*(\d+)\s*reqs?,\s*Waiting:\s*(\d+)\s*reqs?", txt
+        r"Running:\s*(\d+)\s*reqs?,\s*Waiting:\s*(\d+)\s*reqs?", gauges
     ):
         r, w = int(m.group(1)), int(m.group(2))
         run, wait = r, w
@@ -607,7 +708,7 @@ def format_result(fields):
     return "RESULT " + " ".join(parts)
 
 
-def admission_ok(run_peaks, n):
+def admission_ok(run_peaks, n, wait_peaks=None):
     """Were all ``n`` streams actually admitted?
 
     ``run_peaks`` is the PER-ROUND PEAK ``Running:`` value — NOT the last sample.
@@ -615,13 +716,21 @@ def admission_ok(run_peaks, n):
     though it ran, so the last sample cannot prove under-admission. A peak that
     reached ``n`` proves ``n`` were admitted; a later dip is just completion.
 
-    Fails CLOSED when peaks exist and never reached ``n``. True when there is no
-    engine data — absence of evidence is not evidence of under-admission.
+    A peak below ``n`` fails only when something WAITED (``wait_peaks``, the
+    per-round peak of the Waiting gauge, above 0). A request the engine couldn't
+    admit — max_num_seqs, the batched-token budget, preemption — sits in Waiting;
+    one that already finished leaves Running without entering it. #1782's live
+    rerun on the reference rig: N=2, both streams decoding at once (aggregate
+    1.8x one stream), and the round's one log sample read `Running: 1, Waiting: 0`
+    as the first stream finished. Until then a peak below ``n`` failed on its own
+    (#1212's fail-closed rule). True when there is no engine data — absence of
+    evidence is not evidence of under-admission.
     """
     peaks = [r for r in run_peaks if r is not None]
-    if not peaks:
+    if not peaks or max(peaks) >= n:
         return True
-    return max(peaks) >= n
+    waits = [w for w in (wait_peaks or []) if w is not None]
+    return not (waits and max(waits) > 0)
 
 
 def vram_ok(leak, growth):
@@ -820,9 +929,10 @@ def run_probe():
     hit_by_round = []
     for rnd in range(1, ROUNDS + 1):
         t0 = time.time()
-        with cf.ThreadPoolExecutor(max_workers=N) as ex:
+        with GaugePoller(URL) as gauges, cf.ThreadPoolExecutor(max_workers=N) as ex:
             res = list(ex.map(lambda s: one(s, rnd), range(N)))
-        wall = time.time() - t0
+        t_end = time.time()
+        wall = t_end - t0
         done = sum(1 for r in res if r["ok"])
         silent = sum(1 for r in res if r["silent"])
         errs = sum(1 for r in res if r["err"])
@@ -853,7 +963,9 @@ def run_probe():
         tps_p05 = pct(tps_ok, 0.05)
         ttft_p95_by_round.append(ttft_p95)
         tps_p05_by_round.append(tps_p05)
-        run, wait, run_max, wait_max, hit = engine_stats(CONTAINER)
+        run, wait, run_max, wait_max, hit = engine_stats(CONTAINER, since=t0, until=t_end)
+        if gauges.available:            # /metrics, polled through the round, beats the log lines' one sample
+            run_max, wait_max = gauges.run_max, gauges.wait_max
         run_by_round.append(run)
         wait_by_round.append(wait)
         runmax_by_round.append(run_max)
@@ -902,7 +1014,7 @@ def run_probe():
     # request completed, so every entry reads 0 and their max is 0.
     run_peak = max([r for r in runmax_by_round if r is not None], default=None)
     wait_peak = max([w for w in waitmax_by_round if w is not None], default=None)
-    admitted_ok = admission_ok(runmax_by_round, N)
+    admitted_ok = admission_ok(runmax_by_round, N, waitmax_by_round)
 
     # ⚠️ Admission is deliberately NOT a term here. It never was, and adding it
     # would put a metrics-sampling race into the fit verdict — a run where every
