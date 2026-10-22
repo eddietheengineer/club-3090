@@ -8,8 +8,8 @@
 # maintainer runs this on the reference rig for the release we want (GitHub CI built it until 2026-10-17):
 #
 #   bash models/glm-5.3-flash/strata-maya/image/build.sh                    # newest release: build + check, no push
-#   bash models/glm-5.3-flash/strata-maya/image/build.sh --tag v1.1.20 --push
-#   bash models/glm-5.3-flash/strata-maya/image/build.sh --tag v1.1.20 --verify <image>   # checks only
+#   bash models/glm-5.3-flash/strata-maya/image/build.sh --tag v1.1.23 --push
+#   bash models/glm-5.3-flash/strata-maya/image/build.sh --tag v1.1.23 --verify <image>   # checks only
 #   --jobs N   compile with N jobs (default: half the CPU threads, as maya.py does)
 #
 # Steps; any failure stops the run:
