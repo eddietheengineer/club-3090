@@ -15,6 +15,10 @@ its config (serve/server.py, 0.2.1), but setup writes none of them:
   MIN_P                  sampling.min_p                0..1
   PRESENCE_PENALTY       sampling.presence_penalty     >= 0
   REPEAT_PENALTY         sampling.repetition_penalty   > 0 (1 = off)
+  SERVED_NAME            aliases: [name]               another name the model answers to (Strata #297, like
+                                                llama-server's --alias): /v1/models lists it after setup's own
+                                                name, and an answer to a request that names it carries it.
+                                                One name, no spaces
 
 A new setting here needs its key's evidence in scripts/lib/profiles/engine-config-reads.json (where the
 pinned server reads it): test-strata-config-knobs fails until it has some.
@@ -44,7 +48,7 @@ import sys
 EFFORTS = {"none": "none", "low": "low", "medium": "medium", "high": "high",
            "xhigh": "high", "max": "high"}     # our other engines' names for Strata's "high" (the template's xhigh)
 KV_FORMATS = ("fp16", "int8", "q4_0", "k8v4")  # `strata launch --kv` choices (0.2.1)
-MANAGED = ("reasoning_effort", "reasoning_budget_tokens")
+MANAGED = ("reasoning_effort", "reasoning_budget_tokens", "aliases")
 MANAGED_SAMPLING = ("temperature", "top_p", "top_k", "min_p", "presence_penalty", "repetition_penalty")
 
 
@@ -113,6 +117,11 @@ def settings():
     top_k = env("TOP_K")
     if top_k is not None:
         sampling["top_k"] = as_int("TOP_K", top_k, lo=1, hi=64)
+    served = env("SERVED_NAME")
+    if served is not None:
+        if any(c.isspace() for c in served):
+            raise Bad(f"SERVED_NAME={served!r}: expected one name, without spaces")
+        keys["aliases"] = [served]
     kv = env("KV")
     if kv is not None and kv not in KV_FORMATS:
         raise Bad(f"KV={kv!r}: expected one of {', '.join(KV_FORMATS)}")

@@ -3,8 +3,8 @@
 # Strata's run config at every boot (models/qwen3.8-flash-next/strata/launcher/).
 #   1. no settings: the run config is setup's, unchanged;
 #   2. each setting lands on the key Strata reads (reasoning_effort, reasoning_budget_tokens,
-#      sampling.*, --spec in args; never max_tokens, never user_args); xhigh / max become Strata's
-#      "high"; ENABLE_THINKING=false wins over REASONING_EFFORT;
+#      sampling.*, --spec in args, aliases; never max_tokens, never user_args, never setup's model_name);
+#      xhigh / max become Strata's "high"; ENABLE_THINKING=false wins over REASONING_EFFORT;
 #   3. the input is never written; a removed setting is gone at the next apply, also after Strata 0.2's
 #      setup has kept our keys and folded our --spec into user_args / args_written (setup's own --spec
 #      comes back: the recorded one, else the documented 4); an unchanged in-place apply leaves the bytes;
@@ -36,7 +36,7 @@ cat > "$work/setup.json" <<'JSON'
  "model_name": "qwen3.8-flash-next-iq3_s", "port": 8080, "gpu": [0, 1], "gpus_asked": true, "layer_split": "auto"}
 JSON
 cp "$work/setup.json" "$work/setup.orig"
-SETTINGS="REASONING_EFFORT ENABLE_THINKING THINKING_BUDGET SPEC_N MAX_TOKENS TEMP TOP_P TOP_K MIN_P PRESENCE_PENALTY REPEAT_PENALTY CONTEXT KV API_KEY"
+SETTINGS="REASONING_EFFORT ENABLE_THINKING THINKING_BUDGET SPEC_N MAX_TOKENS TEMP TOP_P TOP_K MIN_P PRESENCE_PENALTY REPEAT_PENALTY SERVED_NAME CONTEXT KV API_KEY"
 export CLUB3090_STRATA_SETUP_SPEC_FILE="$work/setup-spec"
 run() { env $(for v in $SETTINGS; do printf -- '-u %s ' "$v"; done) "$@" python3 "$H" "${CMD[@]}"; }
 get() { python3 -c "import json,sys; c=json.load(open('$work/cfg.json')); print(eval(sys.argv[1]))" "$1"; }
@@ -63,6 +63,9 @@ out="$(run REASONING_EFFORT=xhigh THINKING_BUDGET=2048 MAX_TOKENS=4096 SPEC_N=3 
   && ok "SPEC_N leaves setup's bookkeeping alone (no user_args; args_written as setup wrote it)" || bad "bookkeeping written"
 [[ "$(get 'sorted(c["sampling"].items())')" == "[('min_p', 0.0), ('presence_penalty', 1.5), ('repetition_penalty', 1.05), ('temperature', 0.6), ('top_k', 20), ('top_p', 0.95)]" ]] \
   && ok "sampler settings -> sampling block" || bad "sampling: $(get 'c.get("sampling")')"
+out="$(run SERVED_NAME=llm)" || bad "apply failed: $out"
+[[ "$(get 'c["aliases"], c["model_name"]')" == "(['llm'], 'qwen3.8-flash-next-iq3_s')" ]] \
+  && ok "SERVED_NAME=llm -> aliases [llm]; setup's model_name kept" || bad "served name: $(get 'c.get("aliases"), c.get("model_name")')"
 out="$(run ENABLE_THINKING=false REASONING_EFFORT=low)" || bad "apply failed: $out"
 [[ "$(get 'c["reasoning_effort"]')" == none ]] && command grep -q "ENABLE_THINKING=false wins" <<<"$out" \
   && ok "ENABLE_THINKING=false -> none, and says it overrode REASONING_EFFORT" || bad "thinking off: $out"
@@ -73,7 +76,7 @@ cp "$work/setup.orig" "$work/cfg.json"; rm -f "$work/setup-spec"
 CMD=(apply "$work/cfg.json" "$work/cfg.json")
 run >/dev/null
 [[ "$(cat "$work/setup-spec" 2>/dev/null)" == 4 ]] && ok "setup's own --spec recorded (4) from a run config we hadn't changed" || bad "setup's --spec not recorded"
-run REASONING_EFFORT=low SPEC_N=3 TEMP=0.5 >/dev/null
+run REASONING_EFFORT=low SPEC_N=3 TEMP=0.5 SERVED_NAME=llm >/dev/null
 run >/dev/null
 same "$work/cfg.json" "$work/setup.orig" && ok "in place: set, then nothing set -> back to setup's config" || bad "a setting lingered: $(cat "$work/cfg.json")"
 # setup ran again (a new CONTEXT): it kept our keys and folded our --spec into user_args, args and args_written
@@ -123,6 +126,8 @@ for probe in REASONING_EFFORT=minimal ENABLE_THINKING=off THINKING_BUDGET=-1 SPE
   err="$(run "$probe" 2>&1)"; r=$?
   [[ $r -eq 2 && "$err" == *"${probe%%=*}"* ]] && ok "$probe refused" || bad "$probe: rc=$r $err"
 done
+err="$(run "SERVED_NAME=my model" 2>&1)"; r=$?
+[[ $r -eq 2 && "$err" == *SERVED_NAME* ]] && ok "SERVED_NAME with a space refused" || bad "SERVED_NAME=my model: rc=$r $err"
 run REASONING_EFFORT=max SPEC_N=8 KV=k8v4 CONTEXT=262144 >/dev/null && ok "valid values pass" || bad "valid values refused"
 out="$(run API_KEY=short 2>&1)"; r=$?
 [[ $r -eq 0 && "$out" == *"API_KEY is 5 characters"* ]] && ok "a short API_KEY: a warning, not a refusal" || bad "short key: rc=$r $out"
