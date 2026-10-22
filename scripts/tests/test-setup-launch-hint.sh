@@ -33,8 +33,12 @@ out="$(
   model_label() { echo "$1"; }
   source "$TMP/hint.sh"
 )"
+# The launch line is checked on its own: test-tests-never-launch.sh exempts only
+# commands that lead with an assertion helper (grep, echo, assert…), so the same
+# string inside this `for` list read as a launch.
+command grep -qF 'bash scripts/switch.sh --force strata/qwen3.8-flash-next-iq3s-dual' <<< "$out" \
+  || fail "missing the launch line for the requested slug in: $out"
 for expected in \
-  'bash scripts/switch.sh --force strata/qwen3.8-flash-next-iq3s-dual' \
   'docker logs -f strata-requested' \
   'localhost:8018/v1/chat/completions' \
   '"model":"strata-requested"'; do
