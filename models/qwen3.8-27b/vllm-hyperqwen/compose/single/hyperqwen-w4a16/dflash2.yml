@@ -57,6 +57,10 @@
 #                     from our FlashAttention fp8-KV plugin, which this image doesn't carry).
 #   GPU_UTIL          memory fraction (the launcher's GPU_MEMORY_UTILIZATION feeds it)
 #   EXTRA_ARGS        appended to vLLM's command line by HyperQwen's launcher
+# `switch.sh --set` applies only SPEC_N and REASONING_EFFORT for this slug (the catalogued launch
+# settings); a saved DFLASH_TOKENS, CTX, GPU_UTIL or EXTRA_ARGS is ignored at launch with a
+# warning (#1749). Set those for one launch instead:
+#   CTX=long READY_TIMEOUT=1800 bash scripts/switch.sh --force vllm-hyperqwen/qwen38-27b-single-ultrafast
 services:
   vllm-hyperqwen-qwen38-27b-single:
     image: ${VLLM_IMAGE:-ghcr.io/syv-ai/hyperqwen@sha256:e99df7e6dc73208971ae0d1f1063deb100c997308248f253174176cf0514cb9e}
