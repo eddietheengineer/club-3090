@@ -115,6 +115,8 @@ source "$REPO_ROOT/scripts/lib/llamacpp-spec.sh"
 source "$REPO_ROOT/scripts/lib/club-containers.sh"
 source "$REPO_ROOT/scripts/lib/gpu-select.sh"
 source "$REPO_ROOT/scripts/lib/report_calib.sh"
+# strata_maya_log_path: Project Maya's engine log, which is not where Strata's is (#1706, #1752)
+source "$REPO_ROOT/scripts/lib/strata-log.sh"
 # shellcheck source=lib/p2p-state.sh
 source "$REPO_ROOT/scripts/lib/p2p-state.sh"
 
@@ -1223,7 +1225,12 @@ else
     subsection "Setup log (docker logs, first 200 lines)"
     docker logs "$CONTAINER" 2>&1 | head -200 | redact | details "First 200 lines of docker logs"
     subsection "Engine log (last 200 lines)"
-    docker exec "$CONTAINER" sh -c 'tail -200 /data/state/strata/launch/*.engine.log /opt/strata/strata-*.log 2>/dev/null' 2>&1 | redact | details "Last 200 lines of the engine log inside the container"
+    _maya_log="$(strata_maya_log_path "$CONTAINER")"
+    if [[ -n "$_maya_log" ]]; then
+      { echo "(${_maya_log})"; docker exec "$CONTAINER" tail -200 "$_maya_log" 2>&1; } | redact | details "Last 200 lines of the engine log inside the container"
+    else
+      docker exec "$CONTAINER" sh -c 'tail -200 /data/state/strata/launch/*.engine.log /opt/strata/strata-*.log 2>/dev/null' 2>&1 | redact | details "Last 200 lines of the engine log inside the container"
+    fi
 
   else
   # ---- vLLM probe set (default for engine=vllm or unknown) ----
