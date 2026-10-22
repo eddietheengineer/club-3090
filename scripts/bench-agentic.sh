@@ -347,9 +347,9 @@ def run_turn(messages, fixture_turn, session_id, turn_idx):
             if choices:
                 sse_chunks += 1
                 delta = choices[0].get("delta", {})
-                # ⚠️ TTFT = FIRST CHUNK CARRYING `choices`, whatever the delta
-                # type. This is exactly what `vllm bench serve` does
-                # (benchmarks/lib/endpoint_request_func.py) and it is the only
+                # ⚠️ TTFT = FIRST `choices` CHUNK THAT CARRIES OUTPUT, whatever the
+                # delta type. `vllm bench serve` times the first chunk
+                # (benchmarks/lib/endpoint_request_func.py); any-kind is the only
                 # rule that cannot be broken by a new delta kind.
                 #
                 # It was "first CONTENT delta", which on a thinking model charged
@@ -361,7 +361,16 @@ def run_turn(messages, fixture_turn, session_id, turn_idx):
                 # 278 reasoning deltas had streamed normally throughout.
                 # Narrowing this to content+tool_calls+reasoning would still miss
                 # the next delta kind; taking the chunk is the durable fix.
-                if ttft is None:
+                #
+                # ...a chunk that CARRIES something, though. Strata and Project
+                # Maya send `{"role": "assistant", "content": ""}` the moment they
+                # accept a request, before reading the prompt (their server.py
+                # openai_chunks), and Maya's prompt-progress pings are empty
+                # deltas too. Timing on those read TTFT as 2-24 ms and counted the
+                # whole prompt read as decode: 3-27 tok/s on #1752. So a delta
+                # counts once any field other than `role` is non-empty, whatever
+                # its kind. Same rule in scripts/lib/deep_context_probe.py.
+                if ttft is None and any(v not in (None, "", [], {}) for k, v in delta.items() if k != "role"):
                     ttft = time.time() - t_send
                 if delta.get("content"):
                     content_parts.append(delta["content"])
