@@ -25,10 +25,7 @@ Maya publishes no image, no Dockerfile and no Linux engine: `maya.sh` compiles o
 
 The profile pins a digest, and the launchers inject it as `STRATA_MAYA_IMAGE`. Export `STRATA_MAYA_IMAGE` in the shell to try another build for one launch; a saved value loses to the pin.
 
-**Bumping:** the maintainer publishes a release from the rig with `build.sh --tag <vX.Y.Z> --push` (`:<tag>`, `:sha-<commit>`), but publishing doesn't pin. To move the pin:
-1. boot a dual and a single slug on the new digest through `switch.sh`;
-2. run `verify-full` on each;
-3. run `scripts/engine-pin-bump.sh strata-maya ghcr.io/noonghunna/strata-maya-club3090@sha256:<digest>` and update `lineage.source_ref`.
+**Bumping:** the maintainer publishes a release from the rig with `build.sh --tag <vX.Y.Z> --push` (`:<tag>`, `:sha-<commit>`), but publishing doesn't pin. What moving the pin checks, and when to skip a release: [the bump runbook](../NIGHTLY_BUMP_RUNBOOK.md#strata-and-project-maya-the-bump-rule).
 
 A release that renames a flag the launcher passes (`serve/server.py`, `tools/iq_pack.py`) fails the image build, so the recipe and the launcher move together.
 
