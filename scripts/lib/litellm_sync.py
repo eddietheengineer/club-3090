@@ -99,9 +99,12 @@ def probe(port: int) -> list[Live]:
     A server that requires a key (Strata 0.2+ answers nothing but GET /health
     without one) 401s the keyless first try; the key is then resolved from the
     server's own container (see engine_key_for_port) and the probe retried once
-    with it as a Bearer header — the 401, not an engine-kind guess, is what
-    says the server is keyed, so any keyed engine works (#1794). A keyless
-    engine pays one keyless request, exactly as before."""
+    with it as a Bearer header — without the retry, a keyed Strata slug
+    renders no route at all (#1794). The key rule is Strata's (the
+    container's API_KEY, else STRATA_API_KEY): a keyed engine of another kind
+    resolves no key and renders no route, the way a dead port does — the
+    runtime view never advertises a model it cannot serve. A keyless engine
+    pays one keyless request, exactly as before."""
     key = ""
     try:
         data = get_models(port, "")

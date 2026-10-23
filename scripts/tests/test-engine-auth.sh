@@ -4,11 +4,10 @@ export PYTHONUTF8="${PYTHONUTF8:-1}"
 # test-engine-auth — scripts/lib/engine-auth.sh sends an engine's API key with our requests, and only
 # where one applies. Strata 0.2+ answers nothing but GET /health without its key.
 #
-#   1. club_engine_api_key against a mocked `docker inspect`: a container's own API_KEY, any
-#      engine kind (that env is our convention for a keyed server); STRATA_API_KEY for a
-#      strata-KIND container (Strata 0.1.x, Maya included) without one; nothing for a container
-#      with neither; a missing container, or none; ENGINE_API_KEY over all of them.
-#      STRATA_API_KEY must never reach a non-strata-kind container.
+#   1. club_engine_api_key against a mocked `docker inspect`: a Strata container's own API_KEY;
+#      STRATA_API_KEY for a Strata container without one; nothing for a Strata 0.1.x / Maya
+#      container, a non-Strata container (even one with an API_KEY), a missing container, or
+#      none; ENGINE_API_KEY over all of them.
 #   2. club_engine_auth_enable: curl then sends exactly that key (a local server hashes the
 #      Authorization header it receives), in subshells too, and children get CLUB_ENGINE_API_KEY;
 #      with no key, curl is untouched.
@@ -44,8 +43,8 @@ case "$name" in
   strata-nokey)  img=ghcr.io/niko1221/strata:0.2.1-cuda13;          env='' ;;
   strata-old)    img=ghcr.io/noonghunna/strata-club3090:v0.1.45;     env='' ;;
   maya)          img=ghcr.io/noonghunna/strata-maya-club3090:v1.1.17; env='MAYA_GPUS=0,1' ;;
-  vllm-keyed)    img=vllm/vllm-openai:v0.32.0;                       env='API_KEY=key-from-any-container-01' ;;
-  vllm-plain)    img=vllm/vllm-openai:v0.32.0;                       env='VLLM_PORT=8000' ;;
+  vllm-keyed)    img=vllm/vllm-openai:v0.32.0;                       env='API_KEY=not-for-us-0000000000' ;;
+  *) echo "Error: No such object: $name" >&2; exit 1 ;;
 esac
 case "$fmt" in
   '{{.Config.Image}}') echo "$img" ;;
@@ -64,12 +63,11 @@ pass "Strata 0.2 container: its own API_KEY"
 [[ "$(STRATA_API_KEY=from-settings-0000001 key_for strata-nokey)" == from-settings-0000001 ]] \
   || fail "STRATA_API_KEY for a Strata container without one"
 pass "Strata container without API_KEY: STRATA_API_KEY when set, else nothing"
-for c in strata-old maya no-such-container "" none; do
+for c in strata-old maya vllm-keyed no-such-container "" none; do
   [[ -z "$(key_for "$c")" ]] || fail "'${c:-<empty>}' must get no key"
 done
-[[ "$(key_for vllm-keyed)" == key-from-any-container-01 ]] || fail "a container's own API_KEY applies whatever its engine kind"
-[[ -z "$(STRATA_API_KEY=from-settings-0000001 key_for vllm-plain)" ]] || fail "STRATA_API_KEY must not reach a non-Strata container"
-pass "no key for Strata 0.1.x, Maya, a missing container, none; any container's own API_KEY applies; STRATA_API_KEY stays Strata-only"
+[[ -z "$(STRATA_API_KEY=from-settings-0000001 key_for vllm-keyed)" ]] || fail "STRATA_API_KEY must not reach a vLLM container"
+pass "no key for Strata 0.1.x, Maya, a keyed vLLM container, a missing container, none"
 [[ "$(ENGINE_API_KEY=explicit-key-00000001 key_for strata-new)" == explicit-key-00000001 ]] || fail "ENGINE_API_KEY wins"
 [[ "$(ENGINE_API_KEY=explicit-key-00000001 key_for "")" == explicit-key-00000001 ]] || fail "ENGINE_API_KEY with no container"
 pass "ENGINE_API_KEY over every other source, with or without a container"
@@ -100,9 +98,9 @@ got="$(bash -c 'source scripts/lib/engine-auth.sh; club_engine_auth_enable strat
 got="$(bash -c 'source scripts/lib/engine-auth.sh; club_engine_auth_enable strata-new; bash -c "printf %s \"\$CLUB_ENGINE_API_KEY\""')"
 [[ "$got" == key-from-the-container-0001 ]] || fail "a child process does not get CLUB_ENGINE_API_KEY"
 pass "after enable: curl sends exactly the key (subshells too); children get CLUB_ENGINE_API_KEY"
-got="$(bash -c 'source scripts/lib/engine-auth.sh; club_engine_auth_enable strata-old; printf "%s|%s" "$(type -t curl)" "$(curl -s "$1")"' _ "$U")"
+got="$(bash -c 'source scripts/lib/engine-auth.sh; club_engine_auth_enable vllm-keyed; printf "%s|%s" "$(type -t curl)" "$(curl -s "$1")"' _ "$U")"
 [[ "$got" == "file|none" ]] || fail "with no key, curl must stay the real curl and send nothing ($got)"
-pass "with no key (a keyless Strata 0.1.x container): curl untouched, no header"
+pass "with no key (a vLLM container): curl untouched, no header"
 bash -c 'source scripts/lib/engine-auth.sh; club_engine_auth_enable strata-new; declare -f curl' | command grep -q -F '@<(printf' \
   || fail "the header must come from a process substitution, never the command line"
 pass "the key reaches curl through a process substitution, not its command line"
