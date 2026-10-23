@@ -23,10 +23,7 @@ From 0.2.1 Strata publishes its own Docker images, built by its `docker-images` 
 - **Before 0.2.1** upstream published no Linux image, and club-3090 built `ghcr.io/noonghunna/strata-club3090` from upstream's Dockerfile, with ggml's CPU code for an AVX2 baseline (the last one, v0.1.45, until 2026-10-20). Upstream's image now builds that way itself.
 - x86-64 with AVX2 only (no DGX Spark).
 
-**Bumping:** take the new release's `<release>-cuda13` digest, then:
-1. run `scripts/engine-pin-bump.sh strata ghcr.io/niko1221/strata@sha256:<digest>`;
-2. boot a slug of each model family (ISTA and Swift) on it through `switch.sh`;
-3. run `verify-full`, which also checks that the launch settings still reach the server (`engine_config_reads.py verify strata --record`).
+**Bumping:** pin the digest of the new release's `<release>-cuda13` image. What a bump checks, and when to skip a release: [the bump runbook](../NIGHTLY_BUMP_RUNBOOK.md#strata-and-project-maya-the-bump-rule).
 
 ## Slugs
 

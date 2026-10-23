@@ -206,16 +206,39 @@ This is the "free 30 GB of disk" moment.
 - The composes set bucko's own launcher environment (`MTP_DEPTH`, `CPU_OFFLOAD_GB`, `QWEN38_*`,
   `VLLM_WNA16_STATIC_HOT_CACHE_*`): re-read the release notes for renamed or retired variables.
 
+### Strata and Project Maya: the bump rule
+
+Both engines release often, so a bump of either one has the same short shape. The two sections after this one say
+what is specific to each.
+
+1. **Take a release only when it touches us.** Read the release notes and, for Maya, the commits since our pin (it
+   releases several times a day). Take the release when they touch Linux CUDA serving (Strata) or GLM (Maya), the
+   server or the launch path, or a bug that affects us. Otherwise skip it, and name the skipped releases in the next
+   bump's PR.
+2. **In the pin worktree,** run `scripts/engine-pin-bump.sh <engine> <repo>@sha256:<digest>`, update
+   `lineage.source_ref`, and pull the image. The launchers inject the profile's image, so a boot from that worktree
+   runs the new digest.
+3. **Boot one dual slug** through `switch.sh`. Every slug of an engine runs the same image, so one boot shows the
+   image serves. Single-card and multi4 slugs aren't booted for a bump.
+   - **Maya:** any dual slug. A dual runs the MTP draft across the split.
+   - **Strata:** a dual slug of the model family the release notes touch (ISTA or Swift; setup and packing are per
+     family). When they touch neither, the family the previous bump didn't boot.
+4. **Send 3 warm-up requests, then run `verify-full`.** For Maya, add a long-prompt needle when the release changes
+   how prompts are read (prefill).
+5. **Never skip these:**
+   - check that the running container's image is the pinned digest
+     (`docker inspect <container> --format '{{.Config.Image}}'`);
+   - re-record the settings evidence, `python3 scripts/lib/profiles/engine_config_reads.py verify <engine> --record`
+     (`test-engine-config-reads` stays red until it's re-checked on the new image);
+   - for Maya, the image build's GPU-free checks, which catch a flag the launcher passes being renamed.
+
 ### Strata
 
 - Pinned by digest to upstream's own image, `ghcr.io/niko1221/strata:<release>-cuda13`, which Strata's
   `docker-images` workflow builds from the release's signed engine packages (from 0.2.1 on; until 2026-10-20 we built
   `strata-club3090` ourselves). The workflow is run by hand and was run several times for 0.2.1, so resolve the tag
-  to a digest just before pinning and pin the digest you booted. Boot one `strata/` slug of each model family on it
-  (an ISTA slug and a Swift one: a release can break one family's setup and not the other's), run `verify-full` on
-  each, then `scripts/engine-pin-bump.sh strata ghcr.io/niko1221/strata@sha256:<digest>`, update
-  `lineage.source_ref` to the release's commit, and re-record the settings evidence
-  (`python3 scripts/lib/profiles/engine_config_reads.py verify strata --record`).
+  to a digest just before pinning and pin the digest you booted. The checks are the
+  [bump rule](#strata-and-project-maya-the-bump-rule) above; `lineage.source_ref` is the release's commit.
 - The volatile parts are the image's own entrypoint (`/opt/strata/entrypoint.sh` and the settings it reads:
   `MODEL`, `FAMILY`, `MODEL_PATH`, `CONTEXT`, `KV`, `VISION`, `GPUS`, `PRESET`, `API_KEY`), the run config setup writes
   (`/data/install/strata-<family>.json`, where `launcher/strata_config.py` puts the launch settings) and how setup
@@ -228,11 +251,10 @@ This is the "free 30 GB of disk" moment.
 
 - Pinned by digest to `ghcr.io/noonghunna/strata-maya-club3090`, which the maintainer builds on the reference
   rig from each Project Maya release we take, with our own Dockerfile (`build.sh --tag <vX.Y.Z> --push` from a
-  clean master checkout; recipe in `models/glm-5.3-flash/strata-maya/image/`). A published image is not a pin: boot a dual and a single
-  `strata-maya/` slug on the new digest, run `verify-full` on each (its MTP check reads Maya's drafts from the
-  engine log through `strata_metrics.py --container`), then
-  `scripts/engine-pin-bump.sh strata-maya ghcr.io/noonghunna/strata-maya-club3090@sha256:<digest>` and update
-  `lineage.source_ref` to the image's `club3090.upstream.revision` label.
+  clean master checkout; recipe in `models/glm-5.3-flash/strata-maya/image/`). A published image is not a pin: the
+  checks are the [bump rule](#strata-and-project-maya-the-bump-rule) above (`verify-full`'s MTP check reads Maya's
+  drafts from the engine log through `strata_metrics.py --container`), and `lineage.source_ref` is the image's
+  `club3090.upstream.revision` label.
 - The volatile parts are Maya's own interfaces, which the launcher leans on: the `serve/server.py` and
   `tools/iq_pack.py` flags (the image build fails when one disappears), the pack layout (`sources.json`, the
   pack next to the shards), `maya.py`'s `MODELS` table (the launcher's SHA-256 check reads it; a quant renamed

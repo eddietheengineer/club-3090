@@ -65,16 +65,17 @@ same open question).
 | every package in `setup.py`'s `PY_PACKAGES` (less `cmake` / `ninja`), read from the image's own copy of `setup.py`, is installed in the `.venv` at a version the release accepts | a package a release adds missing from the image (v1.1.18's `jsonschema`, which the Responses API's structured output needs, was missing from the hand-kept list the recipe had until then) |
 
 None needs a GPU, so they run on any build machine. **A published image is not a pin.** The `strata-maya` engine
-profile moves to a new digest only after a rig boot and verify-full (`engine-pin-bump.sh`).
+profile moves to a new digest only after the checks in
+[the bump runbook](../../../../docs/NIGHTLY_BUMP_RUNBOOK.md#strata-and-project-maya-the-bump-rule).
 
 ## Run it by hand
 
 ```bash
 bash models/glm-5.3-flash/strata-maya/image/build.sh                       # newest release: build + check
-bash models/glm-5.3-flash/strata-maya/image/build.sh --tag v1.1.23 --push --jobs 32  # publish (see below)
-bash models/glm-5.3-flash/strata-maya/image/build.sh --tag v1.1.23 --verify ghcr.io/noonghunna/strata-maya-club3090:v1.1.23
+bash models/glm-5.3-flash/strata-maya/image/build.sh --tag <vX.Y.Z> --push --jobs 32  # publish (see below)
+bash models/glm-5.3-flash/strata-maya/image/build.sh --tag <vX.Y.Z> --verify ghcr.io/noonghunna/strata-maya-club3090:<vX.Y.Z>
 CUDA_ARCHITECTURES=86 STRATA_MAYA_IMAGE=strata-maya-local \
-  bash models/glm-5.3-flash/strata-maya/image/build.sh --tag v1.1.23 --jobs 16 --force   # a quick local build for one card
+  bash models/glm-5.3-flash/strata-maya/image/build.sh --tag <vX.Y.Z> --jobs 16 --force   # a quick local build for one card
 ```
 
 A local image name needs `--force`: the "already published?" probe can't tell an unpublished local
