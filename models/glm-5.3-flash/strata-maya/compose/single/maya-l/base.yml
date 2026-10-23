@@ -51,7 +51,7 @@
 # MAYA_PCIE_SHARE / MAYA_CPU_LANE (the engine's STRATA_GLM_PCIE_SHARE / STRATA_GLM_CPU_LANE).
 services:
   strata-maya:
-    image: ${STRATA_MAYA_IMAGE:-ghcr.io/noonghunna/strata-maya-club3090@sha256:232f1112a703178db61a7c1d57ef6b0f1b58145e3cb29a137105209c4bec9081}
+    image: ${STRATA_MAYA_IMAGE:-ghcr.io/noonghunna/strata-maya-club3090@sha256:36658d16601dc7960ca1247671eb8f03d731a52357d6a12c220749cd2b54b756}
     container_name: ${ESTATE_CONTAINER:-strata-maya-glm53-flash-single-maya-l}
     restart: ${CLUB3090_RESTART:-unless-stopped}
     # root, with the launcher's group: what Maya writes to the data volume stays removable by the user
