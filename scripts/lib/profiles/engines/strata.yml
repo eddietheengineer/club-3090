@@ -15,13 +15,11 @@ lineage:
 image_env: STRATA_IMAGE
 install:
   method: docker_image
-  # Strata 0.2.2 (upstream 011c9e60; engine 0.1.47, the image's com.strata.engine label), upstream's
-  # own image `0.2.2-cuda13` (RTX 20-50, driver >= 580), built by their docker-images workflow from the
-  # signed engine packages. Pinned 2026-10-22 after switch.sh boots + verify-full of the dual and single
-  # ISTA slugs on this digest. Replaces 0.2.1 (upstream 90767252, engine 0.1.46) `a0398afb…` (#1764,
-  # 2026-10-20), which replaced club-3090's own builds of upstream's Dockerfile
-  # (strata-club3090): v0.1.45 (75deea40, 2026-10-17), v0.1.44.1 (fb97d83b, 2026-10-14), v0.1.43.1
-  # (7f8643c8, 2026-10-13, the one that also carried sm_90).
+  # Upstream's own image `<release>-cuda13` (RTX 20-50, driver >= 580), built by their docker-images
+  # workflow from the signed engine packages; the engine version is its com.strata.engine label.
+  # scripts/strata-pin-bump.sh writes the two pin- lines (the first earlier pin is the rollback).
+  # pin-current: 0.2.2 · upstream 011c9e60 · engine 0.1.47 · pinned 2026-10-22 · booted strata/qwen3.8-flash-next-iq3s-dual, strata/qwen3.8-flash-next-iq3s-single (verify-full)
+  # pin-earlier: 0.2.1 `a0398afb…` (upstream 90767252, engine 0.1.46, #1764, 2026-10-20); club-3090's own builds of upstream's Dockerfile (strata-club3090): v0.1.45 `75deea40…` (2026-10-17), v0.1.44.1 `fb97d83b…` (2026-10-14), v0.1.43.1 `7f8643c8…` (2026-10-13, the one that also carried sm_90)
   spec: ghcr.io/niko1221/strata@sha256:17e96f76fb85ee47b445b38ebfe9e4190b96ebde522e109d40efa2f2404a4503
 supported_model_families:
   - qwen4exp              # Qwen3.8-Flash-Next family: Strata is written for this model only

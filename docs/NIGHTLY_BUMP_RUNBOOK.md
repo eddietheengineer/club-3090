@@ -209,15 +209,21 @@ This is the "free 30 GB of disk" moment.
 ### Strata and Project Maya: the bump rule
 
 Both engines release often, so a bump of either one has the same short shape. The two sections after this one say
-what is specific to each.
+what is specific to each. `scripts/strata-pin-bump.sh <engine> <release>` runs steps 2–5 (Strata also takes
+`--family ista|swift` or `--slug`) and prints the PR summary, with the releases the bump skipped; the steps say what it
+does, and what to do by hand when it refuses.
 
 1. **Take a release only when it touches us.** Read the release notes and, for Maya, the commits since our pin (it
    releases several times a day). Take the release when they touch Linux CUDA serving (Strata) or GLM (Maya), the
    server or the launch path, or a bug that affects us. Otherwise skip it, and name the skipped releases in the next
    bump's PR.
-2. **In the pin worktree,** run `scripts/engine-pin-bump.sh <engine> <repo>@sha256:<digest>`, update
-   `lineage.source_ref`, and pull the image. The launchers inject the profile's image, so a boot from that worktree
-   runs the new digest.
+2. **In the pin worktree,** pull the image and pin its digest everywhere: `scripts/engine-pin-bump.sh <engine>
+   <repo>@sha256:<digest>` (the spec and the compose defaults), `lineage.source_ref`, the engine profile's two `pin-`
+   lines, the engine's `docs/UPSTREAM.md` row and, for Strata, the "Pinned" line of `docs/engines/STRATA.md`. The
+   launchers inject the profile's image, so a boot from that worktree runs the new digest. Before that, check in the
+   new image what the launchers rely on: for Strata, that `strata launch --kv` still offers `KV_FORMATS`, the `--spec`
+   help still says setup writes `SETUP_SPEC` (both in `launcher/strata_config.py`) and the entrypoint still reads the
+   settings the launcher sets; for Maya, that `maya.py`'s `MODELS` still has the quants `maya_prepare.py` names.
 3. **Boot one dual slug** through `switch.sh`. Every slug of an engine runs the same image, so one boot shows the
    image serves. Single-card and multi4 slugs aren't booted for a bump.
    - **Maya:** any dual slug. A dual runs the MTP draft across the split.

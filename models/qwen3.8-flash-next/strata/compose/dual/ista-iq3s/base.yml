@@ -3,7 +3,7 @@
 #   Model:     Qwen3.8-Flash-Next — ISTA-DASLab GSQ-RCO IQ3_S (2 shards: 54.8 GB experts +
 #              28.8 GB n-gram table), Strata's best-quality native format. Strata's setup
 #              SHA-256-checks both shards on the first start.
-#   Engine:    Strata 0.2.2 (engine 0.1.47) — upstream's own image ghcr.io/niko1221/strata:0.2.2-cuda13,
+#   Engine:    Strata (the release engines/strata.yml pins) — upstream's own image ghcr.io/niko1221/strata:<release>-cuda13,
 #              pinned by digest; club-3090's launcher (../../../launcher/) applies the launch settings
 #   Topology:  Dual 3090, Strata layer split (--gpus 0,1, layer split auto): each card
 #              caches the experts of its own layers; one hand-off per verify window, no
