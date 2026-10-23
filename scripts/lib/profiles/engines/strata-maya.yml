@@ -15,12 +15,11 @@ lineage:
 image_env: STRATA_MAYA_IMAGE
 install:
   method: docker_image
-  # v1.1.23 (upstream 8ceadd7d), pushed from the rig (recipe 775557c4): archs 75;80;86;89;120, text only.
-  # Pinned 2026-10-22 after switch.sh boots + verify-full of dual and single Maya-L on this digest (a long-prompt
-  # needle on both). Replaces v1.1.20 (upstream 35bb2b22) `1918560b…` (#1774, 2026-10-21; v1.1.21, whose VERSION
-  # was empty, and v1.1.22 were skipped), which replaced v1.1.19 (upstream 3bf6867d) `1db76650…` (#1773, same day),
-  # which replaced v1.1.17 (upstream 8d9a9b5d) `1564614d…` (#1759, 2026-10-20; v1.1.18 was skipped), which replaced v1.1.16
-  # (upstream abc09c74) `bd8f12a8…` (#1757, same day), which replaced v1.1.11 `c6680830…` (CI, 2026-10-15).
+  # Built and pushed from the rig with models/glm-5.3-flash/strata-maya/image/ (text only); upstream, recipe and
+  # archs are the image's own labels. scripts/strata-pin-bump.sh writes the two pin- lines (the first earlier pin
+  # is the rollback).
+  # pin-current: v1.1.23 · upstream 8ceadd7d · recipe 775557c4 · archs 75;80;86;89;120 · pinned 2026-10-22 · booted strata-maya/glm53-flash-dual-maya-l, strata-maya/glm53-flash-single-maya-l (verify-full, a long-prompt needle)
+  # pin-earlier: v1.1.20 `1918560b…` (upstream 35bb2b22, #1774, 2026-10-21; v1.1.21, whose VERSION was empty, and v1.1.22 were skipped); v1.1.19 `1db76650…` (upstream 3bf6867d, #1773, 2026-10-21); v1.1.17 `1564614d…` (upstream 8d9a9b5d, #1759, 2026-10-20; v1.1.18 was skipped); v1.1.16 `bd8f12a8…` (upstream abc09c74, #1757, 2026-10-20); v1.1.11 `c6680830…` (CI, 2026-10-15)
   spec: ghcr.io/noonghunna/strata-maya-club3090@sha256:232f1112a703178db61a7c1d57ef6b0f1b58145e3cb29a137105209c4bec9081
 supported_model_families:
   - glm5next-moe          # GLM-5.3-Flash: Project Maya is written for this model only

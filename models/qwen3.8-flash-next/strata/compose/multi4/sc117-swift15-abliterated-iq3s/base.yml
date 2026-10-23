@@ -3,7 +3,7 @@
 #   Model:     Swift 1.5 (UkisAI's fine-tune of Qwen3.8-Flash-Next), SC117's abliterated GSQ-RCO
 #              IQ3_S (2 shards, 44.85 + 38.70 GB; the 28.8 GB per-layer embedding table sits in
 #              shard 1). Served as Strata's swift family; setup checks both shards are whole GGUFs.
-#   Engine:    Strata 0.2.2 (engine 0.1.47) — upstream's own image ghcr.io/niko1221/strata:0.2.2-cuda13,
+#   Engine:    Strata (the release engines/strata.yml pins) — upstream's own image ghcr.io/niko1221/strata:<release>-cuda13,
 #              pinned by digest; club-3090's launcher (../../../launcher/) applies the launch settings
 #   Topology:  4× 24 GB, Strata layer split (--gpus 0,1,2,3, layer split auto): each card
 #              caches the experts of its own layers (four cards hold about four times one card's

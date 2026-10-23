@@ -4,7 +4,7 @@
 The entrypoint runs this inside the container (with the image's python), on the run config setup
 writes, /data/install/strata-<tag>.json, before the server starts (Strata 0.2's launcher makes the
 live launch config from it at every start, so an edit there is lost). Strata reads these keys from
-its config (serve/server.py, 0.2.1 and 0.2.2), but setup writes none of them:
+its config (serve/server.py; engine_config_reads.py re-checks that on every bump), but setup writes none of them:
 
   knob                   config key                    Strata's own rule (server.py)
   REASONING_EFFORT       reasoning_effort              none | low | medium | high (high = the template's xhigh)
@@ -47,7 +47,7 @@ import sys
 
 EFFORTS = {"none": "none", "low": "low", "medium": "medium", "high": "high",
            "xhigh": "high", "max": "high"}     # our other engines' names for Strata's "high" (the template's xhigh)
-KV_FORMATS = ("fp16", "int8", "q4_0", "k8v4")  # `strata launch --kv` choices (0.2.1, 0.2.2)
+KV_FORMATS = ("fp16", "int8", "q4_0", "k8v4")  # `strata launch --kv` choices; strata-pin-bump.sh checks each new image still offers them
 MANAGED = ("reasoning_effort", "reasoning_budget_tokens", "aliases")
 MANAGED_SAMPLING = ("temperature", "top_p", "top_k", "min_p", "presence_penalty", "repetition_penalty")
 
@@ -138,7 +138,7 @@ def arg_value(args, flag):
     return args[args.index(flag) + 1] if flag in args[:-1] else None
 
 
-SETUP_SPEC = "4"   # `strata --help` (0.2.1, 0.2.2): "--spec N ... (setup writes 4)"; used when setup's own was never seen
+SETUP_SPEC = "4"   # `strata --help`: "--spec N ... (setup writes 4)", re-checked by strata-pin-bump.sh; used when setup's own was never seen
 
 
 def setup_spec_record(value=None):
