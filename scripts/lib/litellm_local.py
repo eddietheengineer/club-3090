@@ -63,6 +63,7 @@ ROUTES_FILE = "config.local.yaml"
 LEGACY_ROUTES = Path("services/litellm") / ROUTES_FILE
 LEGACY_KEYS = Path("services/litellm/local.env")
 CATALOG = Path("services/litellm/config.yaml")
+RUNTIME = Path("services/litellm") / "config.runtime.yaml"
 KEYS_VAR = "CLUB3090_LITELLM_ROUTE_KEYS"
 # The compose sets these itself (`environment:` wins over an env_file), so they are
 # never handed over as route keys.
@@ -127,11 +128,13 @@ def _refs(text: str) -> set:
 
 def referenced_keys(root, environ=None, override: bool = True) -> list:
     """The key names the gateway's routes read from its environment: the catalog
-    config.yaml's and this rig's own routes' (``active_routes``), minus the ones
+    config.yaml's, the runtime view's (a keyed engine's route references its key
+    there, #1794), and this rig's own routes' (``active_routes``), minus the ones
     the compose sets itself."""
     names = set()
     if root is not None:
         names |= _refs(_read(Path(root) / CATALOG))
+        names |= _refs(_read(Path(root) / RUNTIME))
     path, _origin = active_routes(root, environ, override)
     if path is not None:
         names |= _refs(_read(path))

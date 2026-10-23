@@ -36,6 +36,7 @@ does not serve it. Each live route gets:
 | Field | Value | Why |
 |---|---|---|
 | `model` | `openai/<served id>` | Forwards the messages untouched, including a past turn's `reasoning_content`, which `hosted_vllm/` drops. |
+| `api_key` | `EMPTY` on a keyless engine; on a keyed one (Strata 0.2+) the key the container runs — an `os.environ/STRATA_API_KEY` reference when that is the stored value, the literal otherwise | The probe sends the container's own key (the `engine-auth.sh` rule); without it Strata 0.2+ 401s `/v1/models` and the port renders no route at all (#1794). |
 | `allowed_openai_params` | `[reasoning_effort]` | Without it the `openai` provider answers a top-level `reasoning_effort` with HTTP 400 before the request reaches the engine. |
 | `use_chat_completions_api` | `true` on a route whose engine has no `/v1/responses` (tabbyAPI; the sync checks with an empty-body request); left out elsewhere | omp's Responses calls and Claude Code's translated `/v1/messages` reach the engine as chat completions instead of a 404 — which would also lock every client out of the model for 5 s. Reasoning crosses the bridge both ways — see *Wire format*. |
 | `model_info.max_input_tokens` | the booted server's context: vLLM/SGLang `max_model_len`, llama.cpp `n_ctx`; else the registry's configured context | Clients size compaction against the real window of *this* boot. |
