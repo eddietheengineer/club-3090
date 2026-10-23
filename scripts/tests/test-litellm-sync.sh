@@ -493,5 +493,36 @@ render "8182=alpha-model"
 ak="$(route_field alpha-model litellm_params.api_key)"
 [[ "$ak" == "EMPTY" ]] && ok "a keyless route keeps api_key: EMPTY" || bad "keyless route api_key=$ak (want EMPTY)"
 
+# --- 22: the public default key — the constant must match every strata compose ---
+# litellm_sync.py renders the public default as a literal (it is published in the
+# repo); a user's own key never does. If a compose's default ever changes, the
+# constant must change with it — otherwise the new default renders as "an
+# unstored key" (a reference + a save-it warning) instead of the literal, and
+# every strata user ends up with a broken route until they save the key.
+pykey="$(command grep -oE 'PUBLIC_DEFAULT_ENGINE_KEY = "[^"]+"' scripts/lib/litellm_sync.py | command sed -n 's/.*"\(.*\)"/\1/p' | head -1)"
+if [[ -z "$pykey" ]]; then
+  bad "PUBLIC_DEFAULT_ENGINE_KEY not found in litellm_sync.py"
+else
+  n=0; drift=""
+  while IFS= read -r l; do
+    f="${l%%:*}"; l="${l#*:}"
+    dflt="$(command sed -n 's/.*STRATA_API_KEY:-\([^}]*\).*/\1/p' <<<"$l" | head -1)"
+    if [[ -z "$dflt" ]]; then
+      continue
+    fi
+    n=$((n+1))
+    if [[ "$dflt" != "$pykey" ]]; then
+      drift+="  ${f}: ${dflt}"
+    fi
+  done < <(command grep -rn 'API_KEY: "${STRATA_API_KEY:-' models/*/strata/compose/ 2>/dev/null)
+  if [[ $n -eq 0 ]]; then
+    bad "no strata compose declares API_KEY — the guard found nothing to check"
+  elif [[ -z "$drift" ]]; then
+    ok "the public default key matches all $n strata compose defaults"
+  else
+    bad "a strata compose's default key drifted from the constant:$drift"
+  fi
+fi
+
 [[ $fail -eq 0 ]] && echo "test-litellm-sync: ok" || echo "test-litellm-sync: FAIL"
 exit $fail
