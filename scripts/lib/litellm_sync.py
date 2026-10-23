@@ -40,7 +40,6 @@ LOCAL_BEGIN = "  # === BEGIN THIS RIG'S OWN ROUTES — {src} (not tracked) ==="
 LOCAL_END = "  # === END THIS RIG'S OWN ROUTES ==="
 
 
-
 def registry_variants(root: str) -> list[dict]:
     try:
         out = subprocess.run(
@@ -71,12 +70,18 @@ class Live(NamedTuple):
     key: str
 
 
+def bearer(req: urllib.request.Request, key: str) -> urllib.request.Request:
+    """The Bearer header on a probe request, when a key applies. Keyless stays
+    keyless — exactly the request shape as before (#1794)."""
+    if key:
+        req.add_header("Authorization", f"Bearer {key}")
+    return req
+
+
 def get_models(port: int, key: str) -> list[dict]:
     """The /v1/models listing, with the Bearer header when a key applies.
     Raises urllib.error.HTTPError — a 401 is the signal to go find the key."""
-    req = urllib.request.Request(f"http://127.0.0.1:{port}/v1/models")
-    if key:
-        req.add_header("Authorization", f"Bearer {key}")
+    req = bearer(urllib.request.Request(f"http://127.0.0.1:{port}/v1/models"), key)
     with urllib.request.urlopen(req, timeout=2) as r:
         return json.load(r).get("data") or []
 
@@ -117,7 +122,7 @@ def probe(port: int) -> list[Live]:
         if engine_kind_from_owned_by(owned_by) == "exllamav3":
             data = loaded_model(port) or data
         first_id = next((str(m["id"]) for m in data if m.get("id")), "")
-        native = serves_messages(port, owned_by, first_id) if first_id else False
+        native = serves_messages(port, owned_by, first_id, key) if first_id else False
         responses = serves_responses(port, key)
         out: list[Live] = []
         for m in data:
@@ -126,7 +131,7 @@ def probe(port: int) -> list[Live]:
             ml = m.get("max_model_len")
             ml = int(ml) if isinstance(ml, int) and ml > 0 else None
             if ml is None:
-                ml = llamacpp_ctx(port)   # llama.cpp reports its window on /props instead
+                ml = llamacpp_ctx(port, key)   # llama.cpp reports its window on /props instead
             out.append(Live(port, m["id"], ml, native, responses, key))
         return out
     except Exception:
@@ -198,13 +203,13 @@ def engine_key_for_port(port: int) -> str:
     return out.stdout.strip()
 
 
-def count_tokens(port: int, model: str, body: dict) -> "int | None":
+def count_tokens(port: int, model: str, body: dict, key: str = "") -> "int | None":
     """Anthropic /v1/messages/count_tokens: renders the prompt, generates nothing."""
-    req = urllib.request.Request(
+    req = bearer(urllib.request.Request(
         f"http://127.0.0.1:{port}/v1/messages/count_tokens",
         data=json.dumps({"model": model, **body}).encode(),
         headers={"content-type": "application/json"},
-    )
+    ), key)
     try:
         with urllib.request.urlopen(req, timeout=5) as r:
             n = json.load(r).get("input_tokens")
@@ -213,7 +218,7 @@ def count_tokens(port: int, model: str, body: dict) -> "int | None":
     return n if isinstance(n, int) else None
 
 
-def serves_messages(port: int, owned_by: str, model: str) -> bool:
+def serves_messages(port: int, owned_by: str, model: str, key: str = "") -> bool:
     """Whether the gateway should hand Claude Code's Anthropic /v1/messages to the
     engine's own endpoint instead of translating it. Both must hold:
       - the engine is SGLang or vLLM, the two checked with the Claude Code CLI:
@@ -236,9 +241,9 @@ def serves_messages(port: int, owned_by: str, model: str) -> bool:
         return False
     turns = [{"role": "user", "content": "a"}, {"role": "user", "content": "b"}]
     inline = count_tokens(port, model, {"system": "Be brief.", "messages": [
-        turns[0], {"role": "system", "content": "Env: linux"}, turns[1]]})
+        turns[0], {"role": "system", "content": "Env: linux"}, turns[1]]}, key)
     merged = count_tokens(port, model, {"system": [
-        {"type": "text", "text": "Be brief."}, {"type": "text", "text": "Env: linux"}], "messages": turns})
+        {"type": "text", "text": "Be brief."}, {"type": "text", "text": "Env: linux"}], "messages": turns}, key)
     return inline is not None and merged is not None and inline > merged + 1
 
 
@@ -253,12 +258,10 @@ def serves_responses(port: int, key: str = "") -> bool:
     Only a 404 counts as absent. Anything else — including no answer — keeps
     today's route, because bridging an engine that has the endpoint would move
     omp off the wire whose prefix reuse docs/CODING_AGENTS.md measures."""
-    req = urllib.request.Request(
+    req = bearer(urllib.request.Request(
         f"http://127.0.0.1:{port}/v1/responses", data=b"{}",
         headers={"content-type": "application/json"},
-    )
-    if key:
-        req.add_header("Authorization", f"Bearer {key}")
+    ), key)
     try:
         with urllib.request.urlopen(req, timeout=2):
             return True
@@ -268,10 +271,11 @@ def serves_responses(port: int, key: str = "") -> bool:
         return True
 
 
-def llamacpp_ctx(port: int) -> "int | None":
+def llamacpp_ctx(port: int, key: str = "") -> "int | None":
     """llama.cpp's runtime context window (/props n_ctx); None anywhere else."""
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/props", timeout=2) as r:
+        req = bearer(urllib.request.Request(f"http://127.0.0.1:{port}/props"), key)
+        with urllib.request.urlopen(req, timeout=2) as r:
             props = json.load(r)
     except Exception:
         return None
@@ -408,24 +412,35 @@ PUBLIC_DEFAULT_ENGINE_KEY = "club-3090-strata-local-key"
 
 def route_api_key(key: str, root: str, port: int, warnings: list) -> str:
     """The route's api_key line. A keyless engine keeps EMPTY. A keyed one
-    references the setting when the stored value is the one the container
+    references the setting ONLY when the stored value is the one the container
     runs — the key stays in secrets.env and the route-keys file hands it to
-    the gateway. The public default renders literally. Any other unstored
-    key renders the reference too, plus a warning telling the user to save
-    it: the runtime file is world-readable like the rest of the checkout,
-    and the repo's rule is that a user's key lives in 0600 secrets.env, not
-    in a rendered config (#1794 review)."""
+    the gateway. The public default renders literally. An unstored key renders
+    the reference too, plus a warning telling the user to save it: the runtime
+    file is world-readable like the rest of the checkout, and the repo's rule
+    is that a user's key lives in 0600 secrets.env, not in a rendered config
+    (#1794 review). A SAVED key that differs from the container's renders
+    EMPTY, never the reference: the gateway would otherwise hand the user's
+    secret to a server that does not use it — wrong key, 401s, and the secret
+    crossed the wire to a service that never asked for it."""
     if not key:
         return "EMPTY"
-    if club_config.get("STRATA_API_KEY", root) == key:
-        return "os.environ/STRATA_API_KEY"
     if key == PUBLIC_DEFAULT_ENGINE_KEY:
         return json.dumps(key)
+    stored = club_config.get("STRATA_API_KEY", root)
+    if stored == key:
+        return "os.environ/STRATA_API_KEY"
+    if not stored:
+        warnings.append(
+            f":{port} runs a key that is not saved in your settings — its route "
+            "references os.environ/STRATA_API_KEY, which the gateway does not "
+            "have yet. Save it: bash scripts/settings.sh set STRATA_API_KEY=…")
+        return "os.environ/STRATA_API_KEY"
     warnings.append(
-        f":{port} runs a key that is not saved in your settings — its route "
-        "references os.environ/STRATA_API_KEY, which the gateway does not "
-        "have yet. Save it: bash scripts/settings.sh set STRATA_API_KEY=…")
-    return "os.environ/STRATA_API_KEY"
+        f":{port} runs a key that is not the saved STRATA_API_KEY — its route "
+        "sends no key rather than hand your saved secret to a server that does "
+        "not use it. Make STRATA_API_KEY the key this container runs, then "
+        "re-sync: bash scripts/settings.sh set STRATA_API_KEY=…")
+    return "EMPTY"
 
 
 def render_block(live: list[Live], facts: "dict[int, dict] | None" = None,

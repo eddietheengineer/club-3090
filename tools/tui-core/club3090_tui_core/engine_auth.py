@@ -1,7 +1,8 @@
 """The engine's API key for our own requests to it: Strata 0.2+ answers nothing but /health without one.
 
-The decision lives in the repo's ``scripts/lib/engine-auth.sh`` (ENGINE_API_KEY, else a Strata container's own
-API_KEY, else STRATA_API_KEY; nothing for a container without a key), the same helper every script uses.
+The decision lives in the repo's ``scripts/lib/engine-auth.sh`` (ENGINE_API_KEY, else the container's own
+API_KEY — any engine that sets one, our convention for a keyed server — else STRATA_API_KEY for a Strata
+container without one; nothing for a container with neither), the same helper every script uses.
 This runs it directly with asyncio, never through a logged runner, so the key never lands in a run log, and
 only after a request came back 401: engines without a key never pay for it. The key is cached per container
 and fetched again on the next 401 (a recreated container may carry a new one).
