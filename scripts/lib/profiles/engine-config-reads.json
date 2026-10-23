@@ -101,7 +101,7 @@
   },
   "strata-maya": {
    "engine_profile": "scripts/lib/profiles/engines/strata-maya.yml",
-   "verified_image": "ghcr.io/noonghunna/strata-maya-club3090@sha256:232f1112a703178db61a7c1d57ef6b0f1b58145e3cb29a137105209c4bec9081",
+   "verified_image": "ghcr.io/noonghunna/strata-maya-club3090@sha256:36658d16601dc7960ca1247671eb8f03d731a52357d6a12c220749cd2b54b756",
    "render": "maya_prepare",
    "programs": [
     "models/glm-5.3-flash/strata-maya/launcher/maya_settings.py",
