@@ -387,13 +387,16 @@ else
   bad "litellm-sync modified the TRACKED config.yaml — it must only write the runtime view"
 fi
 
-# --- 20: a keyed engine (Strata 0.2+) — the probe sends the key it was given --
+# --- 20: a keyed engine (Strata 0.2+) — the probe retries with the key ------
 # Strata 0.2+ answers nothing but GET /health without a key, so a keyless probe
-# 401s and the port renders no route at all: the model is invisible to the gateway
-# and to omp's discovery (club-3090#1794). The probe sends the key as a Bearer
-# header; a keyless engine is probed exactly as before.
-python3 - "$ROOT/scripts/lib" <<'PY2' && ok "keyed probe: no key → no route; the server's key → the model list; a wrong key → no route" || bad "keyed probe wrong (see above)"
-import http.server, json, sys, threading
+# 401s and the port rendered no route at all: the model was invisible to the
+# gateway and to omp's discovery (club-3090#1794). The 401 triggers a lazy key
+# resolution (engine_key_for_port — the repo's own helpers behind the
+# C3_LITELLM_FAKE_ENGINE_KEYS seam here) and one retry with it as a Bearer
+# header; the key also rides on the /v1/responses probe. A keyless engine is
+# probed exactly as before: one keyless request.
+python3 - "$ROOT/scripts/lib" <<'PY2' && ok "keyed probe: seam key → the model list; wrong key → no route; no key → no route" || bad "keyed probe wrong (see above)"
+import http.server, json, os, sys, threading
 sys.path.insert(0, sys.argv[1])
 import litellm_sync
 
@@ -401,55 +404,79 @@ KEY = "seam-key-1794"
 
 class H(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a): pass
+    def _authed(self):
+        return self.headers.get("authorization") == f"Bearer {KEY}"
     def _send(self, code, body):
         data = json.dumps(body).encode()
         self.send_response(code); self.send_header("content-type", "application/json")
         self.send_header("content-length", str(len(data))); self.end_headers(); self.wfile.write(data)
     def do_GET(self):
         if self.path == "/v1/models":
-            if self.headers.get("authorization") != f"Bearer {KEY}":
+            if not self._authed():
                 return self._send(401, {"error": {"type": "authentication_error",
                                                    "message": "missing or wrong API key"}})
             self._send(200, {"data": [{"id": "keyed-model", "owned_by": "strata", "max_model_len": 4096}]})
         else:
             self._send(404, {})
     def do_POST(self):
+        # the server answers nothing without its key — /v1/responses included.
+        # With the key it 404s: no Responses endpoint. Only a keyed probe can
+        # see the 404, so the responses flag proves the key was threaded.
+        if not self._authed():
+            return self._send(401, {"error": {"type": "authentication_error",
+                                               "message": "missing or wrong API key"}})
         self._send(404, {})
 
 srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
 threading.Thread(target=srv.serve_forever, daemon=True).start()
 port = srv.server_address[1]
 bad = 0
-r0 = litellm_sync.probe(port)
-if r0:
-    print(f"    no key: expected no route, got {r0}", file=sys.stderr); bad = 1
-r1 = litellm_sync.probe(port, KEY)
-if not (len(r1) == 1 and r1[0][1] == "keyed-model" and r1[0][5] == KEY):
-    print(f"    the server's key: expected the model list with the key, got {r1}", file=sys.stderr); bad = 1
-r2 = litellm_sync.probe(port, "wrong-key")
+os.environ["C3_LITELLM_FAKE_ENGINE_KEYS"] = f"{port}={KEY}"
+r1 = litellm_sync.probe(port)
+if not (len(r1) == 1 and r1[0][1] == "keyed-model" and r1[0][5] == KEY and r1[0][4] is False):
+    print(f"    seam key: expected one route with the key and responses=False, got {r1}", file=sys.stderr); bad = 1
+os.environ["C3_LITELLM_FAKE_ENGINE_KEYS"] = f"{port}=wrong-key"
+r2 = litellm_sync.probe(port)
 if r2:
     print(f"    wrong key: expected no route, got {r2}", file=sys.stderr); bad = 1
+os.environ["C3_LITELLM_FAKE_ENGINE_KEYS"] = ""
+r0 = litellm_sync.probe(port)
+if r0:
+    print(f"    no key for this port: expected no route, got {r0}", file=sys.stderr); bad = 1
+del os.environ["C3_LITELLM_FAKE_ENGINE_KEYS"]
 srv.shutdown()
 sys.exit(bad)
 PY2
 
-# --- 21: a keyed route carries its key — a settings reference when the stored
-# key is the one the container runs (the key stays in secrets.env), the literal
-# otherwise (a shell override at launch; the runtime file is gitignored)
-env -u STRATA_API_KEY C3_LITELLM_FAKE_LIVE="8018=strata-model+keyed" bash "$SYNC" --no-restart --quiet
+# --- 21: a keyed route's api_key — never a user's literal key ---------------
+# The runtime file is world-readable like the rest of the checkout; a user's
+# key lives in 0600 secrets.env. So: the stored setting → an os.environ
+# reference; the public default every strata compose ships → literal (it is
+# published in the repo); any other unstored key → the reference plus a
+# warning telling the user to save it.
+tmp21="$(mktemp)"
+env -u STRATA_API_KEY C3_LITELLM_FAKE_LIVE="8018=strata-model+keyed=seam-key-1794" bash "$SYNC" --no-restart --quiet 2> "$tmp21"
 ak="$(route_field strata-model litellm_params.api_key)"
-if [[ "$ak" == "seam-key-1794" ]]; then
-  ok "no stored key: the route carries the literal key"
+if [[ "$ak" == "os.environ/STRATA_API_KEY" ]] && command grep -q "not saved in your settings" "$tmp21"; then
+  ok "an unstored non-default key: the route references the setting and the sync warns to save it"
 else
-  bad "no stored key: api_key=$ak (want the literal seam key)"
+  bad "unstored key: api_key=$ak (want os.environ/STRATA_API_KEY + a warning); stderr: $(cat "$tmp21")"
 fi
-STRATA_API_KEY=seam-key-1794 render "8018=strata-model+keyed"
+env -u STRATA_API_KEY C3_LITELLM_FAKE_LIVE="8018=strata-model+keyed=club-3090-strata-local-key" bash "$SYNC" --no-restart --quiet
+ak="$(route_field strata-model litellm_params.api_key)"
+if [[ "$ak" == "club-3090-strata-local-key" ]]; then
+  ok "the public default key renders literally — it is published in the repo"
+else
+  bad "public default: api_key=$ak (want the literal default)"
+fi
+STRATA_API_KEY=seam-key-1794 render "8018=strata-model+keyed=seam-key-1794"
 ak="$(route_field strata-model litellm_params.api_key)"
 if [[ "$ak" == "os.environ/STRATA_API_KEY" ]]; then
   ok "the stored key is the container's: the route references the setting, not the value"
 else
   bad "stored key: api_key=$ak (want os.environ/STRATA_API_KEY)"
 fi
+rm -f "$tmp21"
 # a keyless route keeps EMPTY, as before
 render "8182=alpha-model"
 ak="$(route_field alpha-model litellm_params.api_key)"

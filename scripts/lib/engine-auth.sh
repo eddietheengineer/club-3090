@@ -10,10 +10,15 @@
 # always the one the server uses, whether the compose default or a key of the user's own. No key
 # is built in here, and a container without an API_KEY (Strata 0.1.x, Project Maya) gets no header.
 #
+# The API_KEY lookup is not Strata-specific: an API_KEY env on ANY container is our convention
+# for a keyed server, so a BYOM compose that keys its engine the way our strata composes do works
+# too. The kind check stays only for the STRATA_API_KEY fallback, which is a Strata setting and
+# must not leak to another engine's container.
+#
 # Precedence:
 #   1. ENGINE_API_KEY            any engine, e.g. a remote URL= with no container here
-#   2. the container's API_KEY   a Strata container (engine-kind.sh decides) that has one
-#   3. STRATA_API_KEY            a Strata container without one
+#   2. the container's API_KEY   any container that sets one
+#   3. STRATA_API_KEY            a Strata container (engine-kind.sh decides) without one
 #
 # Usage, once the script knows its container (empty or "none" for a URL with none here):
 #   source scripts/lib/engine-auth.sh
@@ -31,13 +36,13 @@ club_engine_api_key() {
   if [[ -n "${ENGINE_API_KEY:-}" ]]; then printf '%s' "$ENGINE_API_KEY"; return 0; fi
   [[ -n "$c" && "$c" != none ]] || return 0
   command -v docker >/dev/null 2>&1 || return 0
+  key="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$c" 2>/dev/null | sed -n 's/^API_KEY=//p' | head -1)"
+  [[ -n "$key" ]] && { printf '%s' "$key"; return 0; }
   img="$(docker inspect -f '{{.Config.Image}}' "$c" 2>/dev/null)" || return 0
   kind="$(engine_kind_from_image "$img")"
   [[ "$kind" == unknown ]] && kind="$(engine_kind_from_container "$c")"
   [[ "$kind" == strata ]] || return 0
-  key="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$c" 2>/dev/null | sed -n 's/^API_KEY=//p' | head -1)"
-  [[ -z "$key" ]] && key="${STRATA_API_KEY:-}"
-  printf '%s' "$key"
+  printf '%s' "${STRATA_API_KEY:-}"
 }
 
 # club_engine_auth_enable [CONTAINER] — when a key applies, make this shell's curl send it.
