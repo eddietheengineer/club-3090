@@ -174,6 +174,10 @@ def engine_key_for_port(port: int) -> str:
     club_engine_api_key answers WHICH key that container needs (the one rule).
     Called lazily — only after a keyless probe was refused — so a rig with
     only keyless engines pays nothing (#1794).
+    ENGINE_API_KEY — engine-auth.sh's override for a remote URL= with no
+    container here — is stripped from the helpers' environment: this probe
+    only ever asks 127.0.0.1, where the container decides, so a saved
+    override must never answer for a local port.
     TEST SEAM: C3_LITELLM_FAKE_ENGINE_KEYS="8018=key,..." substitutes the
     container lookup wholesale — env-only, for tests, not operators."""
     fake = os.environ.get("C3_LITELLM_FAKE_ENGINE_KEYS")
@@ -184,11 +188,16 @@ def engine_key_for_port(port: int) -> str:
                 return k
         return ""
     lib = os.path.dirname(os.path.abspath(__file__))
+    # The probe is never a remote URL=, so engine-auth.sh's first precedence
+    # (ENGINE_API_KEY, meant for exactly that) must not reach its helpers:
+    # run both without it, or a saved override answers for any local port
+    # that 401s — keyed engine of another kind or not.
+    env = {k: v for k, v in os.environ.items() if k != "ENGINE_API_KEY"}
     try:
         out = subprocess.run(
             ["bash", "-c", 'source "$1" && club_container_for_url "http://127.0.0.1:${2}"',
              "_", os.path.join(lib, "club-containers.sh"), str(port)],
-            capture_output=True, text=True, encoding="utf-8", timeout=15,
+            capture_output=True, text=True, encoding="utf-8", timeout=15, env=env,
         )
     except (OSError, subprocess.SubprocessError):
         return ""
@@ -199,7 +208,7 @@ def engine_key_for_port(port: int) -> str:
         out = subprocess.run(
             ["bash", "-c", 'source "$1" && club_engine_api_key "$2"',
              "_", os.path.join(lib, "engine-auth.sh"), container],
-            capture_output=True, text=True, encoding="utf-8", timeout=15,
+            capture_output=True, text=True, encoding="utf-8", timeout=15, env=env,
         )
     except (OSError, subprocess.SubprocessError):
         return ""

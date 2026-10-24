@@ -448,6 +448,89 @@ srv.shutdown()
 sys.exit(bad)
 PY2
 
+# The same retry through the REAL container lookup — the seam above
+# short-circuits before the helpers, so it cannot cover this leg: a docker
+# stub on PATH (as in test-engine-auth.sh) makes club_container_for_url find
+# a container and club_engine_api_key read its API_KEY. ENGINE_API_KEY —
+# engine-auth.sh's override for a remote URL=, which switch.sh loads from
+# saved settings into the sync's environment — must NOT reach the probe:
+# the probe only ever asks 127.0.0.1, where the container decides.
+python3 - "$ROOT/scripts/lib" <<'PY3' && ok "real lookup: the container's key answers the 401, never a saved ENGINE_API_KEY" || bad "ENGINE_API_KEY reached the probe (see above)"
+import http.server, json, os, shutil, sys, tempfile, threading
+sys.path.insert(0, sys.argv[1])
+import litellm_sync
+
+KEY = "container-key-1794b"
+DUMMY = "remote-dummy-1794-nope"
+seen_auth = []
+
+class H(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a): pass
+    def _authed(self):
+        seen_auth.append(self.headers.get("authorization") or "")
+        return self.headers.get("authorization") == f"Bearer {KEY}"
+    def _send(self, code, body):
+        data = json.dumps(body).encode()
+        self.send_response(code); self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(data))); self.end_headers(); self.wfile.write(data)
+    def do_GET(self):
+        if self.path == "/v1/models":
+            if not self._authed():
+                return self._send(401, {"error": {"type": "authentication_error",
+                                                   "message": "missing or wrong API key"}})
+            self._send(200, {"data": [{"id": "keyed-model", "owned_by": "strata", "max_model_len": 4096}]})
+        self._send(404, {})
+    def do_POST(self):
+        if not self._authed():
+            return self._send(401, {"error": {"type": "authentication_error",
+                                               "message": "missing or wrong API key"}})
+        self._send(404, {})
+
+srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+threading.Thread(target=srv.serve_forever, daemon=True).start()
+port = srv.server_address[1]
+bad = 0
+
+# The docker stub: `ps` publishes this leg's ephemeral port on an engine port
+# (->8000/tcp, CLUB_ENGINE_PORTS_ANY), so ports_serve_url passes — the stub
+# server really listens on 127.0.0.1:port. `inspect` answers a strata image
+# (the same one test-engine-auth.sh uses) and the container's API_KEY.
+bin = tempfile.mkdtemp()
+stub = """#!/usr/bin/env bash
+case "$1" in
+  ps) printf 'strata-probe-stub|0.0.0.0:%s->8000/tcp\\n' "$CLUB_TEST_PORT" ;;
+  inspect)
+    [[ "$2" == -f ]] || exit 1
+    case "$3" in
+      '{{.Config.Image}}') echo 'ghcr.io/niko1221/strata:0.2.1-cuda13' ;;
+      *Config.Env*) printf 'PATH=/usr/bin\\nAPI_KEY=%s\\n' "$CLUB_TEST_KEY" ;;
+      *) exit 1 ;;
+    esac ;;
+  *) exit 1 ;;
+esac
+"""
+with open(os.path.join(bin, "docker"), "w", encoding="utf-8") as fh:
+    fh.write(stub)
+os.chmod(os.path.join(bin, "docker"), 0o755)
+old_path = os.environ["PATH"]
+os.environ["PATH"] = bin + os.pathsep + old_path
+os.environ["CLUB_TEST_PORT"] = str(port)
+os.environ["CLUB_TEST_KEY"] = KEY
+os.environ["ENGINE_API_KEY"] = DUMMY
+os.environ.pop("C3_LITELLM_FAKE_ENGINE_KEYS", None)
+r = litellm_sync.probe(port)
+if not (len(r) == 1 and r[0][1] == "keyed-model" and r[0][5] == KEY):
+    print(f"    real lookup: expected one route keyed with the container's API_KEY, got {r}", file=sys.stderr); bad = 1
+if any(DUMMY in a for a in seen_auth):
+    print("    the saved ENGINE_API_KEY reached the server", file=sys.stderr); bad = 1
+os.environ["PATH"] = old_path
+for k in ("ENGINE_API_KEY", "CLUB_TEST_PORT", "CLUB_TEST_KEY"):
+    os.environ.pop(k, None)
+shutil.rmtree(bin, ignore_errors=True)
+srv.shutdown()
+sys.exit(bad)
+PY3
+
 # --- 21: a keyed route's api_key — never a user's literal key ---------------
 # The runtime file is world-readable like the rest of the checkout; a user's
 # key lives in 0600 secrets.env. So: the stored setting → an os.environ
