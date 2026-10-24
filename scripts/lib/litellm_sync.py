@@ -422,7 +422,7 @@ def model_info(ctx: "int | None", facts: dict, native_messages: bool = False) ->
 PUBLIC_DEFAULT_ENGINE_KEY = "club-3090-strata-local-key"
 
 
-def route_api_key(key: str, root: str, port: int, warnings: list) -> str:
+def route_api_key(key: str, root: str, port: int, warnings: list) -> "str | None":
     """The route's api_key line. A keyless engine keeps EMPTY. A keyed one
     references the setting ONLY when the stored value is the one the container
     runs — the key stays in secrets.env and the route-keys file hands it to
@@ -430,10 +430,12 @@ def route_api_key(key: str, root: str, port: int, warnings: list) -> str:
     the reference too, plus a warning telling the user to save it: the runtime
     file is world-readable like the rest of the checkout, and the repo's rule
     is that a user's key lives in 0600 secrets.env, not in a rendered config
-    (#1794 review). A SAVED key that differs from the container's renders
-    EMPTY, never the reference: the gateway would otherwise hand the user's
-    secret to a server that does not use it — wrong key, 401s, and the secret
-    crossed the wire to a service that never asked for it."""
+    (#1794 review). A SAVED key that differs from the container's renders NO
+    route — None here, skipped by render_block — and not an EMPTY one either:
+    the reference would hand the user's secret to a server that does not use
+    it, and an EMPTY route advertises a model that 401s every request, which
+    the runtime view never does — the way a dead port, or a keyed engine of
+    another kind, does."""
     if not key:
         return "EMPTY"
     if key == PUBLIC_DEFAULT_ENGINE_KEY:
@@ -448,11 +450,11 @@ def route_api_key(key: str, root: str, port: int, warnings: list) -> str:
             "have yet. Save it: bash scripts/settings.sh set STRATA_API_KEY=…")
         return "os.environ/STRATA_API_KEY"
     warnings.append(
-        f":{port} runs a key that is not the saved STRATA_API_KEY — its route "
-        "sends no key rather than hand your saved secret to a server that does "
-        "not use it. Make STRATA_API_KEY the key this container runs, then "
-        "re-sync: bash scripts/settings.sh set STRATA_API_KEY=…")
-    return "EMPTY"
+        f":{port} runs a key that is not the saved STRATA_API_KEY — no route "
+        "is rendered for it rather than hand your saved secret to a server "
+        "that does not use it. Make STRATA_API_KEY the key this container "
+        "runs, then re-sync: bash scripts/settings.sh set STRATA_API_KEY=…")
+    return None
 
 
 def render_block(live: list[Live], facts: "dict[int, dict] | None" = None,
@@ -471,13 +473,16 @@ def render_block(live: list[Live], facts: "dict[int, dict] | None" = None,
         if r.model in seen:
             lines.append(f"  # ⚠️ '{r.model}' is also served on :{r.port}; keeping the first route only")
             continue
+        ak = route_api_key(r.key, root, r.port, warnings)
+        if ak is None:   # a saved key the container does not use: no route, warned
+            continue
         seen.add(r.model)
         lines += [
             f"  - model_name: {r.model}",
             "    litellm_params:",
             f"      model: openai/{r.model}",
             f"      api_base: http://host.docker.internal:{r.port}/v1",
-            f"      api_key: {route_api_key(r.key, root, r.port, warnings)}",
+            f"      api_key: {ak}",
             *ROUTE_PARAMS,
             *([] if r.responses else [RESPONSES_BRIDGE]),
         ]

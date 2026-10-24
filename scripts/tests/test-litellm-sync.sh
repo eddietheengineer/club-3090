@@ -559,15 +559,16 @@ if [[ "$ak" == "os.environ/STRATA_API_KEY" ]]; then
 else
   bad "stored key: api_key=$ak (want os.environ/STRATA_API_KEY)"
 fi
-# a SAVED key that is NOT the container's: the route must not reference it —
-# the gateway would hand the user's secret to a server that does not use it.
+# a SAVED key that is NOT the container's: NO route at all — the reference
+# would hand the user's secret to a server that does not use it, and an
+# EMPTY route would advertise a model that 401s every request.
 tmp21b="$(mktemp)"
 STRATA_API_KEY=other-saved-key-999 C3_LITELLM_FAKE_LIVE="8018=strata-model+keyed=seam-key-1794" bash "$SYNC" --no-restart --quiet 2> "$tmp21b"
 ak="$(route_field strata-model litellm_params.api_key)"
-if [[ "$ak" == "EMPTY" ]] && command grep -q "not the saved STRATA_API_KEY" "$tmp21b"; then
-  ok "a saved key that differs from the container's: api_key EMPTY + a warning, never the wrong secret"
+if [[ -z "$ak" ]] && command grep -q "not the saved STRATA_API_KEY" "$tmp21b"; then
+  ok "a saved key that differs from the container's: no route, never the wrong secret"
 else
-  bad "mismatched saved key: api_key=$ak (want EMPTY + a warning); stderr: $(cat "$tmp21b")"
+  bad "mismatched saved key: api_key='$ak' (want no route + a warning); stderr: $(cat "$tmp21b")"
 fi
 rm -f "$tmp21b"
 rm -f "$tmp21"
