@@ -11,15 +11,24 @@ lineage:
   base: "llama.cpp"
   base_version: null
   source: "https://github.com/PrismML-Eng/llama.cpp"
-  source_ref: "909f0cac9c3cbd5146af24cdfdbb830ac17a393c"
+  source_ref: "bf8c069fde8c4a1b89f054cdde98577a54c557a9"
   chain: []
-  delta: "PrismML's fork with ternary (PQ2_0) kernels, release prism-b10819-909f0ca. Our image wraps their release tarball unmodified (predates the maintainer-published-image rule)"
+  delta: "PrismML's fork with ternary (PQ2_0) kernels, release prism-b10822-bf8c069. Our image wraps their release tarball unmodified (predates the maintainer-published-image rule)"
 install:
   method: docker_image
   # Digest-pinned, not tag-pinned: tags move, digests do not (#940 precedent).
   # Built by WRAPPING upstream's own release tarball — NOT from source. Recipe:
   # models/qwen3.8-27b/llama-cpp-prism/image/Dockerfile (checked in 2026-09-24;
   # the b10685 image's recipe existed only in its layers).
+  #   2026-10-25  prism-b10822-bf8c069  `llama-prism-b10822-bf8c069-bin-linux-cuda-12.8-x64.tar.gz`
+  #               sha256 071ed176…70a74bb4c5 (= the release asset's published digest).
+  #               Image tag b10822-bf8c069, registry digest sha256:7724902b…3f8d2549.
+  #               SASS sm_86/89/120a (cuobjdump). 3 commits past b10819, all CUDA speed work that
+  #               claims bit-identical output: #398 turns the GDN conv-chain + alpha/beta fusions ON by
+  #               default (one gate, GGML_CUDA_GDN_FUSION=0 disables; it covers decode AND the
+  #               speculative verify widths of #399), #396 widens the FWHT blocks at decode/verify
+  #               sizes. The MTP slug boots on it, verify-full 9/9; greedy output at SPEC_N 0, 2 and 4
+  #               is byte-identical to b10819 on both prompts. pq2 not booted (one-slug bump rule).
   #   2026-10-25  prism-b10819-909f0ca  `llama-prism-b10819-909f0ca-bin-linux-cuda-12.8-x64.tar.gz`
   #               sha256 6bbb4117…833d1004b6 (= the release asset's published digest).
   #               Image tag b10819-909f0ca, registry digest sha256:ae963910…57d30e46.
@@ -74,7 +83,7 @@ install:
   # ⚠️ `libgomp1` is INSTALLED BY THE IMAGE and is REQUIRED. The CUDA runtime
   # base does not carry it, and without it EVERY binary in the tarball fails at
   # exec with `libgomp.so.1: cannot open shared object file`. Found by booting.
-  spec: ghcr.io/noonghunna/llamacpp-prism@sha256:ae963910a931aace88163178af28e3cbf0a475c2bc913c4d6b30217057d30e46
+  spec: ghcr.io/noonghunna/llamacpp-prism@sha256:7724902b6ebb61a22007be98a251d1a569ece987d590910f8dcba0cb3f8d2549
 
 # ---------------------------------------------------------------------------
 # WHY A SEPARATE ENGINE RATHER THAN A FLAG ON AN EXISTING ONE
