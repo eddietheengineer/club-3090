@@ -26,6 +26,9 @@
 #      - every library resolves except the host driver's (libcuda, libnvidia-*);
 #      - serve/server.py and tools/iq_pack.py still offer every flag our launcher passes, and
 #        the expert profile the configs name is there;
+#      - DeepSeek's engine build/maya-ds4 is there, its libraries resolve, and it and
+#        tools/ds4/pack_gguf.py offer every flag our DeepSeek launcher passes; its seed expert
+#        profile (data/expert-profile-ds4.bin) is there;
 #      - gguf-py imports and the pack builder indexes the release's synthetic GLM-5 model;
 #      - every package in the release's setup.py PY_PACKAGES (less cmake / ninja) is installed in
 #        the .venv at a version it accepts;
@@ -48,6 +51,10 @@ CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES:-75;80;86;89;120}"
 # that drops or renames one would break every launch, so the build fails instead.
 REQUIRED_SERVER_FLAGS="${REQUIRED_SERVER_FLAGS:---engine --config --host --port --api-key}"
 REQUIRED_PACK_FLAGS="${REQUIRED_PACK_FLAGS:---gguf --out --compat-bf16}"
+# What our DeepSeek launcher (the DeepSeek-V4.1-Flash-1017 strata-maya slugs') writes into the engine's config,
+# and passes to the pack builder: the same rule, for build/maya-ds4 and tools/ds4/pack_gguf.py
+REQUIRED_DS4_FLAGS="${REQUIRED_DS4_FLAGS:---pack --max-context --tp --cpu-threads --dspark --vision --serve}"
+REQUIRED_DS4_PACK_FLAGS="${REQUIRED_DS4_PACK_FLAGS:---model --out --drafter --shards}"
 
 TAG="" PUSH=0 FORCE=0 VERIFY="" JOBS=""
 usage() { awk 'NR > 1 && !/^#/ {exit} NR > 1 {sub(/^# ?/, ""); print}' "$0"; }
@@ -143,6 +150,31 @@ $help"
   "${run[@]}" test "$ref" -s /opt/maya/data/expert-profile-glm.bin \
     || die "data/expert-profile-glm.bin is missing (the configs pass --expert-profile)"
   say "check: server.py and iq_pack.py offer every flag our launcher passes; the expert profile is there"
+
+  # DeepSeek-V4.1-Flash-1017's engine and pack builder (its strata-maya slugs)
+  local ds4=/opt/maya/build/maya-ds4
+  "${run[@]}" test "$ref" -x "$ds4" || die "$ref has no $ds4 (the release's CMakeLists.txt no longer defines maya-ds4?)"
+  missing="$("${run[@]}" ldd "$ref" "$ds4" | command grep 'not found' \
+             | command grep -v -E 'libcuda\.so|libnvidia' || true)"
+  [[ -z "$missing" ]] || die "libraries of $ds4 missing from the image:
+$missing"
+  # (maya-ds4 prints its usage for an unknown flag; the exit code is not part of the check)
+  help="$("${run[@]}" "$ds4" "$ref" --help 2>&1 || true)"
+  absent=""
+  for f in $REQUIRED_DS4_FLAGS; do
+    command grep -q -E -- "(^|[^a-z-])$f([^a-z-]|$)" <<<"$help" || absent="$absent $f"
+  done
+  [[ -z "$absent" ]] || die "maya-ds4 no longer offers:$absent (update the DeepSeek launcher before taking this release)"
+  help="$("${run[@]}" /opt/maya/.venv/bin/python "$ref" /opt/maya/tools/ds4/pack_gguf.py --help 2>&1)" \
+    || die "tools/ds4/pack_gguf.py --help failed:
+$help"
+  for f in $REQUIRED_DS4_PACK_FLAGS; do
+    command grep -q -E -- "(^|[^a-z-])$f([^a-z-]|$)" <<<"$help" || absent="$absent $f"
+  done
+  [[ -z "$absent" ]] || die "tools/ds4/pack_gguf.py no longer offers:$absent (update the DeepSeek launcher before taking this release)"
+  "${run[@]}" test "$ref" -s /opt/maya/data/expert-profile-ds4.bin \
+    || die "data/expert-profile-ds4.bin is missing (the DeepSeek launcher seeds each pack's profile from it)"
+  say "check: maya-ds4 resolves and it and tools/ds4/pack_gguf.py offer every flag the DeepSeek launcher passes; its expert profile is there"
 
   # the launcher's first start builds a pack. gguf-py must import as the tools find it, and the pack
   # builder must index the release's own 12 MB synthetic GLM-5 model with the flags the launcher passes.
