@@ -41,7 +41,7 @@
 # then up -d. MAYA_TP=2 runs tensor parallel instead (decode +5-8%, a long prompt -35%, measured 2026-10-25).
 services:
   strata-maya:
-    image: ${STRATA_MAYA_IMAGE:-ghcr.io/noonghunna/strata-maya-club3090@sha256:e14f90aff1fa3982bcd6a99f88e5890d6be412f5475a4a38e48f8984190dcdb4}
+    image: ${STRATA_MAYA_IMAGE:-ghcr.io/noonghunna/strata-maya-club3090@sha256:a39baf73c37cfdd8e8ab68a859603715b6181e3389b1fe573bcf13c816c10e7c}
     container_name: ${ESTATE_CONTAINER:-strata-maya-deepseek41-flash-dual-ista-iq2-xxs}
     restart: ${CLUB3090_RESTART:-unless-stopped}
     # root, with the launcher's group: what Maya writes to the data volume stays removable by the user
