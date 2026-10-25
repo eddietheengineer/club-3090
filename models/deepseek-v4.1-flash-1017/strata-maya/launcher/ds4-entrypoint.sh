@@ -10,8 +10,8 @@
 #   VERIFY=0            skip the one-time SHA-256 check of the files
 #   MAYA_GPUS           the cards to start on, as the container sees them: "0,1" (dual); the compose sets it
 #   MAYA_TP             --tp: 1 (the compose default) on two GPUs is a layer split, each GPU its own layers with
-#                       whole experts; 2 is tensor parallel (each expert split between the cards: on two 3090s
-#                       decode +5-8%, a long prompt -35%, measured 2026-10-25)
+#                       whole experts; 2 is tensor parallel (each expert split between the cards: on two 3090s,
+#                       in a hand-run test at 8K context, 2026-10-25: decode +9% / +5%, a 6K prompt -35%)
 #   CONTEXT             --max-context (default 65536, Maya's own default for DeepSeek)
 #   REASONING_EFFORT, ENABLE_THINKING, THINKING_BUDGET, TEMP, TOP_P, TOP_K, MIN_P, PRESENCE_PENALTY,
 #   REPEAT_PENALTY, SERVED_NAME, THREADS
