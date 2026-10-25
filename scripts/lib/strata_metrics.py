@@ -18,7 +18,8 @@ nothing there and would report a dead drafter or an empty run. /metrics carries 
 `host-ram` prints one line of evidence and exits 0, or exits 1 when there is none: the expert
 slots in RAM that /metrics reports (`tiers.now.ram_slots`, from the engine's STAT lines, so only
 once a request has run), else, for Project Maya, the "RAM tier X GB pinned" lines of its engine
-log (the latest one per card). bench.sh uses it for Maya, whose docker log doesn't say.
+log (the latest one per card), or for its DeepSeek engine (maya-ds4) the latest "N routed experts on
+the CPU lane (X GB)" line. bench.sh uses it for Maya, whose docker log doesn't say.
 
 `delta` and `recent` print key=value lines:
   requests  output_tokens  decode_tok_s  prefill_tok_s  drafts_offered  drafts_accepted  accept_rate
@@ -27,7 +28,9 @@ empty when there is nothing to divide by (no drafts offered: accept_rate is empt
 
 Project Maya (the strata-maya engine, a Strata fork) serves the same document with its version in
 `engine.maya_version` and no draft counts in `totals`: its per-request "glm spec: N of M drafts
-accepted" lines go only to the engine log, `<storage.path>/maya.log` in our launcher's layout. Given
+accepted" lines (DeepSeek's maya-ds4: "maya ds4 serve: drafts N of M kept") go only to the engine log,
+`<storage.path>/maya.log` in the GLM recipe's layout. DeepSeek's server names no storage.path, so
+there the log is the `log` of the config its command line names (--config). Given
 the container (--container, read with docker exec) or the log itself (--log-file), `snapshot` sums
 those lines into totals.drafts_offered / drafts_accepted, so `delta` reads Maya's drafts like
 Strata's, and `recent` sums the newest N of them. Without either, a Maya document reads with no
@@ -83,24 +86,37 @@ def parse(body, where):
     return data
 
 
-MAYA_SPEC = re.compile(r"glm spec: (\d+) of (\d+) drafts accepted")
+# GLM: "glm spec: 15 of 16 drafts accepted (93.8%)"; DeepSeek (maya-ds4): "maya ds4 serve: drafts 40 of 44 kept; ..."
+# (accepted first, then offered, in both; one line a request that drafted)
+MAYA_SPEC = re.compile(r"glm spec: (\d+) of (\d+) drafts accepted|maya ds4 serve: drafts (\d+) of (\d+) kept")
 # "glm fast: CUDA0 RAM tier 52.66 GB pinned, 4737 slots" — once per card at each start
 MAYA_RAM_TIER = re.compile(r"\b(CUDA\d+) RAM tier ([0-9]+(?:\.[0-9]+)?) GB pinned")
+# maya-ds4: "ds4: 11665 routed experts on the CPU lane (100.4 GB): 11665 copied into RAM ..." — once at each start
+MAYA_DS4_CPU_LANE = re.compile(r"\bds4: \d+ routed experts on the CPU lane \(([0-9]+(?:\.[0-9]+)?) GB\)")
 
 
 def maya_log_lines(data, source):
     """The engine log's per-request draft lines, oldest first, as (accepted, offered) pairs.
     source: ("container", name) reads <storage.path>/maya.log there; ("file", path) reads a file."""
-    return [(int(m.group(1)), int(m.group(2))) for m in MAYA_SPEC.finditer(maya_log_text(data, source))]
+    return [(int(m.group(1) or m.group(3)), int(m.group(2) or m.group(4)))
+            for m in MAYA_SPEC.finditer(maya_log_text(data, source))]
 
 
-def maya_ram_tier_gb(data, source):
-    """The RAM tier the engine log reports, in GB: the latest line per card, summed (the log is
-    appended across restarts, so an earlier start's line for the same card is superseded)."""
+def maya_host_ram(data, source):
+    """The engine log's evidence of experts in host RAM, as host-ram prints it, or None. GLM: the RAM
+    tier, the latest line per card, summed (the log is appended across restarts, so an earlier start's
+    line for the same card is superseded). maya-ds4 has no tier line: the latest start's CPU lane, whose
+    experts are in RAM (copied there, or read in place from the page cache)."""
+    text = maya_log_text(data, source)
     latest = {}
-    for m in MAYA_RAM_TIER.finditer(maya_log_text(data, source)):
+    for m in MAYA_RAM_TIER.finditer(text):
         latest[m.group(1)] = float(m.group(2))
-    return sum(latest.values())
+    if latest:
+        gb = sum(latest.values())
+        return f"engine log (RAM tier {gb:.2f} GB pinned)" if gb > 0 else None
+    lane = MAYA_DS4_CPU_LANE.findall(text)
+    gb = float(lane[-1]) if lane else 0.0
+    return f"engine log (CPU lane: {gb:.2f} GB of experts)" if gb > 0 else None
 
 
 def maya_log_text(data, source):
@@ -114,18 +130,39 @@ def maya_log_text(data, source):
             fail(f"could not read {where}: {e}")
     else:
         store = (data.get("storage") or {}).get("path") or ""
-        if not store.startswith("/"):
-            fail("Project Maya's /metrics names no storage.path, so its engine log can't be found")
-        log = store.rstrip("/") + "/maya.log"
-        try:
-            r = subprocess.run(["docker", "exec", where, "cat", log], capture_output=True,
-                               encoding="utf-8", errors="replace", timeout=30)
-        except (OSError, subprocess.TimeoutExpired) as e:
-            fail(f"could not read {log} in {where}: {e}")
-        if r.returncode != 0:
-            fail(f"could not read {log} in {where}: {r.stderr.strip() or 'docker exec failed'}")
-        text = r.stdout
+        log = store.rstrip("/") + "/maya.log" if store.startswith("/") else config_log(where)
+        text = container_cat(where, log)
     return text
+
+
+def container_cat(where, path):
+    """A file's text in container `where` (docker exec), or exit 3."""
+    try:
+        r = subprocess.run(["docker", "exec", where, "cat", path], capture_output=True,
+                           encoding="utf-8", errors="replace", timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        fail(f"could not read {path} in {where}: {e}")
+    if r.returncode != 0:
+        fail(f"could not read {path} in {where}: {r.stderr.strip() or 'docker exec failed'}")
+    return r.stdout
+
+
+def config_log(where):
+    """The engine log a Maya server writes, when /metrics names no storage.path (DeepSeek's server): the
+    `log` of the run config its command line names (serve/server.py --config FILE, the container's
+    process 1 once the entrypoint has exec'd it), or exit 3."""
+    args = container_cat(where, "/proc/1/cmdline").split("\0")
+    if "--config" not in args[:-1]:
+        fail("Project Maya's /metrics names no storage.path and its server's command line no --config, "
+             "so its engine log can't be found")
+    cfg = args[args.index("--config") + 1]
+    try:
+        log = json.loads(container_cat(where, cfg)).get("log") or ""
+    except (ValueError, AttributeError):
+        fail(f"{cfg} in {where} is not a JSON run config")
+    if not str(log).startswith("/"):
+        fail(f"{cfg} in {where} names no engine log")
+    return str(log)
 
 
 def log_source(args):
@@ -221,9 +258,9 @@ def main(argv):
             print(f"/metrics ({int(slots)} expert slots in RAM)")
             return 0
         if source and data["engine"].get("maya_version"):
-            gb = maya_ram_tier_gb(data, source)
-            if gb > 0:
-                print(f"engine log (RAM tier {gb:.2f} GB pinned)")
+            evidence = maya_host_ram(data, source)
+            if evidence:
+                print(evidence)
                 return 0
         return 1
     # recent
