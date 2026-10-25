@@ -112,6 +112,16 @@ MOUNTED_READERS = (
         },
     },
     {
+        # the DeepSeek-V4.1-Flash Project Maya composes' entrypoint (maya-ds4): ds4_prepare.py writes these into
+        # maya-ds4.json at every boot through ds4_settings.py, which refuses a bad value (exit 1, before the SHA-256 check)
+        "invoke": '"/opt/club3090/ds4-entrypoint.sh"',
+        "file": "models/deepseek-v4.1-flash-1017/strata-maya/launcher/ds4_settings.py",
+        "knobs": {
+            "REASONING_EFFORT": None,
+            "ENABLE_THINKING": None,
+        },
+    },
+    {
         # the bucko-vllm composes' own default-thinking-budget patch (patches.yml
         # bucko-default-thinking-budget): reads the floor the compose declares
         "invoke": "python3 /etc/club3090/thinking-budget/apply.py",

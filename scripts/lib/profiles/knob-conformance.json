@@ -61,6 +61,12 @@
    "REASONING_EFFORT": true,
    "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); its levels are high / max"
   },
+  "deepseek-v4.1-flash-1017": {
+   "evidence": "Project Maya's tools/ds4/chat_template.jinja (the template maya-ds4's server renders from the pack's tokenizer/): enable_thinking (false = chat mode), reasoning_effort low / high / max or 1-100",
+   "ENABLE_THINKING": true,
+   "REASONING_EFFORT": true,
+   "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); its levels are low / high / max (or a 1-100 budget)"
+  },
   "gemma-4-12b": {
    "evidence": "google/gemma-4-12B-it chat_template.jinja: enable_thinking",
    "ENABLE_THINKING": true,
@@ -174,7 +180,7 @@
      "strata-maya"
     ]
    },
-   "why": "Maya's --spec is for its DFlash2 drafter, which the image doesn't carry; GLM's MTP block has no depth setting",
+   "why": "Maya's --spec is for its DFlash2 drafter, which the image doesn't carry; GLM's MTP block has no depth setting, and DeepSeek's DSpark block length comes from the pack's geometry (maya-ds4 has no depth flag)",
    "source": {
     "file": "docs/engines/STRATA_MAYA.md",
     "contains": "Maya's `--spec` is documented for its DFlash2 drafter"

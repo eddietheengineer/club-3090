@@ -147,6 +147,55 @@
     "args:--max-context": "the engine's own flag: KV/state capacity",
     "model_name": "main(): the served name (/v1/models, /props, every answer's model field)"
    }
+  },
+  "strata-maya:ds4": {
+   "engine_profile": "scripts/lib/profiles/engines/strata-maya.yml",
+   "verified_image": "ghcr.io/noonghunna/strata-maya-club3090@sha256:e14f90aff1fa3982bcd6a99f88e5890d6be412f5475a4a38e48f8984190dcdb4",
+   "render": "maya_ds4_prepare",
+   "programs": [
+    "models/deepseek-v4.1-flash-1017/strata-maya/launcher/ds4_settings.py",
+    "models/deepseek-v4.1-flash-1017/strata-maya/launcher/ds4_prepare.py"
+   ],
+   "settings": {
+    "REASONING_EFFORT": "low",
+    "ENABLE_THINKING": "false",
+    "THINKING_BUDGET": "256",
+    "TEMP": "0.7",
+    "TOP_P": "0.9",
+    "TOP_K": "10",
+    "MIN_P": "0.05",
+    "PRESENCE_PENALTY": "0.5",
+    "REPEAT_PENALTY": "1.1",
+    "CONTEXT": "32768",
+    "SERVED_NAME": "llm",
+    "THREADS": "7"
+   },
+   "setup_only": {},
+   "server": "/opt/maya/serve/server.py",
+   "engine_help": [
+    "/opt/maya/build/maya-ds4",
+    "--help"
+   ],
+   "config_receivers": [
+    "cfg"
+   ],
+   "config_scopes": [
+    "main",
+    "sampling_defaults_from_config"
+   ],
+   "reads": {
+    "reasoning_effort": "main(): svc.default_effort (DeepSeek's template: deepseek_effort_kwargs, logged 'thinking level when a request names none: ...')",
+    "thinking_budget": "main(): svc.think_budget (logged 'thinking budget: N tokens')",
+    "sampling.temperature": "sampling_defaults_from_config(): a default for requests that leave the field out",
+    "sampling.top_p": "sampling_defaults_from_config()",
+    "sampling.top_k": "sampling_defaults_from_config()",
+    "sampling.min_p": "sampling_defaults_from_config()",
+    "sampling.presence_penalty": "sampling_defaults_from_config()",
+    "sampling.repetition_penalty": "sampling_defaults_from_config()",
+    "args:--max-context": "maya-ds4's own flag: KV capacity",
+    "args:--cpu-threads": "maya-ds4's own flag: the CPU lane's threads (the experts VRAM doesn't hold)",
+    "model_name": "main(): the served name (/v1/models, /props, every answer's model field)"
+   }
   }
  },
  "not_config_writers": {
