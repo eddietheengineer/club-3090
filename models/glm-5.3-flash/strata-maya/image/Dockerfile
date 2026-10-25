@@ -10,6 +10,8 @@
 #     (upstream's CMake option, which maya.py passes only for its HIP build);
 #   - CUDA archs from CUDA_ARCHITECTURES (a fat binary) instead of the user's own cards.
 # Text only: the vision encoder and the DFlash2 drafter are not built or fetched.
+# Two engines: `maya` (GLM-5.3-Flash) and, when the release has it, `maya-ds4` (DeepSeek-V4.1-Flash-1017,
+# Maya's src/ds4 engine with its own tools/ds4 pack builder).
 
 ARG CUDA_VERSION=13.0.0
 
@@ -36,13 +38,15 @@ RUN cmake -S /src -B /build -G Ninja -DCMAKE_BUILD_TYPE=Release \
         -DSTRATA_ENABLE_CUDA=ON "-DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES}" \
         -DSTRATA_NATIVE_EXPERTS=ON -DSTRATA_BUILD_TESTS=OFF -DSTRATA_PORTABLE=ON \
         -DSTRATA_GGML_DIR=/llama.cpp
-# The engine's target: `maya` since v1.1.16, `strata` before (v1.1.16 renamed the programs after Maya)
+# The engines' targets: `maya` since v1.1.16, `strata` before (v1.1.16 renamed the programs after Maya),
+# and DeepSeek's `maya-ds4` beside it in the releases that define it (build.sh checks it is there)
 RUN target=strata; grep -q -E '^ *add_executable\(maya ' /src/CMakeLists.txt && target=maya; \
-    echo "$target" > /tmp/engine-target; \
+    grep -q -E '^ *add_executable\(maya-ds4 ' /src/CMakeLists.txt && target="$target maya-ds4"; \
+    echo "$target" > /tmp/engine-targets; \
     jobs="${JOBS:-$(( $(nproc) / 2 ))}"; [ "$jobs" -ge 1 ] || jobs=1; \
-    cmake --build /build --target "$target" -j "$jobs"
+    for t in $target; do cmake --build /build --target "$t" -j "$jobs" || exit 1; done
 # the CPU settings and archs the tree was configured with, read by build.sh's checks
-RUN mkdir -p /out/bin && t="$(cat /tmp/engine-target)" && cp "/build/$t" "/out/bin/$t" \
+RUN mkdir -p /out/bin && for t in $(cat /tmp/engine-targets); do cp "/build/$t" "/out/bin/$t" || exit 1; done \
     && grep -E '^(STRATA_PORTABLE|GGML_NATIVE|GGML_AVX[A-Z0-9_]*|GGML_FMA|GGML_F16C|GGML_BMI2|GGML_AMX_[A-Z0-9_]*):' \
          /build/CMakeCache.txt | sed 's/^/build /' > /out/maya-cpu-flags.txt \
     && sed -n 's/^CMAKE_CUDA_ARCHITECTURES:[A-Z]*=//p' /build/CMakeCache.txt > /out/cuda-architectures.txt
@@ -55,7 +59,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # The release's own files, less what only the setup, the tests or the HIP build use. The server
-# (serve/server.py) and the pack builder (tools/iq_pack.py) run from this tree.
+# (serve/server.py) and the pack builders (tools/iq_pack.py; DeepSeek's tools/ds4/pack_gguf.py) run from
+# this tree.
 COPY --from=build /src /opt/maya
 # (data/glm5-synth.gguf, 12 MB, stays: build.sh packs it to check the pack builder works)
 RUN rm -rf /opt/maya/.git /opt/maya/tests /opt/maya/bench /opt/maya/ref /opt/maya/third_party/wheels \
@@ -81,7 +86,8 @@ RUN python3 -m venv /opt/maya/.venv \
     && /opt/maya/.venv/bin/pip install --no-cache-dir --upgrade pip \
     && /opt/maya/.venv/bin/pip install --no-cache-dir -r /opt/club3090/maya-py-packages.txt \
     && /opt/maya/.venv/bin/pip freeze > /opt/club3090/maya-pip-freeze.txt
-# the engine under the release's own name: /opt/maya/build/maya (v1.1.16 on) or /opt/maya/build/strata
+# the engines under the release's own names: /opt/maya/build/maya (v1.1.16 on) or /opt/maya/build/strata,
+# and /opt/maya/build/maya-ds4
 COPY --from=build /out/bin/ /opt/maya/build/
 COPY --from=build /out/maya-cpu-flags.txt /out/cuda-architectures.txt /opt/club3090/
 
