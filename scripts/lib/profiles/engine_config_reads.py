@@ -284,7 +284,9 @@ def scan(src: str):
 
 
 def help_has(help_text: str, flag: str) -> bool:
-    return re.search(rf"^\s*{re.escape(flag)}(?=[\s=,]|$)", help_text, re.M) is not None
+    # one flag a line ("  --kv fp16|int8  ..."), or an option of a usage synopsis ("[--max-context N]": maya-ds4
+    # prints only that); a flag merely named in a description doesn't count
+    return re.search(rf"(?:^\s*|\[){re.escape(flag)}(?=[\s=,\]|]|$)", help_text, re.M) is not None
 
 
 def _where(reads, key, limit=6) -> str:
@@ -303,7 +305,7 @@ def verify_sources(entry: dict, src: str, help_text: str) -> list[str]:
         if key.startswith("args:"):
             flag = key[5:]
             if not help_has(help_text, flag):
-                near = sorted(set(re.findall(rf"^\s*({re.escape(flag)}[-\w]*)", help_text, re.M)))
+                near = sorted(set(re.findall(rf"(?:^\s*|\[)({re.escape(flag)}[-\w]*)", help_text, re.M)))
                 problems.append(f"{key}: the engine's --help doesn't list {flag}" + (f" (only {', '.join(near)})" if near else ""))
         elif key.startswith("sampling."):
             field = key.split(".", 1)[1]
@@ -380,6 +382,8 @@ def main():
 SELFTEST_HELP = """usage
   --kv fp16|int8       KV storage
   --spec-min-p P       not the verify window
+  --ngram N            drafts like --draft-depth does
+prog --pack DIR [--max-context N] [--threads-cap N] [--vision on|off]
 """
 
 
@@ -393,6 +397,10 @@ def selftest() -> int:
         ({"sampling.top_k": ""}, True, "a sampling field nothing compares fails"),
         ({"args:--kv": ""}, False, "a flag --help lists passes"),
         ({"args:--spec": ""}, True, "--spec fails when --help lists only --spec-min-p"),
+        ({"args:--max-context": ""}, False, "a usage synopsis's bracketed option ([--max-context N]) passes"),
+        ({"args:--vision": ""}, False, "a bracketed option with choices ([--vision on|off]) passes"),
+        ({"args:--threads": ""}, True, "--threads fails when the synopsis has only [--threads-cap N]"),
+        ({"args:--draft-depth": ""}, True, "a flag only named inside a description fails"),
     ]
     bad = 0
     for reads, must_fail, what in cases:
