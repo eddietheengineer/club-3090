@@ -96,8 +96,9 @@ def _physical_cores(cpus, sysfs="/sys/devices/system/cpu"):
 
 def threads(cpus=None, physical=None):
     """The CPU lane's default thread count: 3/4 of the usable CPUs, at most one a physical core, at least 1.
-    Leaving it to the engine (one a core, ~30 on a 32-core host) left the engine's other threads none and cost
-    ~40% of decode on the reference rig; 3/4 of 32 cores = 24 was its measured best (16 / 28 / 30 were slower).
+    The engine's own default (a thread a core, two left spare: ~30 on a 32-core host) cost ~40% of decode on the
+    reference rig in Strata's port of this engine (strata-dsv41), where 3/4 of 32 cores = 24 measured best (16 / 28 /
+    30 were slower); not re-measured on maya-ds4, which ran 24 throughout.
     The physical-core cap keeps an SMT desktop (16 cores, 32 threads) at 16 rather than oversubscribing to 24."""
     cpus = _cpus() if cpus is None else cpus
     n = max(1, round(len(cpus) * 3 / 4))

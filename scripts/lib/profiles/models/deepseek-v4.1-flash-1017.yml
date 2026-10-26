@@ -48,7 +48,7 @@ weights:
     # Engram file; it would also match another ISTA quant's shards kept in the same folder (the hash check then
     # reads them too), but not other repos' files there (dspark-*.gguf, UD-Q8_K_XL/).
     verify_glob: "DeepSeek-V4.1-Flash-*.gguf"
-    manual_note: "🐣 ISTA-DASLab's GSQ-RCO quant: routed experts IQ1_M / IQ2_XXS / IQ2_XS by ISTA's own allocation (59.5 / 52.6 / 23.6 GB), dense weights Q5_K, the two Engram hash tables IQ4_NL in a shared 110.6 GB file. Served by the strata-maya engine's maya-ds4 (Project Maya v1.1.27 on reads it), which copies every CPU-side expert into RAM when it fits. The launcher SHA-256-checks the 5 files against its own table once (Maya's tables don't list this quant), then builds Maya's pack on the data volume. Text only."
+    manual_note: "🐣 ISTA-DASLab's GSQ-RCO quant: routed experts IQ1_M / IQ2_XXS / IQ2_XS by ISTA's own allocation (59.5 / 49.0 / 23.6 GB), dense weights Q5_K, the two Engram hash tables IQ4_NL in a shared 110.6 GB file. Served by the strata-maya engine's maya-ds4 (Project Maya v1.1.27 on reads it), which copies every CPU-side expert into RAM when it fits. The launcher SHA-256-checks the 5 files against its own table once (Maya's tables don't list this quant), then builds Maya's pack on the data volume. Text only."
   maya-dspark-xs2:
     path: deepseek-v4.1-flash-1017-maya-gguf/dspark
     # local_subdir is the BUCKET: the repo keeps the drafters in its dspark/ folder, which --local-dir preserves, so

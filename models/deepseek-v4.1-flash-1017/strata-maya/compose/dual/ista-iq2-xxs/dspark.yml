@@ -24,10 +24,11 @@
 #              or the drafter would load and never draft. Maya copies every CPU-side expert into RAM when it
 #              fits (--mmap-experts auto): 100.4 GB here, so a host with less RAM reads them from the files while
 #              it answers (slower, not measured). The CPU lane's threads default to 3/4 of the CPUs, at most one
-#              a physical core (THREADS sets them): the engine's own default (one a core) cost ~40% of decode on
-#              a 32-core host. Thinking: on by default (effort high, Maya's own for DeepSeek); a request's
-#              enable_thinking false or reasoning_effort none answers in DeepSeek's chat mode. Host needs NVIDIA
-#              driver >= 580 (CUDA 13) and an AVX2 CPU; x86-64 only.
+#              a physical core (THREADS sets them). The engine's own default (a thread a core, two left spare:
+#              ~30 on a 32-core host) cost ~40% of decode on the reference rig in Strata's port of this engine,
+#              where 24 was best; not re-measured on maya-ds4. Thinking: on by default (effort high, Maya's own
+#              for DeepSeek); a request's enable_thinking false or reasoning_effort none answers in DeepSeek's
+#              chat mode. Host needs NVIDIA driver >= 580 (CUDA 13) and an AVX2 CPU; x86-64 only.
 #              MEASURED 2026-10-25 on two 3090s (v1.1.28 image, through switch.sh, bench.sh on its own boot,
 #              the launcher's defaults: 24 CPU threads, effort high): 45.34 / 52.46 tok/s decode (narrative /
 #              code), 799 / 911 / 1,055 tok/s prefill @6K / @10K / @60K; DSpark kept 82.7% of drafts;
