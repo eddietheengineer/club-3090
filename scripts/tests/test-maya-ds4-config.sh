@@ -9,7 +9,7 @@
 #      THREADS sets --cpu-threads; KV / SPEC_N write nothing (maya-ds4 has neither);
 #   3. the config is rewritten from scratch each time, so a setting removed is gone;
 #   4. a bad value exits 2 from `validate` and stops ds4_prepare.py's main() before it looks at any file;
-#   5. threads(): 3/4 of the CPUs, at most one a physical core, at least 1 (and the cap read from sysfs);
+#   5. threads(): half the CPUs (nproc / 2), at least 1, and with no argument the same count as the shell's nproc;
 #   6. fix_dspark(): writes DeepSeek-V4.1-Flash's DSpark geometry only where the pack says 0, keeps the rest;
 #   7. verify(): a file whose SHA-256 is wrong stops the boot; a matching set is recorded and not hashed again;
 #   8. every key a setting writes has evidence that the pinned Maya reads it (engine_config_reads.py check).
@@ -95,27 +95,21 @@ err="$(env $(clean) python3 "$L/ds4_prepare.py" --tag ista-iq2-xxs --src "$work/
 [[ $r -ne 0 && "$err" == *missing:* && "$err" == *setup.sh* ]] \
   && ok "missing weights: stops, names the files and the download" || bad "missing weights: rc=$r $err"
 
-echo "== 5. threads(): 3/4 of the CPUs, at most one a physical core"
+echo "== 5. threads(): half the CPUs (nproc / 2), at least 1"
 out="$(python3 - "$L" <<'PY'
 import sys
 sys.path.insert(0, sys.argv[1])
 import ds4_settings as s
-print(s.threads(list(range(32)), 32), s.threads(list(range(32)), 16), s.threads(list(range(16)), 8),
-      s.threads(list(range(32)), None), s.threads([0], 1), s.threads(list(range(4)), 4))
+print(s.threads(list(range(32))), s.threads(list(range(16))), s.threads(list(range(5))), s.threads([0, 1]),
+      s.threads([0]), s.threads([]))
 PY
 )"
-# 32 cores no SMT -> 24; 16c/32t -> 16; 8c/16t -> 8; topology unknown -> 3/4 of 32 = 24; 1 CPU -> 1; 4 cores -> 3
-[[ "$out" == "24 16 8 24 1 3" ]] && ok "32c -> 24, 16c/32t -> 16, 8c/16t -> 8, unknown -> 24, 1 -> 1, 4 -> 3" || bad "threads(): $out"
-sysfs="$work/sysfs"
-for c in 0 1 2 3; do mkdir -p "$sysfs/cpu$c/topology"; echo $((c / 2)) > "$sysfs/cpu$c/topology/core_id"; echo 0 > "$sysfs/cpu$c/topology/physical_package_id"; done
-out="$(python3 - "$L" "$sysfs" <<'PY'
-import sys
-sys.path.insert(0, sys.argv[1])
-import ds4_settings as s
-print(s._physical_cores([0, 1, 2, 3], sys.argv[2]), s._physical_cores([0, 1, 9], sys.argv[2]))
-PY
-)"
-[[ "$out" == "2 None" ]] && ok "sysfs: 4 SMT siblings on 2 cores -> 2; an unreadable CPU -> None (no cap)" || bad "_physical_cores: $out"
+# 32 -> 16 (the old 3/4 rule gave 24 here); 16 -> 8; odd counts round down; 1 CPU and none still get 1
+[[ "$out" == "16 8 2 1 1 1" ]] && ok "32 -> 16, 16 -> 8, 5 -> 2, 2 -> 1, 1 -> 1, 0 -> 1" || bad "threads(): $out"
+# with no argument: this process's CPUs, the count nproc prints (nproc honours OMP_NUM_THREADS, so clear it)
+mine="$(python3 -c "import sys; sys.path.insert(0, '$L'); import ds4_settings; print(ds4_settings.threads())")"
+shell="$(env -u OMP_NUM_THREADS -u OMP_THREAD_LIMIT nproc)"; shell=$(( shell / 2 )); (( shell < 1 )) && shell=1
+[[ "$mine" == "$shell" ]] && ok "threads() = nproc / 2 here ($mine)" || bad "threads() $mine, nproc / 2 $shell"
 
 echo "== 6. fix_dspark(): only where the pack says 0"
 mkdir -p "$work/pack0" "$work/packok"
