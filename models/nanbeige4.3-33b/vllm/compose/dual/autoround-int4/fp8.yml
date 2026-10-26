@@ -54,7 +54,9 @@
 # SAMPLER — the card publishes two rows by scenario, not by thinking mode:
 #   agentic and tool use   temperature 1.0, top_p 0.95  <- the default here
 #   reasoning and chat     temperature 0.6, top_p 0.95  (TEMP=0.6)
-#   It names no top_k / min_p, so none is sent unless TOP_K / MIN_P are set.
+#   It names no top_k / min_p, so those fall back to vLLM's neutral values (top_k 0, min_p 0.0,
+#   repetition_penalty 1.0) unless TOP_K / MIN_P / REPEAT_PENALTY are set. A static command-list flag
+#   (test-compose-sampler-profiles: an entry without sampler_profiles keeps no sampler logic).
 #
 # MEMORY — MEASURED 2026-10-26 (2x 3090, this compose, util 0.90): weights 9.83 GiB a card, "GPU KV
 #   cache size: 207,616 tokens" (fp8), 21,842 MiB a card after boot. 204800 fits one full-length request
@@ -89,13 +91,6 @@ services:
       - ${CLUB3090_ENGINE_CACHE_DIR:-../../../cache}/torch_compile:/root/.cache/vllm/torch_compile_cache
       - ${CLUB3090_ENGINE_CACHE_DIR:-../../../cache}/triton:/root/.triton/cache
     environment:
-      # Sampler passthrough: the ENTRYPOINT builds --override-generation-config from these (the card's
-      # agentic row when unset). Bare where unset must stay unset rather than arrive EMPTY.
-      - TEMP
-      - TOP_P
-      - TOP_K
-      - MIN_P
-      - REPEAT_PENALTY
       - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
       - CUDA_VISIBLE_DEVICES
       - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
@@ -125,19 +120,13 @@ services:
         # Gate on _CUSTOM_AR_ENABLED, not _NVLINK_ENABLED: the transport being up and the custom kernel
         # running are two decisions (#1332). Falls back to _NVLINK_ENABLED for an older detect_nvlink.sh.
         [ "$${_CUSTOM_AR_ENABLED:-$${_NVLINK_ENABLED:-0}}" = "1" ] || AR="--disable-custom-all-reduce"
-        # -- Sampler: the card's agentic row unless set (see the header) -------------------------
-        # vLLM applies --override-generation-config's temperature / top_p / top_k / min_p /
-        # repetition_penalty as the defaults for requests that send none (an explicit request
-        # value still wins). top_k / min_p / repetition_penalty go in only when set.
-        _gen="\"temperature\":$${TEMP:-1.0},\"top_p\":$${TOP_P:-0.95}"
-        if [ -n "$${TOP_K:-}" ]; then _gen="$$_gen,\"top_k\":$${TOP_K}"; fi
-        if [ -n "$${MIN_P:-}" ]; then _gen="$$_gen,\"min_p\":$${MIN_P}"; fi
-        if [ -n "$${REPEAT_PENALTY:-}" ]; then _gen="$$_gen,\"repetition_penalty\":$${REPEAT_PENALTY}"; fi
-        echo "[sampler] defaults {$$_gen}" >&2
-        SAMPLER_ARGS=(--override-generation-config "{$$_gen}")
-        exec vllm serve $$AR "$$@" "$${SAMPLER_ARGS[@]}"
+        exec vllm serve $$AR "$$@"
       - --
     command:
+      # Sampler: the card's agentic row, vLLM's neutral top_k / min_p / repetition_penalty (see the header).
+      # vLLM applies these as the defaults for requests that send none; a request's own values still win.
+      - --override-generation-config
+      - '{"temperature":${TEMP:-1.0},"top_p":${TOP_P:-0.95},"top_k":${TOP_K:-0},"min_p":${MIN_P:-0.0},"repetition_penalty":${REPEAT_PENALTY:-1.0}}'
       - --model
       - /root/.cache/huggingface/nanbeige4.3-33b-autoround-int4
       # SERVED_NAME renames the model the API serves (default: nanbeige4.3-33b).

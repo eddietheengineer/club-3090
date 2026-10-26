@@ -402,7 +402,8 @@
        "qwen3.8-27b",
        "thinkingcap-qwen3.8-27b",
        "nemotron-3-puzzle-75b",
-       "qwen3.8-flash-next"
+       "qwen3.8-flash-next",
+       "nanbeige4.3-33b"
       ]
      },
      "enforced": "boot",
@@ -445,6 +446,22 @@
       {
        "kind": "json_line",
        "compose": "models/nemotron-3-puzzle-75b/vllm/compose/dual/w4a16/turbo.yml",
+       "line": "\"enable_thinking\": \\$\\{ENABLE_THINKING",
+       "accept": [
+        "true",
+        "false"
+       ],
+       "reject": [
+        "on",
+        "True"
+       ],
+       "stricter": [
+        "1"
+       ]
+      },
+      {
+       "kind": "json_line",
+       "compose": "models/nanbeige4.3-33b/vllm/compose/dual/autoround-int4/fp8.yml",
        "line": "\"enable_thinking\": \\$\\{ENABLE_THINKING",
        "accept": [
         "true",
@@ -509,7 +526,8 @@
       ],
       "model": [
        "qwen3.8-27b",
-       "thinkingcap-qwen3.8-27b"
+       "thinkingcap-qwen3.8-27b",
+       "nanbeige4.3-33b"
       ]
      },
      "enforced": "boot",
