@@ -22,8 +22,8 @@ boot. Maya's serve/server.py (the strata-maya-club3090 image) reads:
   SERVED_NAME            model_name            the name /v1/models reports; unset = deepseek-v4.1-flash. One name,
                                                no spaces
   THREADS                args: --cpu-threads   the CPU lane's threads (the experts VRAM doesn't hold are computed
-                                               there, from RAM); whole number >= 1. Unset: 3/4 of the CPUs this
-                                               container may use, at most one a physical core (threads(), below)
+                                               there, from RAM); whole number >= 1. Unset: half the CPUs this
+                                               container may use, at least 1 (threads(), below)
 
 KV is not one of them: maya-ds4 has no --kv (its latent cache is fp16). Nor SPEC_N: DSpark's block length comes from
 the pack's geometry (ds4.txt dspark_block_size), and maya-ds4 has no depth flag.
@@ -79,32 +79,15 @@ def _cpus():
         return list(range(os.cpu_count() or 1))
 
 
-def _physical_cores(cpus, sysfs="/sys/devices/system/cpu"):
-    """How many physical cores those CPUs sit on (SMT siblings counted once), or None when sysfs can't say."""
-    cores = set()
-    for c in cpus:
-        try:
-            with open(f"{sysfs}/cpu{c}/topology/core_id", encoding="ascii") as f:
-                core = f.read().strip()
-            with open(f"{sysfs}/cpu{c}/topology/physical_package_id", encoding="ascii") as f:
-                pkg = f.read().strip()
-        except OSError:
-            return None
-        cores.add((pkg, core))
-    return len(cores) or None
-
-
-def threads(cpus=None, physical=None):
-    """The CPU lane's default thread count: 3/4 of the usable CPUs, at most one a physical core, at least 1.
-    The engine's own default (a thread a core, two left spare: ~30 on a 32-core host) cost ~40% of decode on the
-    reference rig in Strata's port of this engine (strata-dsv41), where 3/4 of 32 cores = 24 measured best (16 / 28 /
-    30 were slower); not re-measured on maya-ds4, which ran 24 throughout.
-    The physical-core cap keeps an SMT desktop (16 cores, 32 threads) at 16 rather than oversubscribing to 24."""
+def threads(cpus=None):
+    """The CPU lane's default thread count: half the usable CPUs (nproc / 2, as resolve_offload_threads gives the
+    llama.cpp offload composes), at least 1. Safe on a host we know nothing about: it leaves room for the engine's
+    other threads and the rest of the machine, and on an SMT CPU it is at most one a physical core. A rig that has
+    measured its own sets THREADS: the reference rig runs 24 of 32 vCPUs, the best count for Strata's port of this
+    engine (strata-dsv41) there, where 16 cost 4-5% of decode and the engine's own default (a thread a core, two
+    left spare: ~30) ~40%; not re-measured on maya-ds4."""
     cpus = _cpus() if cpus is None else cpus
-    n = max(1, round(len(cpus) * 3 / 4))
-    if physical is None:
-        physical = _physical_cores(cpus)
-    return max(1, min(n, physical)) if physical else n
+    return max(1, len(cpus) // 2)
 
 
 def settings():
@@ -150,7 +133,7 @@ def settings():
     else:
         n = threads()
         args += ["--cpu-threads", str(n)]
-        notes.append(f"CPU lane: {n} threads (3/4 of the CPUs, at most one a physical core; THREADS sets it)")
+        notes.append(f"CPU lane: {n} threads (half the CPUs; THREADS sets it)")
     return keys, sampling, args, notes
 
 

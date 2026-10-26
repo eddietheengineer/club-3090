@@ -23,14 +23,15 @@
 #              the launcher writes DeepSeek-V4.1-Flash's own values into the pack (docs/UPSTREAM.md tracks it),
 #              or the drafter would load and never draft. Maya copies every CPU-side expert into RAM when it
 #              fits (--mmap-experts auto): 100.4 GB here, so a host with less RAM reads them from the files while
-#              it answers (slower, not measured). The CPU lane's threads default to 3/4 of the CPUs, at most one
-#              a physical core (THREADS sets them). The engine's own default (a thread a core, two left spare:
-#              ~30 on a 32-core host) cost ~40% of decode on the reference rig in Strata's port of this engine,
-#              where 24 was best; not re-measured on maya-ds4. Thinking: on by default (effort high, Maya's own
-#              for DeepSeek); a request's enable_thinking false or reasoning_effort none answers in DeepSeek's
-#              chat mode. Host needs NVIDIA driver >= 580 (CUDA 13) and an AVX2 CPU; x86-64 only.
+#              it answers (slower, not measured). The CPU lane's threads default to half the CPUs (nproc / 2,
+#              safe on any host); a rig that has measured its own sets THREADS. The reference rig runs 24 of 32:
+#              the best count in Strata's port of this engine, where 16 cost 4-5% of decode and the engine's own
+#              default (a thread a core, two left spare: ~30) ~40%; not re-measured on maya-ds4. Thinking: on by
+#              default (effort high, Maya's own for DeepSeek); a request's enable_thinking false or
+#              reasoning_effort none answers in DeepSeek's chat mode. Host needs NVIDIA driver >= 580 (CUDA 13)
+#              and an AVX2 CPU; x86-64 only.
 #              MEASURED 2026-10-25 on two 3090s (v1.1.28 image, through switch.sh, bench.sh on its own boot,
-#              the launcher's defaults: 24 CPU threads, effort high): 45.34 / 52.46 tok/s decode (narrative /
+#              24 CPU threads, the default then, effort high): 45.34 / 52.46 tok/s decode (narrative /
 #              code), 799 / 911 / 1,055 tok/s prefill @6K / @10K / @60K; DSpark kept 82.7% of drafts;
 #              verify-full all ✓ (vision n/a); VRAM 23.7 GB a card.
 # CPU-Offload-Host-RAM-GB: 106
@@ -69,7 +70,7 @@ services:
       MAYA_TP: "${MAYA_TP:-1}"
       # Maya's server defaults, written into maya-ds4.json at every boot by ds4_prepare.py
       # (launcher/ds4_settings.py maps each); unset = effort high, sampling 1.0 / 1.0, the name deepseek-v4.1-flash,
-      # a CPU lane of 3/4 of the CPUs (at most one a physical core)
+      # a CPU lane of half the CPUs (nproc / 2)
       REASONING_EFFORT:
       ENABLE_THINKING:
       THINKING_BUDGET:

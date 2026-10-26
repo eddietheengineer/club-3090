@@ -20,8 +20,8 @@
 #                       the boot before the SHA-256 check.
 #
 # The server's defaults for requests that name none, with nothing set: effort high and sampling 1.0 / 1.0 (as
-# Maya's own setup writes them for DeepSeek), the name deepseek-v4.1-flash, and a CPU lane of 3/4 of the CPUs,
-# at most one a physical core. A request's own reasoning_effort / chat_template_kwargs win, and so do the Chat
+# Maya's own setup writes them for DeepSeek), the name deepseek-v4.1-flash, and a CPU lane of half the CPUs
+# (nproc / 2). A request's own reasoning_effort / chat_template_kwargs win, and so do the Chat
 # settings saved from Maya's web page (maya.shared-settings.json next to the config).
 #
 # Its one argument is the quant (ista-iq2-xxs), fixed by the compose, never a setting, so a saved value can't
