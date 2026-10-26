@@ -385,7 +385,7 @@
    "status": "first-batch",
    "description": "Server-default thinking mode for requests that don't set their own.",
    "type": "bool",
-   "unset": "the compose default: true on the Qwen3.8 family and Nemotron, false on vllm/thinkingcap-dual-w4a8; Strata: thinking on (the template's default); Project Maya: thinking on (effort max); llama.cpp: the compose's own default row (thinking on Qwen3.8-27B, MiMo and Qwen3.6-35B-A3B; instruct on Qwen3.8-Flash-Next and Gemma-4-12B)",
+   "unset": "the compose default: true on the Qwen3.8 family and Nemotron, false on vllm/thinkingcap-dual-w4a8; Strata: thinking on (the template's default); Project Maya: thinking on (effort max on GLM-5.3-Flash, high on DeepSeek-V4.1-Flash); llama.cpp: the compose's own default row (thinking on Qwen3.8-27B, MiMo and Qwen3.6-35B-A3B; instruct on Qwen3.8-Flash-Next and Gemma-4-12B)",
    "engines": [
     "llamacpp",
     "sglang",
@@ -625,6 +625,50 @@
        "kind": "program",
        "compose": "models/glm-5.3-flash/strata-maya/compose/dual/maya-s/base.yml",
        "program": "models/glm-5.3-flash/strata-maya/launcher/maya_settings.py",
+       "args": [
+        "validate"
+       ],
+       "accept": [
+        "true",
+        "false"
+       ],
+       "reject": [
+        "off",
+        "no",
+        "1",
+        "TRUE"
+       ]
+      }
+     ]
+    },
+    {
+     "match": {
+      "engine": [
+       "strata"
+      ],
+      "model": [
+       "deepseek-v4.1-flash-1017"
+      ]
+     },
+     "enforced": "boot",
+     "values": [
+      "true",
+      "false"
+     ],
+     "spelling": {
+      "on": "true",
+      "off": "false"
+     },
+     "default": "",
+     "source": {
+      "file": "models/deepseek-v4.1-flash-1017/strata-maya/launcher/ds4_settings.py",
+      "what": "false -> \"reasoning_effort\": \"none\" in maya-ds4.json (DeepSeek's template answers in chat mode; wins over REASONING_EFFORT with a note); true leaves the effort; anything else stops the boot"
+     },
+     "checks": [
+      {
+       "kind": "program",
+       "compose": "models/deepseek-v4.1-flash-1017/strata-maya/compose/dual/ista-iq2-xxs/dspark.yml",
+       "program": "models/deepseek-v4.1-flash-1017/strata-maya/launcher/ds4_settings.py",
        "args": [
         "validate"
        ],
@@ -917,7 +961,7 @@
    "status": "first-batch",
    "description": "Server-default reasoning effort for requests that don't send their own.",
    "type": "enum",
-   "unset": "the compose default: low (Qwen3.8 vLLM/SGLang, Inkling-Small), medium (Qwen3.8 llama.cpp), max (GLM-5.3-Flash); Strata: the template's own default (xhigh); Project Maya: max (the launcher's default, as the other GLM-5.3-Flash slugs)",
+   "unset": "the compose default: low (Qwen3.8 vLLM/SGLang, Inkling-Small), medium (Qwen3.8 llama.cpp), max (GLM-5.3-Flash); Strata: the template's own default (xhigh); Project Maya: max for GLM-5.3-Flash (the launcher's default, as the other GLM-5.3-Flash slugs), high for DeepSeek-V4.1-Flash (Maya's own)",
    "engines": [
     "llamacpp",
     "sglang",
@@ -1353,6 +1397,57 @@
        ],
        "reject": [
         "minimal"
+       ]
+      }
+     ]
+    },
+    {
+     "match": {
+      "engine": [
+       "strata"
+      ],
+      "model": [
+       "deepseek-v4.1-flash-1017"
+      ]
+     },
+     "enforced": "boot",
+     "values": [
+      "none",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+     ],
+     "aliases": {
+      "medium": "high",
+      "xhigh": "max"
+     },
+     "default": "",
+     "source": {
+      "file": "models/deepseek-v4.1-flash-1017/strata-maya/launcher/ds4_settings.py",
+      "what": "written into maya-ds4.json as \"reasoning_effort\" at every boot (high when unset, Maya's own default for DeepSeek); Maya's frontend.py EFFORT maps medium to high and xhigh to max, and DeepSeek's template turns low / high / max into its 1-100 Reasoning Effort budget; anything else stops ds4_prepare.py before the SHA-256 check"
+     },
+     "checks": [
+      {
+       "kind": "program",
+       "compose": "models/deepseek-v4.1-flash-1017/strata-maya/compose/dual/ista-iq2-xxs/dspark.yml",
+       "program": "models/deepseek-v4.1-flash-1017/strata-maya/launcher/ds4_settings.py",
+       "args": [
+        "validate"
+       ],
+       "accept": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+       ],
+       "reject": [
+        "minimal",
+        "HIGH",
+        "75"
        ]
       }
      ]

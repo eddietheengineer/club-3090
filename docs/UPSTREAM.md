@@ -331,6 +331,18 @@ own Docker images (`ghcr.io/niko1221/strata:<release>-<flavor>`), which we pin. 
 
 ---
 
+## Project Maya (`mw00/project-maya`)
+
+A fork of Strata for GLM-5.3-Flash (`maya`) and DeepSeek-V4.1-Flash (`maya-ds4`), behind the `strata-maya` engine.
+Upstream publishes no image, so we build `ghcr.io/noonghunna/strata-maya-club3090` (the engine-pin row above).
+
+| Issue / PR | Status | Why it matters | Workaround |
+|---|---|---|---|
+| `tools/ds4/pack_gguf.py` leaves the DSpark geometry at 0 for a GGUF without `dspark.*` keys (ISTA's GSQ-RCO), so the drafter loads and never drafts, silently (not filed yet) | 🔴 **Open, no issue filed yet**: found 2026-10-24 on v1.1.27, still so on v1.1.28; issue drafted 2026-10-25, awaiting the maintainer's go. Maya's own GSQ-RCO PR (mw00/project-maya#453) leaves "automatic DSpark setup" out of scope | `strata-maya/deepseek41-flash-dual-ista-iq2-xxs` drafts with peasantsmith's `dspark-xs2`; without the geometry its DSpark drafter never drafts (code decode ~20–30% lower) | `ds4_prepare.py` (`fix_dspark`) writes DeepSeek-V4.1-Flash's own five values (block 5, noise token 128799, markov rank 256, 128 experts, top 3) into the pack's `ds4.txt` where it says 0. **Drop it** when a Maya release fills them (or refuses to pack a drafter without them): the launcher then writes nothing. |
+| `maya-ds4 --tp 2` with DSpark: the drafter and the head all sit on the tensor-parallel lead, and the expert profile never counts the drafter's routes (not filed yet) | 🔴 **Open, no issue filed yet** (drafted 2026-10-25). v1.1.28's `MAYA_DS4_DRAFT_DEV` (mw00/project-maya#412) moves drafter blocks to a member but halves prompt speed here | With `--tp 2` the second 3090 keeps ~4.1 GB it can't use; that, and the layer split's +55% prompt speed, is why the DeepSeek dual slug runs `--tp 1` (a layer split) | The layer split (the slug's default). `MAYA_TP=2` is there for decode-heavy use. |
+
+---
+
 ## transformers (`huggingface/transformers`)
 
 | Issue / PR | Status | Why it matters | Workaround |

@@ -1,6 +1,6 @@
 schema_version: 1
 id: strata-maya
-display_name: Project Maya (a Strata fork for GLM-5.3-Flash; club-3090's image of the upstream release)
+display_name: Project Maya (a Strata fork for GLM-5.3-Flash and DeepSeek-V4.1-Flash; club-3090's image of the upstream release)
 type: strata
 stability: experimental
 min_sm: 7.5
@@ -11,7 +11,7 @@ lineage:
   source: "https://github.com/mw00/project-maya"
   source_ref: "6afa525bbabc3a8f5fd165f89e9bc72155d9bd39"
   chain: []
-  delta: "Strata's C++/CUDA engine and Python server rewritten for GLM-5.3-Flash only (the GLM5-Next runner, a per-layer VRAM expert pool, a pinned RAM tier and a CPU lane priced against PCIe, MTP drafting across a two-card split), with its own quants (peasantsmith/GLM-5.3-Flash-Maya-GGUF). Upstream publishes no image, Dockerfile or Linux engine; our image compiles each release with our own Dockerfile (upstream's STRATA_PORTABLE option for an AVX2 baseline, text only), an image-provenance exception (docs/ADDING_ENGINES.md)"
+  delta: "Strata's C++/CUDA engine and Python server rewritten for GLM-5.3-Flash only (the GLM5-Next runner, a per-layer VRAM expert pool, a pinned RAM tier and a CPU lane priced against PCIe, MTP drafting across a two-card split), with its own quants (peasantsmith/GLM-5.3-Flash-Maya-GGUF); and a second engine, maya-ds4, for DeepSeek-V4.1-Flash-1017 (src/ds4: tensor parallel or a layer split, every CPU-side expert copied into RAM when it fits, a DSpark drafter, Engram tables). Upstream publishes no image, Dockerfile or Linux engine; our image compiles each release with our own Dockerfile (upstream's STRATA_PORTABLE option for an AVX2 baseline, text only), an image-provenance exception (docs/ADDING_ENGINES.md)"
 image_env: STRATA_MAYA_IMAGE
 install:
   method: docker_image
@@ -22,21 +22,27 @@ install:
   # pin-earlier: v1.1.26 `e14f90af…` (upstream f26d8bab, recipe 360fd2c6, 2026-10-23); v1.1.25 `36658d16…` (upstream 94878e25, recipe 8c5ed499, 2026-10-23); v1.1.23 `232f1112…` (upstream 8ceadd7d, recipe 775557c4, 2026-10-22); v1.1.20 `1918560b…` (upstream 35bb2b22, #1774, 2026-10-21; v1.1.21, whose VERSION was empty, and v1.1.22 were skipped); v1.1.19 `1db76650…` (upstream 3bf6867d, #1773, 2026-10-21); v1.1.17 `1564614d…` (upstream 8d9a9b5d, #1759, 2026-10-20; v1.1.18 was skipped); v1.1.16 `bd8f12a8…` (upstream abc09c74, #1757, 2026-10-20); v1.1.11 `c6680830…` (CI, 2026-10-15)
   spec: ghcr.io/noonghunna/strata-maya-club3090@sha256:a39baf73c37cfdd8e8ab68a859603715b6181e3389b1fe573bcf13c816c10e7c
 supported_model_families:
-  - glm5next-moe          # GLM-5.3-Flash: Project Maya is written for this model only
+  - glm5next-moe          # GLM-5.3-Flash: the `maya` engine
+  - deepseek41-moe        # DeepSeek-V4.1-Flash-1017: the `maya-ds4` engine (the image builds both since #1801)
 supported_weight_formats:
-  - gguf                  # Project Maya's own quants (Maya-S / Maya-M / Maya-L)
+  - gguf                  # Project Maya's own quants (Maya-S / Maya-M / Maya-L); ISTA's GSQ-RCO GGUF of DeepSeek-V4.1-Flash
+  - maya-dspark           # Maya's DSpark drafter format (drafter_pack.py's .bin + .json), read by tools/ds4/pack_gguf.py
 supported_kv_formats:
   - fp16                  # the engine's latent KV cache, as its /metrics reports it ("kv": "fp16")
-supported_drafters: []    # MTP is the model's own NextN block (two or more GPUs), not a club drafter
+supported_drafters:
+  - dspark                # DeepSeek-V4.1-Flash's DSpark drafter (maya-ds4 --dspark on). GLM's MTP is the model's own
+                          # NextN block (two or more GPUs), not a club drafter
 notes: >
   Project Maya (github.com/mw00/project-maya, MIT): a fork of Strata (Niko1221/Strata) for
-  GLM-5.3-Flash only, with its own quants. Upstream publishes no Linux image, Dockerfile or
+  GLM-5.3-Flash, with its own quants, and DeepSeek-V4.1-Flash-1017 on a second engine (maya-ds4). Upstream publishes no Linux image, Dockerfile or
   engine (maya.sh compiles on the user's PC), so club-3090 builds one per release
   (models/glm-5.3-flash/strata-maya/image/, an image-provenance exception in
-  docs/ADDING_ENGINES.md): the engine compiled as maya.py compiles it, ggml's CPU code on an
-  AVX2 baseline, archs 75;80;86;89;120, text only (no vision encoder, no DFlash2 drafter). Host
+  docs/ADDING_ENGINES.md): both engines (maya, maya-ds4) compiled as maya.py compiles them, ggml's
+  CPU code on an AVX2 baseline, archs 75;80;86;89;120, text only (no vision encoder or DeepSeek
+  vision tower, no DFlash2 drafter). Host
   needs NVIDIA driver >= 580 (CUDA 13) and an AVX2 CPU; x86-64 only. Experts are spread over a
   per-layer VRAM pool, a pinned RAM tier sized from free memory, and the GGUF files; the CPU
-  computes part of each token's RAM-tier experts. MTP drafting runs only on two or more GPUs.
+  computes part of each token's RAM-tier experts. GLM's MTP drafting runs only on two or more
+  GPUs; DeepSeek drafts with a separate DSpark drafter (maya-dspark-xs2).
   Serves on 8080 with Strata's /health, /props, /slots and JSON /metrics shape (engine kind
   `strata`); the per-request engine lines go to a log file on the data volume.

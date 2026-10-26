@@ -168,8 +168,13 @@ row="$(command grep '^| `scripts/lib/profiles/engines/strata-maya.yml` →' "$d/
 [[ "$row" == *"(digest; Project Maya v9.9.9, upstream commit \`12345678\`, recipe \`fedcba98\`, archs 75;80;86;89;120, pinned $TODAY."* ]] \
   || fail "maya: UPSTREAM current pin not rewritten"
 [[ "$row" == *"Earlier pins: $M_OLD \`"* ]] || fail "maya: UPSTREAM earlier pins not prepended"
-want="$(printf '%s\n' docs/UPSTREAM.md scripts/lib/profiles/engines/strata-maya.yml \
-  $(cd "$d" && ls models/glm-5.3-flash/strata-maya/compose/*/*/base.yml) | sort)"
+# every compose whose image default is the engine's (GLM's 9 and DeepSeek's), each repointed
+m_composes="$(cd "$d" && command grep -l 'STRATA_MAYA_IMAGE:-' models/*/strata-maya/compose/*/*/*.yml)"
+[[ "$(wc -l <<<"$m_composes")" -ge 10 ]] || fail "maya: expected the GLM and DeepSeek composes, found: $m_composes"
+for c in $m_composes; do
+  command grep -q "STRATA_MAYA_IMAGE:-ghcr.io/noonghunna/strata-maya-club3090@$DIGEST}" "$d/$c" || fail "maya: $c not repointed"
+done
+want="$(printf '%s\n' docs/UPSTREAM.md scripts/lib/profiles/engines/strata-maya.yml $m_composes | sort)"
 [[ "$(changed "$d")" == "$want" ]] || fail "maya: changed files differ from the pin's places:\n$(changed "$d")"
 ok
 

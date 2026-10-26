@@ -477,6 +477,7 @@ while IFS='|' read -r slug reg_gb; do
     *glm53-flash-dual-maya-l) f="models/glm-5.3-flash/strata-maya/compose/dual/maya-l/base.yml" ;;
     *glm53-flash-single-maya-l) f="models/glm-5.3-flash/strata-maya/compose/single/maya-l/base.yml" ;;
     *glm53-flash-multi4-maya-l) f="models/glm-5.3-flash/strata-maya/compose/multi4/maya-l/base.yml" ;;
+    *deepseek41-flash-dual-ista-iq2-xxs) f="models/deepseek-v4.1-flash-1017/strata-maya/compose/dual/ista-iq2-xxs/dspark.yml" ;;
     *dual-q8)   f="$Q8" ;;
     *dual-iq2)  f="$IQ2" ;;
     *multi4-q8) f="$M4" ;;
