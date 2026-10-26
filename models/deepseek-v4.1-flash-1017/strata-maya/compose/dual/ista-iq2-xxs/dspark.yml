@@ -30,10 +30,12 @@
 #              default (effort high, Maya's own for DeepSeek); a request's enable_thinking false or
 #              reasoning_effort none answers in DeepSeek's chat mode. Host needs NVIDIA driver >= 580 (CUDA 13)
 #              and an AVX2 CPU; x86-64 only.
-#              MEASURED 2026-10-25 on two 3090s (v1.1.28 image, through switch.sh, bench.sh on its own boot,
-#              24 CPU threads, the default then, effort high): 45.34 / 52.46 tok/s decode (narrative /
-#              code), 799 / 911 / 1,055 tok/s prefill @6K / @10K / @60K; DSpark kept 82.7% of drafts;
-#              verify-full all ✓ (vision n/a); VRAM 23.7 GB a card.
+#              MEASURED 2026-10-25 on two 3090s capped at 230 W (v1.1.28 image, through switch.sh, bench.sh on
+#              its own boot, 24 CPU threads, the default then, effort high): 45.34 / 52.46 tok/s decode
+#              (narrative / code), 799 / 911 / 1,055 tok/s prefill @6K / @10K / @60K; DSpark kept 82.7% of
+#              drafts; verify-full all ✓ (vision n/a); VRAM 23,700 MiB a card. At STOCK power (370 / 420 W,
+#              2026-10-26, its own boot): prefill 1,045 / 1,186 / 1,390 (+30-32%), decode 45.79 / 50.97 (the
+#              same within noise). Prompt reading is GPU-bound; decode is set by the CPU lane.
 # CPU-Offload-Host-RAM-GB: 106
 #   ⤷ MEASURED 2026-10-25 on this compose (v1.1.28): MemAvailable fell 106 GB (decimal) at its peak on the
 #     first start, 105.6 GB on the bench boot; the CPU lane's 100.4 GB of experts copied into RAM
