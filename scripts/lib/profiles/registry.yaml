@@ -6853,6 +6853,70 @@ entries:
     gateway: false
     serve_aliases: []
     category: frontier
+  vllm/nanbeige43-33b-dual:
+    origin: core
+    model: nanbeige4.3-33b
+    weights_variant: autoround-int4
+    workload: long-ctx-single
+    engine: vllm-stable
+    drafter: null
+    spec_method: null
+    kv_format: fp8_e4m3
+    act_format: 16bit
+    act8_capable: false
+    offload: null
+    moe_cache: false
+    host_ram_gb: null
+    kv_offload: null
+    chat_template: null
+    tp: 2
+    max_ctx: 204800
+    max_num_seqs: 8
+    mem_util: 0.9
+    compose_path: models/nanbeige4.3-33b/vllm/compose/dual/autoround-int4/fp8.yml
+    requires_nvlink: false
+    requires_homogeneous_arch: false
+    required_engine_features: []
+    default_port: 8048
+    kvcalc_key: SKIP
+    status: incubating
+    status_note: "Two 3090s, TP=2, club-3090's own AutoRound INT4 of Nanbeige/Nanbeige4.3-33B (wasifb/Nanbeige4.3-33B-AutoRound-W4A16, W4A16 int4 g128, 20.8 GB): a dense LlamaForCausalLM, no MTP head. fp8_e4m3 KV, 204800 context (inside the measured pool: one full-length request at a time), thinking on by default, --reasoning-parser qwen3 + --tool-call-parser qwen3_coder (the model card's own). STOCK vLLM v0.32.0, no patches. MEASURED 2026-10-26 at 230 W: ready 122 s (87 s with the compile cache warm), weights 9.83 GiB a card, GPU KV cache 207,616 tokens, verify-full all pass. ⚠️ No clean throughput row yet: the reference rig's GPU0 overheated during the first bench (stock power: 66.30 / 44.92 decode, 1,253 prefill @10K, with GPU0 throttled to 787 MHz). Quality unmeasured (8-pack pending)."
+    weights_companions: []
+    gateway: false
+    serve_aliases: []
+    category: frontier
+  sgl/nanbeige43-33b-dual:
+    origin: core
+    model: nanbeige4.3-33b
+    weights_variant: autoround-int4
+    workload: long-ctx-single
+    engine: sglang-stable
+    drafter: null
+    spec_method: null
+    kv_format: fp8_e4m3
+    act_format: 16bit
+    act8_capable: false
+    offload: null
+    moe_cache: false
+    host_ram_gb: null
+    kv_offload: null
+    chat_template: null
+    tp: 2
+    max_ctx: 204800
+    max_num_seqs: 8
+    mem_util: 0.88
+    compose_path: models/nanbeige4.3-33b/sglang/compose/dual/autoround-int4/fp8.yml
+    requires_nvlink: false
+    requires_homogeneous_arch: false
+    required_engine_features: []
+    default_port: 8049
+    kvcalc_key: SKIP
+    status: incubating
+    status_note: "Two 3090s, TP=2, club-3090's own AutoRound INT4 of Nanbeige/Nanbeige4.3-33B (wasifb/Nanbeige4.3-33B-AutoRound-W4A16, W4A16 int4 g128, 20.8 GB): a dense LlamaForCausalLM, no MTP head. fp8_e4m3 KV, 204800 context (inside the measured pool: one full-length request at a time), thinking on by default, --reasoning-parser qwen3 + --tool-call-parser qwen3_coder (the model card's own). STOCK SGLang v0.5.22, no patches; --chunked-prefill-size 2048 (8192 OOM'd capturing the prefill CUDA graphs). MEASURED 2026-10-26 at 230 W: ready 328-348 s (sgl_kernel JIT rebuilt in every fresh container), KV pool 206,433 tokens, verify-full all pass; bench 42.30 / 38.78 decode, 926 / 586 / 505 prefill @10K/90K/120K with GPU0 overheating (clock down to 555 MHz) — not a clean row. Chat requests that send no sampling get temperature 1.0 / top_p 1.0 (generation_config sets none). Quality unmeasured (8-pack pending)."
+    weights_companions: []
+    gateway: false
+    serve_aliases: []
+    category: frontier
 
 defaults:
   qwen3.6-27b:

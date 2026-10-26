@@ -1,0 +1,46 @@
+schema_version: 1
+id: nanbeige4.3-33b
+display_name: Nanbeige4.3-33B
+description: Nanbeige4.3-33B — a dense 33B reasoning and agentic model (Llama architecture, 52 layers, 512K native context), served on two 3090s from club-3090's own AutoRound INT4 with ~200K tokens of fp8 KV cache.
+# Nanbeige/Nanbeige4.3-33B (Apache-2.0). A standard LlamaForCausalLM decoder: GQA 56 query / 8 KV heads, no SWA, no
+# MTP head (checked against the original's tensor list: 52 decoder layers, embed_tokens, norm, lm_head, nothing
+# else). Emits <think>...</think> reasoning (--reasoning-parser qwen3) and Qwen3-Coder-style XML tool calls
+# (--tool-call-parser qwen3_coder), as the model card's own vLLM / SGLang examples do.
+# ⚠️ config.json is transformers-5 shaped: RoPE theta (1.2e8) lives only in rope_parameters. vLLM v0.32.0 and SGLang
+# v0.5.22 (both transformers 5.19) read it; a transformers-4 stack silently falls back to 10,000.
+family: dense
+hidden_size: 7168
+intermediate_size: 22016
+num_hidden_layers: 52
+num_attn_heads: 56
+num_kv_heads: 8
+head_dim_attn: 128
+max_ctx_supported: 524288      # max_position_embeddings; the slugs ship 204800 (the measured fp8 KV pools)
+attention_k_eq_v: false        # standard GQA — K and V are separate caches
+# kv-calc has no branch for the generic `dense` family, so the registry entries use kvcalc_key="SKIP". The KV pool
+# was MEASURED instead: 207,616 tokens on vLLM, 206,433 on SGLang (fp8, TP=2, 24 GB cards).
+kv_calc_supported: false
+vision_capable: false
+weights:
+  # Our own AutoRound INT4 (no INT4 of Nanbeige4.3-33B we have validated exists upstream) — built 2026-10-25 with the
+  # same recipe as the ThinkingCap / Tess INT4s, published 2026-10-26.
+  autoround-int4:
+    path: nanbeige4.3-33b-autoround-int4
+    local_subdir: nanbeige4.3-33b-autoround-int4
+    size_gb: 20.8
+    format: autoround
+    status: incubating
+    hf_repo: wasifb/Nanbeige4.3-33B-AutoRound-W4A16
+    revision: b87aa7fa5462094f8ea714767b7ac0fbbd4a239a   # the published commit; sha256 of all 5 shards == the booted files
+    engine: vllm
+    kind: main
+    verify_glob: "*.safetensors"
+    manual_note: "club-3090 self-built AutoRound INT4 of Nanbeige/Nanbeige4.3-33B (@c1093c50): W4A16 int4 g128 sym, auto_round:auto_gptq packing; all 364 decoder linears int4, lm_head + embeddings + norms BF16. auto-round 0.14.2, iters 200, nsamples 512, seqlen 2048, enable_alg_ext, pile-10k calibration (recipe also in club3090_build_recipe.json). Tokenizer, chat template and generation_config are the original's, byte for byte. Apache-2.0. 20.8 GB."
+default_weight_variant: autoround-int4
+compatible_drafters: []
+valid_tp:
+  - 1
+  - 2
+  - 4
+  - 8
+requires_genesis: false
