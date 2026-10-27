@@ -229,6 +229,12 @@ J() { python3 -c "import json,sys; d=json.load(sys.stdin); print(eval(sys.argv[1
 # The refusal codes a dry run reports — each hard refusal below is asserted by its
 # CODE as well as rc 4, so a refusal for some other reason can't pass for this one.
 codes() { W remove "$1" --dry-run --json | J '" ".join(sorted({r["code"] for r in d["refusals"]}))'; }
+# An unattended removal, the only way it can run: dry run → its digest → --yes --digest.
+RMY() {
+  local slug="$1" dig; shift
+  dig="$(W remove "$slug" --dry-run --json "$@" | J 'd["digest"]')"
+  W remove "$slug" --yes --digest "$dig" "$@"
+}
 
 build_model_dir
 containers
@@ -264,7 +270,7 @@ check "dry run: rc 0, one weight file + its hf record, the Q8 dir would be rmdir
   '[[ $rc == 0 && "$(J "len(d[\"targets\"]), \"$MD/fx-gguf/Q8\" in d[\"dirs\"], \"$MD/fx-gguf\" in d[\"dirs\"]" <<<"$out")" == "(2, True, False)" ]]'
 check "dry run deleted nothing" '[[ -f "$MD/fx-gguf/Q8/fx-Q8.gguf" ]]'
 check "the running-container check ran (docker stub called)" '[[ -s "$DOCKER_LOG" ]] && command grep -q "^ps" "$DOCKER_LOG"'
-W remove llamacpp/fx-q8 --yes >/dev/null; rc=$?
+RMY llamacpp/fx-q8 >/dev/null; rc=$?
 check "remove --yes: rc 0" '[[ $rc == 0 ]]'
 check "Q8 file and its hf record are gone, the emptied Q8 dir too" \
   '[[ ! -e "$MD/fx-gguf/Q8/fx-Q8.gguf" && ! -e "$MD/fx-gguf/.cache/huggingface/download/Q8/fx-Q8.gguf.metadata" && ! -d "$MD/fx-gguf/Q8" ]]'
@@ -277,10 +283,10 @@ out="$(W remove llamacpp/fx-q4 --dry-run --json)"; rc=$?
 check "dry run: rc 3 (shared, overridable)" '[[ $rc == 3 ]]'
 check "names the deprecated slug for Q4" '[[ "$(J "[s[\"slug\"]+\":\"+s[\"status\"] for r in d[\"refusals\"] for s in r.get(\"slugs\",[])]" <<<"$out")" == *"fx-q4-old:deprecated"* ]]'
 check "names fx-other for the shared drafter" '[[ "$(J "[s[\"slug\"] for r in d[\"refusals\"] if \"drafter\" in r[\"folder\"] for s in r[\"slugs\"]]" <<<"$out")" == *"llamacpp/fx-other"* ]]'
-W remove llamacpp/fx-q4 --yes >/dev/null; rc=$?
+RMY llamacpp/fx-q4 >/dev/null; rc=$?
 check "remove --yes without --allow-shared: rc 3, nothing deleted" \
   '[[ $rc == 3 && -f "$MD/fx-gguf/Q4/fx-Q4-00001-of-00002.gguf" && -f "$MD/fx-drafter-gguf/fx-drafter.gguf" ]]'
-W remove llamacpp/fx-q4 --yes --allow-shared >/dev/null; rc=$?
+RMY llamacpp/fx-q4 --allow-shared >/dev/null; rc=$?
 check "positive control — --allow-shared: rc 0, Q4 + drafter gone" \
   '[[ $rc == 0 && ! -e "$MD/fx-gguf/Q4/fx-Q4-00001-of-00002.gguf" && ! -e "$MD/fx-drafter-gguf/fx-drafter.gguf" ]]'
 check "  the drafter's folder, emptied, goes whole — its verify marker and hf tags with it" '[[ ! -e "$MD/fx-drafter-gguf" ]]'
@@ -300,57 +306,59 @@ check "  positive control — without the saved override it proceeds (rc=$rc)" '
 
 echo "== symlinked folder: files go at the target, the link only once nothing is behind it"
 build_model_dir
-W remove llamacpp/fx-link-a --yes >/dev/null; rc=$?
+RMY llamacpp/fx-link-a >/dev/null; rc=$?
 check "remove link-a: rc 0, A's file gone at the target" '[[ $rc == 0 && ! -e "$DISK2/fx-linked-gguf/A/fx-a.gguf" ]]'
 check "  the link stays — B still lives behind it" '[[ -L "$MD/fx-linked-gguf" && -f "$DISK2/fx-linked-gguf/B/fx-b.gguf" ]]'
-W remove llamacpp/fx-link-b --yes >/dev/null; rc=$?
+RMY llamacpp/fx-link-b >/dev/null; rc=$?
 check "remove link-b: rc 0, the link is gone now nothing is behind it" '[[ $rc == 0 && ! -e "$MD/fx-linked-gguf" && ! -L "$MD/fx-linked-gguf" ]]'
 check "  the target disk's directory itself is left in place" '[[ -d "$DISK2/fx-linked-gguf" ]]'
 
 echo "== running container"
 build_model_dir
 containers "[$(container c-direct "$MD/fx-gguf/Q8")]"
-W remove llamacpp/fx-q8 --yes >/dev/null; rc=$?
+RMY llamacpp/fx-q8 >/dev/null; rc=$?
 check "a container mounting the folder itself: rc 4, nothing deleted" '[[ $rc == 4 && -f "$MD/fx-gguf/Q8/fx-Q8.gguf" && "$(codes llamacpp/fx-q8)" == container ]]'
 containers "[$(container c-user "$MD" "$R/models/fx/llama-cpp/compose/single/q8/base.yml")]"
-W remove llamacpp/fx-q8 --yes >/dev/null; rc=$?
+RMY llamacpp/fx-q8 >/dev/null; rc=$?
 check "a container of the slug itself mounting MODEL_DIR: rc 4" '[[ $rc == 4 && -f "$MD/fx-gguf/Q8/fx-Q8.gguf" && "$(codes llamacpp/fx-q8)" == container ]]'
 containers "[$(container c-unknown "$MD")]"
-W remove llamacpp/fx-q8 --yes >/dev/null; rc=$?
+RMY llamacpp/fx-q8 >/dev/null; rc=$?
 check "an unidentifiable container mounting MODEL_DIR: rc 4" '[[ $rc == 4 && -f "$MD/fx-gguf/Q8/fx-Q8.gguf" && "$(codes llamacpp/fx-q8)" == container ]]'
 : > "$DOCKER_LOG"
-DOCKER_FAIL=1 W remove llamacpp/fx-q8 --yes >/dev/null; rc=$?
+DOCKER_FAIL=1 RMY llamacpp/fx-q8 >/dev/null; rc=$?
 check "docker failing: rc 4 (fail closed), and the stub WAS asked" '[[ $rc == 4 && -f "$MD/fx-gguf/Q8/fx-Q8.gguf" && "$(DOCKER_FAIL=1 codes llamacpp/fx-q8)" == docker ]] && command grep -q "^ps" "$DOCKER_LOG"'
 containers "[$(container c-other "$MD" "$R/models/fx/llama-cpp/compose/single/other/base.yml")]"
-W remove llamacpp/fx-q8 --yes >/dev/null; rc=$?
+RMY llamacpp/fx-q8 >/dev/null; rc=$?
 check "positive control — a container of an unrelated slug mounting MODEL_DIR: rc 0, deleted" '[[ $rc == 0 && ! -e "$MD/fx-gguf/Q8/fx-Q8.gguf" ]]'
 containers
 
 echo "== paths that escape the model directories"
 build_model_dir
-W remove llamacpp/fx-nested --yes >/dev/null; rc=$?
+RMY llamacpp/fx-nested >/dev/null; rc=$?
 check "a symlink below the folder: rc 4 escape, the file it points to survives" '[[ $rc == 4 && -f "$MD/fx-elsewhere/sub/fx-nested.gguf" && "$(codes llamacpp/fx-nested)" == escape ]]'
-W remove llamacpp/fx-dotdot --yes >/dev/null; rc=$?
+RMY llamacpp/fx-dotdot >/dev/null; rc=$?
 check "\`..\` in a recipe file: rc 4 escape, the file it names survives" '[[ $rc == 4 && -f "$MD/outside-dd/victim.gguf" && "$(codes llamacpp/fx-dotdot)" == escape ]]'
-W remove llamacpp/fx-linkfile --yes >/dev/null; rc=$?
+RMY llamacpp/fx-linkfile >/dev/null; rc=$?
 check "a recipe file that is a symlink: rc 4 symlink, link and target survive" '[[ $rc == 4 && -L "$MD/fx-lf/fx-lf.gguf" && -f "$OUT/lf-target.gguf" && "$(codes llamacpp/fx-linkfile)" == symlink ]]'
-W remove llamacpp/fx-up --yes >/dev/null; rc=$?
+RMY llamacpp/fx-up >/dev/null; rc=$?
 check "a top-level link to a parent of MODEL_DIR: rc 4 escape, the file survives" '[[ $rc == 4 && -f "$T/outside-up/victim.gguf" && "$(codes llamacpp/fx-up)" == escape ]]'
 # positive control: the same nested recipe with a real directory instead of the link
 rm "$MD/fx-nested-gguf/sub"; mk "$MD/fx-nested-gguf/sub/fx-nested.gguf"
-W remove llamacpp/fx-nested --yes >/dev/null; rc=$?
+RMY llamacpp/fx-nested >/dev/null; rc=$?
 check "positive control — the nested recipe in a real dir: rc 0, deleted" '[[ $rc == 0 && ! -e "$MD/fx-nested-gguf/sub/fx-nested.gguf" && -f "$MD/fx-elsewhere/sub/fx-nested.gguf" ]]'
 
 echo "== a recipe with no files: is refused — the folder is never deleted whole"
 out="$(W remove vllm/fx-awq --dry-run --json)"; rc=$?
 check "no-files: rc 4, code no-files" '[[ $rc == 4 && "$(J "[r[\"code\"] for r in d[\"refusals\"]]" <<<"$out")" == *no-files* ]]'
-W remove vllm/fx-awq --yes >/dev/null
+RMY vllm/fx-awq >/dev/null
 check "  the folder and its files are untouched" '[[ -f "$MD/fx-awq/model.safetensors" && -f "$MD/fx-awq/config.json" ]]'
 
 echo "== confirmation and the dry-run digest"
 build_model_dir
 W remove llamacpp/fx-q8 >/dev/null; rc=$?
 check "no --yes on a non-terminal: rc 5, nothing deleted" '[[ $rc == 5 && -f "$MD/fx-gguf/Q8/fx-Q8.gguf" ]]'
+W remove llamacpp/fx-q8 --yes >/dev/null; rc=$?
+check "--yes without the dry run's --digest: rc 5, nothing deleted" '[[ $rc == 5 && -f "$MD/fx-gguf/Q8/fx-Q8.gguf" ]]'
 dig="$(W remove llamacpp/fx-q8 --dry-run --json | J 'd["digest"]')"
 mk "$MD/fx-gguf/.cache/huggingface/download/Q8/fx-Q8.gguf.lock" lock    # the plan changes
 W remove llamacpp/fx-q8 --yes --digest "$dig" >/dev/null; rc=$?

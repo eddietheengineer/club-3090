@@ -3,7 +3,7 @@
 #
 #   bash scripts/weights.sh show   <slug> [--json] [--model-dir DIR]
 #   bash scripts/weights.sh remove <slug> --dry-run [--json]
-#   bash scripts/weights.sh remove <slug> [--yes] [--allow-shared] [--digest D]
+#   bash scripts/weights.sh remove <slug> --yes --digest D [--allow-shared]
 #
 # show    every folder the slug's compose mounts (its own weights and its
 #         companions: a drafter, a vision projector), with symlinks resolved, its
@@ -12,8 +12,10 @@
 #         exactly what goes. It refuses — and deletes nothing — while another slug
 #         needs a file (deprecated slugs count; --allow-shared overrides), while a
 #         running container mounts the folder, for a path that leaves the model
-#         directories, and for a recipe with no `files:` list. Without --yes it
-#         asks (on a terminal) or stops. Rules and exit codes:
+#         directories, and for a recipe with no `files:` list. On a terminal it
+#         asks after printing the plan; unattended it needs --yes AND the dry
+#         run's --digest, so nothing is deleted that wasn't read first. Rules and
+#         exit codes:
 #         scripts/lib/weights_folders.py.
 #
 # MODEL_DIR comes from your settings (`bash scripts/settings.sh show`), like

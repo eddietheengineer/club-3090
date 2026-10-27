@@ -4,7 +4,7 @@
 Run through ``scripts/weights.sh`` (it loads MODEL_DIR from the settings).
 
     weights.sh show   <slug> [--json]
-    weights.sh remove <slug> [--dry-run] [--yes] [--allow-shared] [--digest D] [--json]
+    weights.sh remove <slug> [--dry-run] [--yes --digest D] [--allow-shared] [--json]
 
 Nothing here re-implements a rule another part of the repo owns. Three resolvers
 answer the three questions, the same ones a launch asks:
@@ -846,7 +846,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         # The model dir to look in; default MODEL_DIR (settings), as switch.sh uses.
         p.add_argument("--model-dir", default="")
     r.add_argument("--dry-run", action="store_true")
-    r.add_argument("--yes", action="store_true", help="don't ask (the plan is still printed first)")
+    r.add_argument("--yes", action="store_true",
+                   help="don't ask — needs --digest, so you've read the dry run first")
     r.add_argument("--allow-shared", action="store_true",
                    help="delete files other slugs also need (they stop working until re-downloaded)")
     r.add_argument("--digest", default="", help="refuse unless the plan matches this dry-run digest")
@@ -881,6 +882,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.dry_run or rc != EXIT_OK or not (plan.targets or plan.links):
         print(json.dumps(d, indent=1)) if args.json else print_plan(d)
         return rc
+    if args.yes and not args.digest:
+        # "Dry-run first" by construction: an unattended delete must name the dry run
+        # it was read from. On a terminal (no --yes) the plan is printed above the
+        # prompt instead, which is the same dry run, read before answering.
+        msg = (f"--yes needs --digest from the dry run you read: bash scripts/weights.sh remove "
+               f"{args.slug} --dry-run  (its last line is the digest) — nothing deleted")
+        print(json.dumps({**d, "exit": EXIT_UNCONFIRMED, "error": msg}) if args.json else f"[weights] {msg}")
+        return EXIT_UNCONFIRMED
     if not args.json:
         print_plan(d)
     if not args.yes:
