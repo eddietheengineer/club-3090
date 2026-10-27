@@ -943,6 +943,44 @@ _preflight_compose_command_model_paths() {
     | command grep -oE '/models/[^]"'"'"'\\[:space:],]+' || true
 }
 
+# _preflight_compose_script_model_paths <compose>... — the /models/<path> that a
+# shell-script `command:` passes to SGLang's --model-path, written either literally or
+# through a variable the script assigns first:
+#
+#     M=/models/nanbeige4.3-33b-autoround-int4
+#     exec python3 -m sglang.launch_server --model-path "$$M" ...
+#
+# Every SGLang compose that mounts the whole ${MODEL_DIR} names its model this way, and
+# neither reader above sees it (the script is a block scalar, not a `command: [...]`
+# list), so with no weights on disk preflight passed and the user got an SGLang
+# traceback instead of the download recipe. Only the FIRST assignment counts: it is the
+# script's default, and a later one sits behind a condition this reader cannot evaluate.
+# Other /models/… paths in the script stay unread: a drafter behind ${DRAFTER_DIR:-…}
+# may be switched off with SPEC_N=0, and those scripts check it themselves.
+_preflight_compose_script_model_paths() {
+  local f val var
+  for f in "$@"; do
+    while IFS= read -r val; do
+      val="${val//\"/}"
+      val="${val//\'/}"
+      case "$val" in
+        /models/*) printf '%s\n' "$val" ;;
+        \$*)
+          var="${val//\$/}"
+          var="${var#\{}"
+          var="${var%\}}"
+          [[ "$var" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+          command grep -v '^[[:space:]]*#' "$f" 2>/dev/null \
+            | command grep -m1 -E "^[[:space:]]*${var}=" \
+            | sed -E "s/^[[:space:]]*${var}=//; s/^[\"']//; s/[\"'][[:space:]]*\$//" || true
+          ;;
+      esac
+    done < <(command grep -v '^[[:space:]]*#' "$f" 2>/dev/null \
+               | command grep -oE -- '--model-path[[:space:]]+[^[:space:]\\]+' \
+               | awk '{print $2}' || true)
+  done | command grep -E '^(/models/|\$\{[A-Za-z_][A-Za-z0-9_]*:-/models/)' || true
+}
+
 _preflight_compose_flag_paths() {
   local flags="$1"
   shift
@@ -1430,9 +1468,11 @@ preflight_compose_deps() {
     # bucko-vllm mounts the whole ${MODEL_DIR} at /models and names the model (and
     # the Swift slug's drafter) as bare exec-form `command:` arguments, with no flag,
     # so none of the readers above saw them and a missing or misnamed folder got past
-    # preflight to fail inside the container (Discussion #1700). Only `command: [...]`
-    # elements are read: elsewhere `/models/…` is also a bind-mount TARGET (SGLang's
-    # chat templates) or a shell default, which must not be checked as a host path.
+    # preflight to fail inside the container (Discussion #1700). SGLang does the same
+    # with a shell-script `command:` whose --model-path names a variable set to
+    # /models/<sub>. Only those two readers count: elsewhere `/models/…` is also a
+    # bind-mount TARGET (SGLang's chat templates) or a shell default, which must not be
+    # checked as a host path.
     if _preflight_compose_mounts_model_dir_whole "${compose_files[@]}"; then
       while IFS= read -r token; do
         path="$(_preflight_compose_path_default "$token")"
@@ -1444,7 +1484,8 @@ preflight_compose_deps() {
         else
           shard_dirs+=("${model_dir}/${path}")
         fi
-      done < <(_preflight_compose_command_model_paths "${compose_files[@]}")
+      done < <({ _preflight_compose_command_model_paths "${compose_files[@]}"
+                 _preflight_compose_script_model_paths "${compose_files[@]}"; } | sort -u)
     fi
   fi
 
