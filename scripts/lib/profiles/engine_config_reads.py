@@ -160,8 +160,31 @@ def render_maya_ds4_prepare(entry: dict, settings: dict) -> dict:
         return json.loads(text)
 
 
+MAYA_MM3_RENDER = r"""
+import sys, types
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import mm3_prepare
+d = Path(sys.argv[2])
+mm3_prepare.config("minimax-maya-s", d, d / "pack", types.SimpleNamespace(gpus="0,1", context=int(sys.argv[3])))
+"""
+
+
+def render_maya_mm3_prepare(entry: dict, settings: dict) -> dict:
+    """MiniMax-M3.1-Flash on Maya's maya-mm3 (models/minimax-m3.1-flash/strata-maya/launcher/mm3_prepare.py): the
+    same shape as render_maya_ds4_prepare, its own config file (maya-mm3.json) and quant folder."""
+    launcher = ROOT / Path(entry["programs"][-1]).parent
+    settings = dict(settings)
+    context = settings.pop("CONTEXT", "204800")   # the entrypoint passes CONTEXT as mm3_prepare.py --context
+    with tempfile.TemporaryDirectory() as d:
+        _run([sys.executable, "-c", MAYA_MM3_RENDER, str(launcher), d, context], _env_for(entry, settings),
+             f"mm3_prepare.config() {settings or '(no settings)'}")
+        text = (Path(d) / "maya-mm3.json").read_text(encoding="utf-8").replace(json.dumps(d)[1:-1], "/data/minimax-maya-s")
+        return json.loads(text)
+
+
 RENDERERS = {"strata_config": render_strata_config, "maya_prepare": render_maya_prepare,
-             "maya_ds4_prepare": render_maya_ds4_prepare}
+             "maya_ds4_prepare": render_maya_ds4_prepare, "maya_mm3_prepare": render_maya_mm3_prepare}
 
 
 def arg_pairs(args) -> dict:

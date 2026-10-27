@@ -36,12 +36,12 @@ p = load_profiles()
 assert len(p.hardware) == 12  # +dgx-spark (#576 follow-up), +rtx-a6000 (#948 thread), +cmp-170hx-64gb
 _p = __import__("pathlib").Path
 _nloc = lambda d: len(list(_p(d).glob("*.yml"))) if _p(d).is_dir() else 0
-assert len(p.models) - _nloc("scripts/lib/profiles-local/models.d") == 25   # +inkling-small, +qwen3.8-27b, +glm-5.3-flash, +qwen3.8-flash-next, +deepseek-v4-flash-vision-exp, +mimo-v2.6-9b, +thinkingcap-qwen3.8-27b, +deepseek-v4.1-flash-1017, +nanbeige4.3-33b
+assert len(p.models) - _nloc("scripts/lib/profiles-local/models.d") == 26   # +inkling-small, +qwen3.8-27b, +glm-5.3-flash, +qwen3.8-flash-next, +deepseek-v4-flash-vision-exp, +mimo-v2.6-9b, +thinkingcap-qwen3.8-27b, +deepseek-v4.1-flash-1017, +nanbeige4.3-33b, +minimax-m3.1-flash
 assert len(p.workloads) == 5
 _p = __import__("pathlib").Path
 _nloc = lambda d: len(list(_p(d).glob("*.yml"))) if _p(d).is_dir() else 0
 assert len(p.engines) - _nloc("scripts/lib/profiles-local/engines.d") == 24   # +llamacpp-club3090-v1.1, -v1.5, -v1.6, +sglang-stable, +exllamav3, +llama-cpp-prism, +llama-cpp-prism-mtp, -llama-cpp-prism-mtp (2026-10-06, folded onto llama-cpp-prism), +bucko-vllm (2026-10-13), +strata (2026-10-13), +vllm-hyperqwen (2026-10-14), +strata-maya (2026-10-15)
-assert len(p.drafters) == 21  # +syvai-qwen38-dflash2, +anbeeld-glm53-dflash2, +zlab-qwen38-dflash2, +prism-mtp-bundled, +maya-dspark-xs2
+assert len(p.drafters) == 22  # +syvai-qwen38-dflash2, +anbeeld-glm53-dflash2, +zlab-qwen38-dflash2, +prism-mtp-bundled, +maya-dspark-xs2, +maya-mm3-dspark
 assert len(p.calibration) == 6
 PY
 
@@ -562,7 +562,7 @@ from scripts.lib.profiles.compat import load_profiles
 p = load_profiles()  # raises UnknownProfileKeyError on any unknown key
 _p = __import__("pathlib").Path
 _nloc = lambda d: len(list(_p(d).glob("*.yml"))) if _p(d).is_dir() else 0
-assert len(p.models) - _nloc("scripts/lib/profiles-local/models.d") == 25
+assert len(p.models) - _nloc("scripts/lib/profiles-local/models.d") == 26
 PY
 
 run_test "strict keys: typo'd top-level model key fails naming file + closest key" <<'PY'

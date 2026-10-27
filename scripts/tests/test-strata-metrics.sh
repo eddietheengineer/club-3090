@@ -264,5 +264,40 @@ python3 "$SM" host-ram "$base/ds4" --log-file "$work/ds4-ram0.log" >/dev/null 2>
 [[ $r -eq 1 ]] && ok "host-ram: a maya-ds4 CPU lane of 0 GB (every expert in VRAM) is not offload: exit 1" \
   || bad "host-ram ds4 zero lane: exit $r, want 1"
 
+# 9. Project Maya's MiniMax engine (maya-mm3): its draft line is "maya mm3 serve: DSpark kept N of M drafts". It logs no
+# RAM line under the server, so its host-RAM evidence is its /metrics: the engine's INFO line (engine.ram_slots) and the
+# tiers block (tiers.now.ram_gb), as a v1.1.30 server reported them on the reference rig (2026-10-27).
+printf '%s\n' "maya mm3 serve: DSpark kept 1 of 2 drafts" \
+  "glm spec: 7 of 9 drafts accepted (77.8%)" \
+  "maya mm3 serve: DSpark kept 40 of 44 drafts" \
+  "maya mm3 serve: DSpark kept 300 of 400 drafts" > "$work/mm3.log"
+mkdir -p "$work/mm3" "$work/mm3-0"
+python3 - "$work" <<'PY'
+import json, sys
+w = sys.argv[1]
+doc = json.load(open(f"{w}/ds4/metrics"))
+doc["engine"].update({"version": "mm3", "maya_version": "1.1.30", "expert_slots": 320, "ram_slots": 6976, "dspark": 0,
+                      "kv": "int8", "cpu_experts": 6976, "ctx": 204800})
+doc["tiers"] = {"now": {"vram_used": 320.0, "ram_used": 6976.0, "vram_gb": 4.52, "ram_gb": 97.91}}
+json.dump(doc, open(f"{w}/mm3/metrics", "w"))
+doc["engine"]["ram_slots"] = 0
+doc["tiers"]["now"]["ram_gb"] = 0.0
+json.dump(doc, open(f"{w}/mm3-0/metrics", "w"))
+PY
+out="$(python3 "$SM" recent "$base/ds4" 2 --log-file "$work/mm3.log")"
+command grep -qx 'drafts_offered=444' <<<"$out" && command grep -qx 'drafts_accepted=340' <<<"$out" \
+  && ok "maya-mm3 recent N --log-file: the newest N 'maya mm3 serve: DSpark kept' lines" || bad "mm3 recent log: $(tr '\n' ' ' <<<"$out")"
+out="$(sdocker python3 "$SM" snapshot "$base/ds4" --log-file "$work/mm3.log")"
+python3 -c 'import json,sys; t=json.loads(sys.argv[1])["totals"]; sys.exit(0 if (t["drafts_accepted"], t["drafts_offered"]) == (348, 455) else 1)' "$out" 2>/dev/null \
+  && ok "maya-mm3 snapshot: every draft line summed (MiniMax's and the GLM line alike)" || bad "mm3 snapshot: got $out"
+out="$(python3 "$SM" host-ram "$base/mm3" --log-file "$work/mm3.log")"; r=$?
+[[ $r -eq 0 && "$out" == "/metrics (6976 expert slots in RAM, 97.91 GB)" ]] \
+  && ok "host-ram: maya-mm3's RAM tier from /metrics, its log having none" || bad "host-ram mm3: rc=$r, got: $out"
+out="$(python3 "$SM" host-ram "$base/mm3")"; r=$?
+[[ $r -eq 0 ]] && ok "host-ram: maya-mm3 needs no container or log for it" || bad "host-ram mm3 without a log: rc=$r, got: $out"
+python3 "$SM" host-ram "$base/mm3-0" --log-file "$work/mm3.log" >/dev/null 2>&1; r=$?
+[[ $r -eq 1 ]] && ok "host-ram: a maya-mm3 RAM tier of 0 (every expert in VRAM) is not offload: exit 1" \
+  || bad "host-ram mm3 zero tier: exit $r, want 1"
+
 if [[ $rc -eq 0 ]]; then echo "PASS: test-strata-metrics"; else echo "FAIL: test-strata-metrics"; fi
 exit $rc

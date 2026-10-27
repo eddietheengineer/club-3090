@@ -19,7 +19,8 @@ nothing there and would report a dead drafter or an empty run. /metrics carries 
 slots in RAM that /metrics reports (`tiers.now.ram_slots`, from the engine's STAT lines, so only
 once a request has run), else, for Project Maya, the "RAM tier X GB pinned" lines of its engine
 log (the latest one per card), or for its DeepSeek engine (maya-ds4) the latest "N routed experts on
-the CPU lane (X GB)" line. bench.sh uses it for Maya, whose docker log doesn't say.
+the CPU lane (X GB)" line; for its MiniMax engine (maya-mm3), which logs no RAM line, the RAM tier its
+/metrics carries (engine.ram_slots, tiers.now.ram_gb). bench.sh uses it for Maya, whose docker log doesn't say.
 
 `delta` and `recent` print key=value lines:
   requests  output_tokens  decode_tok_s  prefill_tok_s  drafts_offered  drafts_accepted  accept_rate
@@ -28,10 +29,11 @@ empty when there is nothing to divide by (no drafts offered: accept_rate is empt
 
 Project Maya (the strata-maya engine, a Strata fork) serves the same document with its version in
 `engine.maya_version` and no draft counts in `totals`: its per-request "glm spec: N of M drafts
-accepted" lines (DeepSeek's maya-ds4: "maya ds4 serve: drafts N of M kept") go only to the engine log:
-the `log` of the run config the server's command line names (--config), for every engine, else
-`<storage.path>/maya.log` (the GLM recipe's layout; from v1.1.31 DeepSeek's server sends a
-storage.path too, which is its folder, not its log's). Given
+accepted" lines (DeepSeek's maya-ds4: "maya ds4 serve: drafts N of M kept"; MiniMax's maya-mm3: "maya mm3
+serve: DSpark kept N of M drafts") go only to the engine log: the `log` of the run config the server's
+command line names (--config), for every engine, else `<storage.path>/maya.log` (the GLM recipe's
+layout; from v1.1.31 DeepSeek's and MiniMax's servers send a storage.path too, which is their folder,
+not their log's). Given
 the container (--container, read with docker exec) or the log itself (--log-file), `snapshot` sums
 those lines into totals.drafts_offered / drafts_accepted, so `delta` reads Maya's drafts like
 Strata's, and `recent` sums the newest N of them. Without either, a Maya document reads with no
@@ -87,9 +89,11 @@ def parse(body, where):
     return data
 
 
-# GLM: "glm spec: 15 of 16 drafts accepted (93.8%)"; DeepSeek (maya-ds4): "maya ds4 serve: drafts 40 of 44 kept; ..."
-# (accepted first, then offered, in both; one line a request that drafted)
-MAYA_SPEC = re.compile(r"glm spec: (\d+) of (\d+) drafts accepted|maya ds4 serve: drafts (\d+) of (\d+) kept")
+# GLM: "glm spec: 15 of 16 drafts accepted (93.8%)"; DeepSeek (maya-ds4): "maya ds4 serve: drafts 40 of 44 kept; ...";
+# MiniMax (maya-mm3): "maya mm3 serve: DSpark kept 40 of 44 drafts" (accepted first, then offered, in all three; one
+# line a request that drafted)
+MAYA_SPEC = re.compile(r"glm spec: (\d+) of (\d+) drafts accepted|maya ds4 serve: drafts (\d+) of (\d+) kept"
+                       r"|maya mm3 serve: DSpark kept (\d+) of (\d+) drafts")
 # "glm fast: CUDA0 RAM tier 52.66 GB pinned, 4737 slots" — once per card at each start
 MAYA_RAM_TIER = re.compile(r"\b(CUDA\d+) RAM tier ([0-9]+(?:\.[0-9]+)?) GB pinned")
 # maya-ds4: "ds4: 11665 routed experts on the CPU lane (100.4 GB): 11665 copied into RAM ..." — once at each start
@@ -99,7 +103,7 @@ MAYA_DS4_CPU_LANE = re.compile(r"\bds4: \d+ routed experts on the CPU lane \(([0
 def maya_log_lines(data, source):
     """The engine log's per-request draft lines, oldest first, as (accepted, offered) pairs.
     source: ("container", name) reads the engine log there (maya_log_text); ("file", path) reads a file."""
-    return [(int(m.group(1) or m.group(3)), int(m.group(2) or m.group(4)))
+    return [(int(m.group(1) or m.group(3) or m.group(5)), int(m.group(2) or m.group(4) or m.group(6)))
             for m in MAYA_SPEC.finditer(maya_log_text(data, source))]
 
 
@@ -107,7 +111,8 @@ def maya_host_ram(data, source):
     """The engine log's evidence of experts in host RAM, as host-ram prints it, or None. GLM: the RAM
     tier, the latest line per card, summed (the log is appended across restarts, so an earlier start's
     line for the same card is superseded). maya-ds4 has no tier line: the latest start's CPU lane, whose
-    experts are in RAM (copied there, or read in place from the page cache)."""
+    experts are in RAM (copied there, or read in place from the page cache). maya-mm3 logs no RAM line
+    under the server: its evidence is in /metrics (main's host-ram)."""
     text = maya_log_text(data, source)
     latest = {}
     for m in MAYA_RAM_TIER.finditer(text):
@@ -131,9 +136,9 @@ def maya_log_text(data, source):
             fail(f"could not read {where}: {e}")
     else:
         # The run config's `log` first: each Maya engine's config names its own (GLM maya.log, DeepSeek
-        # maya-ds4.log). /metrics' storage.path is only the quant's folder, and from v1.1.31 DeepSeek's
-        # server sends it too, where <storage.path>/maya.log isn't its log. <storage.path>/maya.log stays the
-        # fallback for a GLM server whose command line names no config.
+        # maya-ds4.log, MiniMax maya-mm3.log). /metrics' storage.path is only the quant's folder, and from
+        # v1.1.31 DeepSeek's and MiniMax's servers send it too, where <storage.path>/maya.log isn't their
+        # log. <storage.path>/maya.log stays the fallback for a GLM server whose command line names no config.
         store = (data.get("storage") or {}).get("path") or ""
         log = config_log(where, required=not store.startswith("/"))
         text = container_cat(where, log or store.rstrip("/") + "/maya.log")
@@ -284,6 +289,14 @@ def main(argv):
             evidence = maya_host_ram(data, source)
             if evidence:
                 print(evidence)
+                return 0
+        # MiniMax's maya-mm3 logs no RAM line under the server; its /metrics carries the RAM tier: the engine's
+        # INFO line (engine.ram_slots) and the tiers block (tiers.now.ram_gb)
+        if data["engine"].get("maya_version"):
+            now = (data.get("tiers") or {}).get("now") or {}
+            gb, slots = num(now.get("ram_gb")), num(data["engine"].get("ram_slots"))
+            if gb > 0 or slots > 0:
+                print(f"/metrics ({int(slots)} expert slots in RAM, {gb:.2f} GB)")
                 return 0
         return 1
     # recent
