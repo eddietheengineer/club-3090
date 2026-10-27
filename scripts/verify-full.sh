@@ -270,6 +270,7 @@ check_patches() {
     sglang)   skip "SGLang engine — Genesis is vLLM-only, not applicable";    return 0 ;;
     exllamav3) skip "exl3/TabbyAPI engine — Genesis is vLLM-only, not applicable"; return 0 ;;
     strata)   skip "Strata engine — Genesis is vLLM-only, not applicable";   return 0 ;;
+    qengine)  skip "QEngine — Genesis is vLLM-only, not applicable";        return 0 ;;
     unknown)  ;;  # fall through; might still be vLLM under a non-standard container name
   esac
   if ! command -v docker >/dev/null 2>&1; then

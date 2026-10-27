@@ -19,7 +19,7 @@
 #
 # CONTRACT
 # --------
-# Every function prints exactly one of: vllm | llamacpp | sglang | exllamav3 | strata | unknown
+# Every function prints exactly one of: vllm | llamacpp | sglang | exllamav3 | strata | qengine | unknown
 # and returns 0. "unknown" is a value, not an error — callers must handle it
 # rather than treating silence as a kind. Nothing here touches the network.
 #
@@ -58,6 +58,7 @@ engine_kind_from_engine_id() {
     sglang*|sgl-*)                           kind="sglang" ;;
     exllamav3*|exl3*)                        kind="exllamav3" ;;
     strata*)                                 kind="strata" ;;
+    qengine*)                                kind="qengine" ;;
     llama-cpp*|llamacpp*|ik-llama*|beellama*) kind="llamacpp" ;;
     *)                                       kind="unknown" ;;
   esac
@@ -89,6 +90,7 @@ _engine_kind_from_profile_type() {
         sglang)                      echo "sglang" ;;
         exllamav3)                   echo "exllamav3" ;;
         strata)                      echo "strata" ;;
+        qengine)                     echo "qengine" ;;
         llama.cpp|llama-cpp|llamacpp) echo "llamacpp" ;;
         *)                           echo "unknown" ;;
       esac
@@ -109,6 +111,7 @@ engine_kind_from_container() {
     sglang-*|sgl-*)                                echo "sglang" ;;
     tabbyapi-*|exl3-*|exllamav3-*)                 echo "exllamav3" ;;
     strata-*)                                      echo "strata" ;;
+    qengine-*)                                     echo "qengine" ;;
     llama-cpp-*|llamacpp-*|ik-llama-*|beellama-*)  echo "llamacpp" ;;
     *)                                             echo "unknown" ;;
   esac
@@ -123,6 +126,7 @@ engine_kind_from_image() {
   local ref="${1:-}"
   case "$ref" in
     *strata*)                           echo "strata" ;;
+    *qengine*)                          echo "qengine" ;;   # ghcr.io/bpx03/qengine
     *tabbyapi*|*exllamav3*)             echo "exllamav3" ;;
     *llama.cpp*|*llama-cpp*|*llamacpp*) echo "llamacpp" ;;
     *sglang*|*lmsysorg*)                echo "sglang" ;;
@@ -138,6 +142,7 @@ engine_kind_from_image() {
 # versions that do, but callers must fall back to container/image evidence
 # rather than concluding "not sglang" from a miss (#1261). Strata sends a null
 # fingerprint, so it has no arm here: its container name and image identify it.
+# QEngine sends none either (its /v1/models owned_by does identify it).
 engine_kind_from_fingerprint() {
   case "${1:-}" in
     vllm-*)   echo "vllm" ;;
@@ -151,7 +156,7 @@ engine_kind_from_fingerprint() {
 # OpenAI `/v1/models` → `data[0].owned_by`. A METADATA fingerprint: unlike
 # `system_fingerprint` it costs no completion, so it is usable while the GPU
 # is busy or before any request is sent. llama.cpp answers "llamacpp", SGLang
-# "sglang", vLLM "vllm", tabbyAPI "tabbyAPI". A proxy (LiteLLM) or cloud
+# "sglang", vLLM "vllm", tabbyAPI "tabbyAPI", QEngine "qengine". A proxy (LiteLLM) or cloud
 # endpoint answers something else, and callers must treat that "unknown" as
 # "cannot tell", not as any particular engine (#1383). Strata's /v1/models has no
 # owned_by at all, so it has no arm here either.
@@ -161,6 +166,7 @@ engine_kind_from_owned_by() {
     sglang*)                             echo "sglang" ;;
     tabby*|exllama*)                     echo "exllamav3" ;;
     llamacpp*|llama.cpp*|llama-cpp*)     echo "llamacpp" ;;
+    qengine*)                            echo "qengine" ;;
     *)                                   echo "unknown" ;;
   esac
   return 0

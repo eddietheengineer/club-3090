@@ -24,7 +24,7 @@ from .engine_auth import get_with_engine_key
 ENGINE_INTERNAL_PORTS = {"8000", "8080", "30000", "5000"}
 
 # Recognized engine-family container prefixes
-ENGINE_PREFIXES = re.compile(r"^(vllm-|llama-cpp-|ik-llama-|sglang-|beellama-|tabbyapi-|exl3-|exllamav3-|strata-)")
+ENGINE_PREFIXES = re.compile(r"^(vllm-|llama-cpp-|ik-llama-|sglang-|beellama-|tabbyapi-|exl3-|exllamav3-|strata-|qengine-)")
 
 # Port mapping regex: matches 0.0.0.0:8011->8000/tcp, [::]:8011->8000/tcp, 127.0.0.1:8011->8000/tcp
 PORT_MAP_RE = re.compile(

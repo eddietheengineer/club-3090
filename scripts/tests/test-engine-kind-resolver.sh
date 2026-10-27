@@ -37,6 +37,7 @@ else
     "engine_kind_from_engine_id beellama-local:llamacpp" \
     "engine_kind_from_engine_id totally-new-engine:unknown" \
     "engine_kind_from_engine_id strata:strata" \
+    "engine_kind_from_engine_id qengine:qengine" \
     "engine_kind_from_container sglang-qwen38:sglang" \
     "engine_kind_from_container sgl-qwen38:sglang" \
     "engine_kind_from_container vllm-qwen36-27b:vllm" \
@@ -44,11 +45,13 @@ else
     "engine_kind_from_container ik-llama-qwen:llamacpp" \
     "engine_kind_from_container nothing-like-an-engine:unknown" \
     "engine_kind_from_container strata-qwen38-flash-next-iq3s:strata" \
+    "engine_kind_from_container qengine-qwen38-27b-dual:qengine" \
     "engine_kind_from_image lmsysorg/sglang:v0.5.19:sglang" \
     "engine_kind_from_image vllm/vllm-openai:v0.29.0:vllm" \
     "engine_kind_from_image ghcr.io/syv-ai/hyperqwen@sha256:0123abcd:vllm" \
     "engine_kind_from_image ghcr.io/ggml-org/llama.cpp:llamacpp" \
     "engine_kind_from_image ghcr.io/noonghunna/strata-club3090@sha256:0123abcd:strata" \
+    "engine_kind_from_image ghcr.io/bpx03/qengine@sha256:0123abcd:qengine" \
     "engine_kind_from_image ghcr.io/noonghunna/llamacpp-club3090@sha256:0123abcd:llamacpp" \
     "engine_kind_from_fingerprint sglang-0.5.19:sglang" \
     "engine_kind_from_fingerprint vllm-0.29.0-tp2:vllm" \
@@ -57,6 +60,7 @@ else
     "engine_kind_from_owned_by vllm:vllm" \
     "engine_kind_from_owned_by sglang:sglang" \
     "engine_kind_from_owned_by tabbyAPI:exllamav3" \
+    "engine_kind_from_owned_by qengine:qengine" \
     "engine_kind_from_owned_by openai:unknown" \
   ; do
     want="${probe##*:}"; call="${probe%:*}"
@@ -162,6 +166,8 @@ printf 'schema_version: 1\nid: my-sgl\ndisplay_name: z\ntype: SGLang\n' \
   > "$FX/scripts/lib/profiles-local/engines.d/my-sgl.yml"
 printf 'schema_version: 1\nid: my-strata-build\ndisplay_name: s\ntype: strata\n' \
   > "$FX/scripts/lib/profiles-local/engines.d/my-strata-build.yml"
+printf 'schema_version: 1\nid: my-qe-build\ndisplay_name: q\ntype: qengine\n' \
+  > "$FX/scripts/lib/profiles-local/engines.d/my-qe-build.yml"
 printf 'schema_version: 1\nid: odd-engine\ndisplay_name: o\ntype: tensorrt-llm\n' \
   > "$FX/scripts/lib/profiles-local/engines.d/odd.yml"
 # A stub registry: the slug path must read core AND local (get_registry), not
@@ -170,7 +176,7 @@ cat > "$FX/scripts/lib/profiles/compose_registry.py" <<'PY'
 def get_registry(root=None):
     return {"my-build/some-model": {"engine": "my-build"}}
 PY
-for pair in "derivative-x:vllm" "my-build:llamacpp" "my-sgl:sglang" "my-strata-build:strata" "odd-engine:unknown" \
+for pair in "derivative-x:vllm" "my-build:llamacpp" "my-sgl:sglang" "my-strata-build:strata" "my-qe-build:qengine" "odd-engine:unknown" \
             "no-such-engine:unknown" "vllm-stable:vllm"; do
   id="${pair%:*}"; want="${pair##*:}"
   got="$(ENGINE_KIND_ROOT="$FX" engine_kind_from_engine_id "$id")"

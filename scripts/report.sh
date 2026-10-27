@@ -1081,7 +1081,7 @@ section "Active container"
 # Engine class — drives which probes run inside the container body. Inferred
 # from container name; user can override with ENGINE_KIND=<engine-family> env var.
 case "${ENGINE_KIND:-}" in
-  vllm|llamacpp|sglang|exllamav3|strata|unknown) ;;  # respect user override (sglang: club-3090#1261)
+  vllm|llamacpp|sglang|exllamav3|strata|qengine|unknown) ;;  # respect user override (sglang: club-3090#1261)
   *)
     # Prefix arms live in scripts/lib/engine-kind.sh (club-3090#1282).
     ENGINE_KIND="$(engine_kind_from_container "$CONTAINER")"

@@ -64,7 +64,7 @@ REQUEST_ONLY_ZERO = {"presence_penalty": 0.0, "frequency_penalty": 0.0}
 # what get_param() falls back to when neither the request nor the model sets a key.
 SGLANG_OPENAI_FALLBACK = {"temperature": 1.0, "top_p": 1.0, "top_k": -1, "min_p": 0.0,
                           "repetition_penalty": 1.0}
-ENGINES = ("vllm", "sglang", "llamacpp", "exllamav3", "strata", "unknown")
+ENGINES = ("vllm", "sglang", "llamacpp", "exllamav3", "strata", "qengine", "unknown")
 SMI_FIELDS = "index,uuid,name,power.limit,pcie.link.gen.max,pcie.link.width.current"
 
 

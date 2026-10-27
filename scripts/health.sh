@@ -142,6 +142,7 @@ probe() {
     sglang)    engine="SGLang" ;;
     exllamav3) engine="ExLlamaV3" ;;
     strata)    engine="Strata" ;;
+    qengine)   engine="QEngine" ;;
     *)         engine="unknown" ;;
   esac
   ok "Serving model: ${model_name}  (engine: ${engine})"

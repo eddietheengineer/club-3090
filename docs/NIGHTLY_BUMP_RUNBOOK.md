@@ -284,6 +284,18 @@ does, and what to do by hand when it refuses.
 - Prepare runs at every start and is idempotent: a new image that adds a preparation step applies it in
   place, in the model directory, at the first start after the bump.
 
+### qengine
+
+- Pinned by digest to the author's own `ghcr.io/bpx03/qengine:<release>` (text only; the `:vision` tags add PyTorch).
+  Each image's `org.opencontainers.image.revision` label is its source commit, which `lineage.source_ref` records.
+  Registered with no slug yet (2026-10-27): until one exists a bump is only `scripts/engine-pin-bump.sh qengine
+  ghcr.io/bpx03/qengine@sha256:<digest>` and `source_ref`; from the first slug on, boot it on the new digest and run
+  `verify-full` first.
+- The volatile parts are QEngine's own interfaces: the image's entrypoint and its `QE_*` variables (`QE_GPUS`,
+  `QE_MAX_SEQS`, `QE_RESERVE_GB`, `QE_EXTRA_ARGS`), `server/app.py`'s flags, the model directory it expects
+  (`Qwen3.8-27B-INT4`, RedHatAI's layout, plus the `token_rank.bin` and `model_mtp_ft.safetensors` release assets),
+  and `/v1/models` `owned_by: "qengine"`, which engine-kind.sh reads. ⚠️ PolyForm Noncommercial license.
+
 ### Luce DFlash / xtransformers / future engines
 
 - When adding a new engine, add an "Engine-specific notes" subsection here
