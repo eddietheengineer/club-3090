@@ -1,0 +1,30 @@
+schema_version: 1
+id: maya-mm3-dspark
+display_name: MiniMax-M3.1-Flash DSpark drafter (MiniMax's own, in Project Maya's pack)
+spec_method: dspark
+model_compat:
+  - minimax-m3.1-flash
+engine_compat:
+  engine_type: strata
+n_default: 7
+n_max: 7
+download:
+  hf_repo: peasantsmith/MiniMax-M3.1-Flash-Maya-GGUF
+  size_gb: 2.32
+vram_footprint_gb: variable
+status: incubating
+# MiniMax's DSpark drafter (dspark/: model-dspark-00001.safetensors, 2.3 GB, and its config and tokenizer), the
+# files Maya's setup pins from Mia-AiLab's EXL3 repo (tools/mm3/download.json @fe796c40); Maya's GGUF repo carries
+# them byte for byte. tools/mm3/pack_gguf.py indexes them into the pack through --companions; maya-mm3's
+# `--dspark on` engages it. ON on the MiniMax slugs (DSPARK=off turns it off). Maya's own setup writes `--dspark off`
+# until its speed calibration (tools/calibrate_ds4.py) says drafting pays, since with most experts on the CPU a draft
+# can cost more than it saves. maya-mm3 has no depth flag: the draft block length is the drafter's own
+# (dspark/config.json dspark_block_size 7; 5 draft layers on target layers 3 / 17 / 31 / 45 / 59), so n_default =
+# n_max = 7.
+#
+# MEASURED 2026-10-27 on 3090s (Maya v1.1.31, Maya-S, that calibration on each slug): two cards 22.5 against 18.7
+# tok/s sustained (+20.5%, 73% of drafts kept), one card 18.8 against 17.4 (+8.2%, 70%). Its 2.3 GB comes out of
+# an expert pool (two cards: 1,625 experts resident instead of 1,800; one: 146 instead of 320).
+requires_engine_min: null
+speculative_config_template: null   # N/A — Maya's engine, not vLLM
+local_model_path: null

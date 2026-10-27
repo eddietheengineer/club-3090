@@ -6853,6 +6853,72 @@ entries:
     gateway: false
     serve_aliases: []
     category: frontier
+  strata-maya/minimax31-flash-dual-maya-s:
+    origin: core
+    model: minimax-m3.1-flash
+    weights_variant: maya-s
+    workload: long-ctx-single
+    engine: strata-maya
+    drafter: maya-mm3-dspark
+    spec_method: null
+    kv_format: int8_per_token_head
+    act_format: 16bit
+    act8_capable: false
+    offload: engine
+    moe_cache: false
+    host_ram_gb: 102
+    kv_offload: null
+    chat_template: native
+    tp: 2
+    max_ctx: 204800
+    max_num_seqs: 1
+    mem_util: null
+    compose_path: models/minimax-m3.1-flash/strata-maya/compose/dual/maya-s/dspark.yml
+    requires_nvlink: false
+    requires_homogeneous_arch: false
+    required_engine_features: []
+    default_port: 8059
+    kvcalc_key: SKIP
+    status: incubating
+    status_note: "Two 3090s, Maya's maya-mm3 layer split (a GGUF pack runs that way: its tensor parallel is the EXL3 path's). Project Maya's own MiniMax-M3.1-Flash-Maya-S GGUF (IQ2_XXS experts, ~2.1 bits, 122.5 GB) on the strata-maya engine (Project Maya's MiniMax engine, maya-mm3; club-3090's image strata-maya-club3090, models/glm-5.3-flash/strata-maya/image/). MEASURED 2026-10-27 on two 3090s capped at 230 W (v1.1.31 c94aa0e1, through switch.sh, bench.sh on its own boot, DSpark on, thinking off): 20.13 tok/s decode narrative (CV 2.6%), code 20.30 mean (18.31-24.56 across its 5 runs), 167 / 147 tok/s prefill @10K / @60K, DSpark kept 80.6% of drafts (bench.sh's sampler 0.6 / 0.95 / top-k 20); 1,625 of 7,296 experts resident in VRAM (layers 0-33 / 34-59), VRAM 23,376 / 23,360 MiB, host RAM 102 GB (MemAvailable fall, decimal, at its peak on a 224 GB host), verify-full every applicable check. Maya's speed calibration on v1.1.31 kept DSpark: 22.5 against 18.7 tok/s sustained (+20.5%). The first start (v1.1.30, DSpark off) was ready in 72 s. Field values: kv_format int8_per_token_head is maya-mm3's default INT8 K / V (a row per token and KV head, with its scale; rows rotated), streamed: 32K positions of each layer in VRAM, every one in pinned RAM (~13.0 GB at 204,800); offload 'engine' = a per-layer VRAM expert pool, the other experts computed by a CPU lane from RAM. DSpark drafter in the pack, on by default (DSPARK=off turns it off). One request at a time. Thinking auto by default (MiniMax's adaptive thinking); reasoning_effort none or enable_thinking false turns it off. ⚠️ MiniMax Community License (non-commercial free, commercial use has conditions). ⚠️ Quality unmeasured here (8-pack pending)."
+    weights_companions:
+      - maya-mm3-dspark
+    gateway: false
+    serve_aliases: []
+    category: frontier
+  strata-maya/minimax31-flash-single-maya-s:
+    origin: core
+    model: minimax-m3.1-flash
+    weights_variant: maya-s
+    workload: long-ctx-single
+    engine: strata-maya
+    drafter: maya-mm3-dspark
+    spec_method: null
+    kv_format: int8_per_token_head
+    act_format: 16bit
+    act8_capable: false
+    offload: engine
+    moe_cache: false
+    host_ram_gb: 124
+    kv_offload: null
+    chat_template: native
+    tp: 1
+    max_ctx: 204800
+    max_num_seqs: 1
+    mem_util: null
+    compose_path: models/minimax-m3.1-flash/strata-maya/compose/single/maya-s/dspark.yml
+    requires_nvlink: false
+    requires_homogeneous_arch: false
+    required_engine_features: []
+    default_port: 8118
+    kvcalc_key: SKIP
+    status: incubating
+    status_note: "One 3090 (GPU0). Project Maya's own MiniMax-M3.1-Flash-Maya-S GGUF (IQ2_XXS experts, ~2.1 bits, 122.5 GB) on the strata-maya engine (Project Maya's MiniMax engine, maya-mm3; club-3090's image strata-maya-club3090, models/glm-5.3-flash/strata-maya/image/). MEASURED 2026-10-27 on one 3090 capped at 230 W (v1.1.31 c94aa0e1, through switch.sh, bench.sh on its own boot, DSpark on, thinking off): 18.12 tok/s decode narrative (CV 0.9%), code 20.67 mean (15.70-22.41 across its 5 runs), 181 / 170 tok/s prefill @10K / @60K, DSpark kept 80.3% of drafts (bench.sh's sampler 0.6 / 0.95 / top-k 20); 146 of 7,296 experts resident in VRAM, VRAM 23,410 MiB, host RAM 124 GB (MemAvailable fall, decimal, at its peak on a 224 GB host; /metrics: 7,150 expert slots, 100.4 GB, in RAM), verify-full every applicable check. Maya's speed calibration on v1.1.31 kept DSpark: 18.8 against 17.4 tok/s sustained (+8.2%). The first start (v1.1.30, DSpark off) was ready in 48 s. Field values: kv_format int8_per_token_head is maya-mm3's default INT8 K / V (a row per token and KV head, with its scale; rows rotated), streamed: 32K positions of each layer in VRAM, every one in pinned RAM (~13.0 GB at 204,800); offload 'engine' = a per-layer VRAM expert pool, the other experts computed by a CPU lane from RAM. DSpark drafter in the pack, on by default (DSPARK=off turns it off). One request at a time. Thinking auto by default (MiniMax's adaptive thinking); reasoning_effort none or enable_thinking false turns it off. ⚠️ MiniMax Community License (non-commercial free, commercial use has conditions). ⚠️ Quality unmeasured here (8-pack pending)."
+    weights_companions:
+      - maya-mm3-dspark
+    gateway: false
+    serve_aliases: []
+    category: frontier
   vllm/nanbeige43-33b-dual:
     origin: core
     model: nanbeige4.3-33b

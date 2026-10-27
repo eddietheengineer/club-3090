@@ -122,6 +122,16 @@ MOUNTED_READERS = (
         },
     },
     {
+        # the MiniMax-M3.1-Flash Project Maya composes' entrypoint (maya-mm3): mm3_prepare.py writes these into
+        # maya-mm3.json at every boot through mm3_settings.py, which refuses a bad value (exit 1, before the SHA-256 check)
+        "invoke": '"/opt/club3090/mm3-entrypoint.sh"',
+        "file": "models/minimax-m3.1-flash/strata-maya/launcher/mm3_settings.py",
+        "knobs": {
+            "REASONING_EFFORT": None,
+            "ENABLE_THINKING": None,
+        },
+    },
+    {
         # the bucko-vllm composes' own default-thinking-budget patch (patches.yml
         # bucko-default-thinking-budget): reads the floor the compose declares
         "invoke": "python3 /etc/club3090/thinking-budget/apply.py",

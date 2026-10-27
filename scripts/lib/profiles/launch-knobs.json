@@ -385,7 +385,7 @@
    "status": "first-batch",
    "description": "Server-default thinking mode for requests that don't set their own.",
    "type": "bool",
-   "unset": "the compose default: true on the Qwen3.8 family and Nemotron, false on vllm/thinkingcap-dual-w4a8; Strata: thinking on (the template's default); Project Maya: thinking on (effort max on GLM-5.3-Flash, high on DeepSeek-V4.1-Flash); llama.cpp: the compose's own default row (thinking on Qwen3.8-27B, MiMo and Qwen3.6-35B-A3B; instruct on Qwen3.8-Flash-Next and Gemma-4-12B)",
+   "unset": "the compose default: true on the Qwen3.8 family and Nemotron, false on vllm/thinkingcap-dual-w4a8; Strata: thinking on (the template's default); Project Maya: thinking on (effort max on GLM-5.3-Flash, high on DeepSeek-V4.1-Flash; auto on MiniMax-M3.1-Flash, where the model decides); llama.cpp: the compose's own default row (thinking on Qwen3.8-27B, MiMo and Qwen3.6-35B-A3B; instruct on Qwen3.8-Flash-Next and Gemma-4-12B)",
    "engines": [
     "llamacpp",
     "sglang",
@@ -922,6 +922,50 @@
        ]
       }
      ]
+    },
+    {
+     "match": {
+      "engine": [
+       "strata"
+      ],
+      "model": [
+       "minimax-m3.1-flash"
+      ]
+     },
+     "enforced": "boot",
+     "values": [
+      "true",
+      "false"
+     ],
+     "spelling": {
+      "on": "true",
+      "off": "false"
+     },
+     "default": "",
+     "source": {
+      "file": "models/minimax-m3.1-flash/strata-maya/launcher/mm3_settings.py",
+      "what": "false -> \"reasoning_effort\": \"none\" in maya-mm3.json (thinking off; wins over REASONING_EFFORT with a note); true leaves the effort; anything else stops the boot"
+     },
+     "checks": [
+      {
+       "kind": "program",
+       "compose": "models/minimax-m3.1-flash/strata-maya/compose/dual/maya-s/dspark.yml",
+       "program": "models/minimax-m3.1-flash/strata-maya/launcher/mm3_settings.py",
+       "args": [
+        "validate"
+       ],
+       "accept": [
+        "true",
+        "false"
+       ],
+       "reject": [
+        "off",
+        "no",
+        "1",
+        "TRUE"
+       ]
+      }
+     ]
     }
    ],
    "interacts": [
@@ -979,7 +1023,7 @@
    "status": "first-batch",
    "description": "Server-default reasoning effort for requests that don't send their own.",
    "type": "enum",
-   "unset": "the compose default: low (Qwen3.8 vLLM/SGLang, Inkling-Small), medium (Qwen3.8 llama.cpp), max (GLM-5.3-Flash); Strata: the template's own default (xhigh); Project Maya: max for GLM-5.3-Flash (the launcher's default, as the other GLM-5.3-Flash slugs), high for DeepSeek-V4.1-Flash (Maya's own)",
+   "unset": "the compose default: low (Qwen3.8 vLLM/SGLang, Inkling-Small), medium (Qwen3.8 llama.cpp), max (GLM-5.3-Flash); Strata: the template's own default (xhigh); Project Maya: max for GLM-5.3-Flash (the launcher's default, as the other GLM-5.3-Flash slugs), high for DeepSeek-V4.1-Flash (Maya's own), auto for MiniMax-M3.1-Flash (Maya's own: its adaptive thinking)",
    "engines": [
     "llamacpp",
     "sglang",
@@ -1469,6 +1513,55 @@
        ]
       }
      ]
+    },
+    {
+     "match": {
+      "engine": [
+       "strata"
+      ],
+      "model": [
+       "minimax-m3.1-flash"
+      ]
+     },
+     "enforced": "boot",
+     "values": [
+      "none",
+      "auto",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+     ],
+     "default": "",
+     "source": {
+      "file": "models/minimax-m3.1-flash/strata-maya/launcher/mm3_settings.py",
+      "what": "written into maya-mm3.json as \"reasoning_effort\" at every boot (auto when unset, Maya's own for MiniMax: its adaptive thinking); MiniMax-M3.1's five levels reach its template as they are (frontend.py EFFORT_NAMES: medium and xhigh are its own, not folded into high / max as for GLM), none turns thinking off; anything else stops mm3_prepare.py before the SHA-256 check"
+     },
+     "checks": [
+      {
+       "kind": "program",
+       "compose": "models/minimax-m3.1-flash/strata-maya/compose/dual/maya-s/dspark.yml",
+       "program": "models/minimax-m3.1-flash/strata-maya/launcher/mm3_settings.py",
+       "args": [
+        "validate"
+       ],
+       "accept": [
+        "none",
+        "auto",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+       ],
+       "reject": [
+        "minimal",
+        "HIGH",
+        "75"
+       ]
+      }
+     ]
     }
    ],
    "interacts": [
@@ -1519,7 +1612,7 @@
      }
     },
     {
-     "text": "Qwen3.8 / ThinkingCap vLLM composes also pass it to effort_budget.py shell-env as the default effort, which picks the reasoning-budget floor: with budgets on, an effort that has no budget (none, extreme, \u2026) refuses the boot there, while HIGH (any case) folds to xhigh, boots, and then fails per request at the template.",
+     "text": "Qwen3.8 / ThinkingCap vLLM composes also pass it to effort_budget.py shell-env as the default effort, which picks the reasoning-budget floor: with budgets on, an effort that has no budget (none, extreme, …) refuses the boot there, while HIGH (any case) folds to xhigh, boots, and then fails per request at the template.",
      "source": {
       "file": "models/qwen3.8-27b/vllm/compose/dual/autoround-int4/mtp.yml",
       "what": "--default-effort \"${REASONING_EFFORT:-low}\" on the _eb= shell-env line"

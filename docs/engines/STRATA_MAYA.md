@@ -1,4 +1,4 @@
-# Project Maya — a Strata fork for GLM-5.3-Flash on one, two or four cards, and DeepSeek-V4.1-Flash on two
+# Project Maya — a Strata fork for GLM-5.3-Flash on one, two or four cards, DeepSeek-V4.1-Flash on two, and MiniMax-M3.1-Flash on one or two
 
 **Engine id:** `strata-maya` · **Slug prefix:** `strata-maya/` · **Status of its slugs:** 🐣 Incubating · **Requires:** NVIDIA compute capability 7.5+, driver ≥ 580 (CUDA 13), an x86-64 CPU with AVX2, and enough host RAM to hold the experts that don't fit in VRAM (~65 GB for Maya-S on two cards up to ~148 GB for Maya-L on one, measured; less RAM still runs, reading the rest from the model files)
 
@@ -86,6 +86,53 @@ Maya also runs DeepSeek-V4.1-Flash-1017 on a second engine of its own, `maya-ds4
 - **Settings:** the same as the GLM slugs' table above, with DeepSeek's defaults: effort `high` (Maya's own for DeepSeek; DeepSeek's template turns low / high / max into its 1–100 "Reasoning Effort" budget), temperature 1.0 / top_p 1.0, the name `deepseek-v4.1-flash`. `KV` doesn't apply (`maya-ds4`'s cache is fp16). One more: `THREADS`, the CPU lane's threads (`--cpu-threads`). Unset, the launcher uses half the CPUs the container may use (nproc / 2, at least 1): a safe default on a host we know nothing about. A rig that has measured its own sets `THREADS` (a shell prefix, or `bash scripts/settings.sh set THREADS=<n>`; it isn't a per-slug setting, so the saved value also reaches the llama.cpp CPU-offload slugs, which read the same variable). The reference rig runs 24 of 32 vCPUs, the best count in Strata's port of this engine, where 16 cost 4–5% of decode and the engine's own default (a thread a core, two left spare: ~30 on a 32-core host) ~40%; it wasn't re-measured on `maya-ds4`, which ran 24 throughout.
 - **RAM:** Maya copies every CPU-side expert into RAM when they fit beside 9 GB for the rest (~100 GB with this quant and drafter on two 24 GB cards); with less RAM it reads them from the files while it answers (slower, not measured).
 - **Maya's `--calibrate` doesn't help here:** on two equal GPUs it tries only `--tp 2` and fewer CPU threads, never the layer split.
+
+## MiniMax-M3.1-Flash (maya-mm3)
+
+Maya runs MiniMaxAI's [MiniMax-M3.1-Flash](https://huggingface.co/MiniMaxAI/MiniMax-M3.1-Flash) (428B MoE, 23B active a token: 128 routed experts top-4 plus a shared one, 3 leading dense layers, a block-sparse attention indexer in every layer, 1M native context) on a third engine, `maya-mm3` (`src/mm3`, from v1.1.29; mw00/project-maya#477). The slugs serve Project Maya's own GGUF quant of it, from v1.1.30.
+
+| Quant | Single (1 card) | Dual (2 cards) |
+|---|---|---|
+| **Maya-S** (`maya-s`: routed experts IQ2_XXS, the most sensitive IQ2_XS / IQ2_S / IQ3_XXS, ~2.1 bits; attention and indexers Q8_0, the rest Q6_K; 3 shards + the indexers side file, 122.5 GB) | `strata-maya/minimax31-flash-single-maya-s` · 8118 | `strata-maya/minimax31-flash-dual-maya-s` · 8059 |
+
+- **⚠️ License:** the MiniMax Community License (`LICENSE` in the weights' repo): free for non-commercial use, commercial use has conditions.
+- **Weights:** [peasantsmith/MiniMax-M3.1-Flash-Maya-GGUF](https://huggingface.co/peasantsmith/MiniMax-M3.1-Flash-Maya-GGUF) @`4b40cc79`, `Maya-S/` (mounted at `/gguf`) and `dspark/` (mounted at `/companions/dspark`). The dense layers 0–2's sparse-attention indexers sit in a side file, `MiniMax-M3.1-Flash-Maya-S-maya-indexers.gguf`, beside the shards: Maya's pack reads both, and stock llama.cpp loads the shards alone. Maya's own setup takes the drafter from Mia-AiLab's EXL3 repo (`tools/mm3/download.json`); the GGUF repo's `dspark/` is the same files, every one hashed equal (2026-10-27).
+- **Launcher** (`models/minimax-m3.1-flash/strata-maya/launcher/`: `mm3-entrypoint.sh`, `mm3_prepare.py`, `mm3_settings.py`). The launcher:
+  - checks the 14 files' SHA-256 against Maya's own manifests (`tools/mm3/download_gguf.json` and `download.json`'s `dspark`), once;
+  - builds the pack with `tools/mm3/pack_gguf.py --companions /companions` into `/data/minimax-maya-s/pack`. The pack names the files by their path from the model folder, so nothing is linked. A repack keeps the engine's prefill calibration for the PC (`prefill-tune.txt`);
+  - writes `maya-mm3.json` and starts the server.
+
+  The quant's folder is `minimax-maya-s`, so it never meets GLM's `maya-s` on the shared data volume.
+- **Layer split:** a GGUF pack runs as a layer split over the cards (`maya-mm3`'s tensor parallel is its EXL3 path's). The experts VRAM doesn't hold are computed on the CPU from RAM (pinned).
+- **K / V:** INT8 with rotated rows by default (the engine logs `K int8, V int8 (rows rotated)`), streamed: 32K positions of each layer in VRAM, every one in pinned RAM (63,360 bytes a token: ~13.0 GB at the slugs' 204,800 context; `KV=bf16` doubles it).
+- **Drafter:** DSpark n=7, in the pack, **on**. Maya's own setup leaves it off until its speed calibration says drafting pays (`tools/calibrate_ds4.py`: the engine started twice, ~1,024 sustained tokens each, the drafter kept above +5%), since with most experts on the CPU a draft can cost more than it saves. On these cards it pays on both slugs (v1.1.31, one start of each kind):
+  - two cards: 22.5 against 18.7 tok/s (+20.5%, 73% of drafts kept);
+  - one card: 18.8 against 17.4 (+8.2%, 70%).
+
+  Its 2.3 GB comes out of an expert pool: 1,625 experts resident instead of 1,800 on two cards, 146 instead of 320 on one. `DSPARK=off` turns it off.
+- **Prefill calibration:** none needed on 3090s. Maya's `tools/calibrate_mm3_prefill.py` tries a prompt chunk above 1,024 only where every routed expert is in VRAM, and hipBLASLt only on AMD, so on these cards it measures the defaults alone (chunk 1024, cuBLAS) and keeps them. Without its `prefill-tune.txt` a start only logs a NOTE.
+- **⚠️ The start's CPU-lane probe can misread.** At load the engine times one expert on the CPU lane against a copy to VRAM (`CPU lane vs staging (measured): an expert 0.31 ms on the CPU lane … 1 staged`) and keeps that choice for the session. One start of the single slug read 3.98 ms instead of the usual 0.25–0.35, staged every expert, and decoded ~21% slower. A slow start shows in that line: anything but `1 staged` is worth a restart ([mw00/project-maya#548](https://github.com/mw00/project-maya/issues/548), [UPSTREAM.md](../UPSTREAM.md)).
+- **Settings:** the same as the GLM slugs' table above, with MiniMax's defaults and levels.
+  - **Effort:** `auto` by default (Maya's own: MiniMax's adaptive thinking, the model decides whether to think). `low`, `medium`, `high`, `xhigh` and `max` reach the template as they are (MiniMax has five levels; for GLM, `medium` and `xhigh` fold into `high` and `max`). `none`, or `ENABLE_THINKING=false`, turns thinking off.
+  - **Sampling and name:** temperature 1.0 / top_p 0.95, the model card's. The name is `minimax-m3.1-flash`.
+  - **Three more settings:**
+    - `KV` (`--kv-cache`): `int8` or `bf16`. fp8 isn't validated on these cards, and fp4 is below the stack's KV floor; both are refused.
+    - `DSPARK` (`on` / `off`).
+    - `THREADS` (`--cpu-threads`): half the CPUs by default, as DeepSeek's.
+- **Context:** 204,800. Maya's own setup defaults to 65,536 and recommends more where the PC's memory holds it; the model reaches 1M, and Maya has run 256K end to end.
+- **Measured on the slugs** (2026-10-27, v1.1.31 image `c94aa0e1`, through `switch.sh`, `bench.sh` on each slug's own boot, DSpark on, thinking off, the cards capped at 230 W):
+
+  | Slug | Decode narrative | Decode code | Prefill @10K / @60K | Drafts kept | Experts in VRAM | VRAM | Host RAM |
+  |---|---|---|---|---|---|---|---|
+  | dual | 20.13 tok/s (CV 2.6%) | 20.30 (18.31–24.56) | 167 / 147 tok/s | 80.6% | 1,625 of 7,296 (layers 0–33 / 34–59) | 23,376 / 23,360 MiB | 102 GB |
+  | single | 18.12 (CV 0.9%) | 20.67 (15.70–22.41) | 181 / 170 | 80.3% | 146 | 23,410 MiB | 124 GB (`/metrics`: 7,150 expert slots, 100.4 GB, in RAM) |
+
+  - **Code decode varies within a boot.** On two cards it fell from 24.56 to ~18.3 tok/s over the five runs while GPU0's clock held at ~1,770 MHz and the short prompt's first token went from 67 to 85 ms. Narrative stays within a few percent, so compare on that: 18.37 tok/s on v1.1.30 with DSpark on, 20.13 on v1.1.31.
+  - **One card reads prompts faster than two** (8% at 10K, 16% at 60K). Not explained yet; asked upstream ([mw00/project-maya#549](https://github.com/mw00/project-maya/issues/549), [UPSTREAM.md](../UPSTREAM.md)).
+  - **Drafts kept** is the bench's figure under `bench.sh`'s sampler (0.6 / 0.95 / top-k 20); the model card's 1.0 / 0.95, which the slugs serve, may keep fewer.
+  - Host RAM is the `MemAvailable` fall, decimal, at its peak through the bench on a 224 GB host. `verify-full` passes every applicable check on both.
+  - The first starts (v1.1.30, DSpark off) were ready in 72 s (dual) and 48 s (single).
+  - Not measured yet: quality.
 
 ## Tuning for your PC
 
