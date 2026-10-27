@@ -306,6 +306,11 @@ cmake_pin="$(command grep -m1 -E 'GIT_TAG +[0-9a-f]{40}' "$work/CMakeLists.txt" 
 [[ -z "$cmake_pin" || "$cmake_pin" == "$llama" ]] \
   || die "setup.py pins llama.cpp $llama but CMakeLists.txt fetches $cmake_pin: upstream's two pins disagree"
 
+# The checkout's .git differs from one fetch to the next (its index and fetch state) even at the same commit, and the
+# Dockerfile copies the whole context, so with it every build missed Docker's layer cache from that COPY on and
+# recompiled every engine, a check build and the push build after it alike. The commit is checked above, and the
+# image never kept .git (the runtime stage drops it).
+rm -rf "$work/.git"
 say "building $IMAGE:$TAG (archs $CUDA_ARCHITECTURES, AVX2 baseline, llama.cpp ${llama:0:7}${JOBS:+, jobs $JOBS})"
 docker build --pull -f "$here/Dockerfile" \
   --build-arg "CUDA_ARCHITECTURES=$CUDA_ARCHITECTURES" \

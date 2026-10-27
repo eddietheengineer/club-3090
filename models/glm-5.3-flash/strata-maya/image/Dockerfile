@@ -19,8 +19,12 @@ ARG CUDA_VERSION=13.0.0
 FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu24.04 AS build
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates cmake curl git ninja-build python3 unzip \
+        ca-certificates ccache cmake curl git ninja-build python3 unzip \
     && rm -rf /var/lib/apt/lists/*
+# ccache in front of nvcc and the C/C++ compilers, its cache in a BuildKit cache mount that outlives the build: a new
+# release recompiles only the files whose inputs changed (a shared header or ggml change still fans out). The paths
+# are fixed (/src, /build), so the hashes match from one build to the next.
+ENV CCACHE_DIR=/root/.cache/ccache CCACHE_MAXSIZE=30G CCACHE_COMPILERCHECK=content
 
 ARG CUDA_ARCHITECTURES="75;80;86;89;120"
 # llama.cpp's source at the commit setup.py pins (LLAMA_CPP_COMMIT): ggml's CPU backend comes from it
@@ -38,16 +42,21 @@ RUN test -n "$LLAMA_CPP_COMMIT" \
 RUN cmake -S /src -B /build -G Ninja -DCMAKE_BUILD_TYPE=Release \
         -DSTRATA_ENABLE_CUDA=ON "-DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES}" \
         -DSTRATA_NATIVE_EXPERTS=ON -DSTRATA_BUILD_TESTS=OFF -DSTRATA_PORTABLE=ON \
-        -DSTRATA_GGML_DIR=/llama.cpp
+        -DSTRATA_GGML_DIR=/llama.cpp \
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_CUDA_COMPILER_LAUNCHER=ccache
 # The engines' targets: `maya` since v1.1.16, `strata` before (v1.1.16 renamed the programs after Maya),
 # and DeepSeek's `maya-ds4` and MiniMax's `maya-mm3` beside it in the releases that define them (build.sh
 # checks they are there)
-RUN target=strata; grep -q -E '^ *add_executable\(maya ' /src/CMakeLists.txt && target=maya; \
+# (the ccache statistics of this build go to the build log: build.sh's caller can see what the cache saved)
+RUN --mount=type=cache,id=strata-maya-ccache,target=/root/.cache/ccache \
+    ccache --zero-stats >/dev/null; \
+    target=strata; grep -q -E '^ *add_executable\(maya ' /src/CMakeLists.txt && target=maya; \
     grep -q -E '^ *add_executable\(maya-ds4 ' /src/CMakeLists.txt && target="$target maya-ds4"; \
     grep -q -E '^ *add_executable\(maya-mm3 ' /src/CMakeLists.txt && target="$target maya-mm3"; \
     echo "$target" > /tmp/engine-targets; \
     jobs="${JOBS:-$(( $(nproc) / 2 ))}"; [ "$jobs" -ge 1 ] || jobs=1; \
-    for t in $target; do cmake --build /build --target "$t" -j "$jobs" || exit 1; done
+    for t in $target; do cmake --build /build --target "$t" -j "$jobs" || exit 1; done; \
+    ccache --show-stats
 # the CPU settings and archs the tree was configured with, read by build.sh's checks
 RUN mkdir -p /out/bin && for t in $(cat /tmp/engine-targets); do cp "/build/$t" "/out/bin/$t" || exit 1; done \
     && grep -E '^(STRATA_PORTABLE|GGML_NATIVE|GGML_AVX[A-Z0-9_]*|GGML_FMA|GGML_F16C|GGML_BMI2|GGML_AMX_[A-Z0-9_]*):' \
