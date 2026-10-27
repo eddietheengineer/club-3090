@@ -19,6 +19,9 @@ install:
   # DominikBucko's official CI-built GHCR release image (build-provenance attested), v0.5.0,
   # pinned by digest. Its OCI labels: source DominikBucko/qwen38-flash-next-2x3090, revision
   # e7279ab7 (= tag v0.5.0), base vllm/vllm-openai:qwen38-flash-next@sha256:fc120ece...
+  # The pin's record: pin-current is what spec pins now; pin-earlier lists earlier pins, newest first (the first
+  # is the rollback). docs/UPSTREAM.md's Pinned images table holds why it's pinned, not these.
+  # pin-current: v0.5.0 · revision e7279ab7 · base vllm/vllm-openai:qwen38-flash-next@sha256:fc120ece… · pinned 2026-10-13
   spec: ghcr.io/dominikbucko/qwen38-flash-next-2x3090@sha256:75adfc64ba1576b8a677f455d54891c152444e4bf43fbc37cb8f1885a8db3387
 supported_model_families:
   - qwen4exp              # Qwen3.8-Flash-Next family (bucko is written for this model only)

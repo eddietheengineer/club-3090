@@ -83,6 +83,12 @@ install:
   # ⚠️ `libgomp1` is INSTALLED BY THE IMAGE and is REQUIRED. The CUDA runtime
   # base does not carry it, and without it EVERY binary in the tarball fails at
   # exec with `libgomp.so.1: cannot open shared object file`. Found by booting.
+  #
+  # The pin's record: pin-current is what spec pins now; pin-earlier lists earlier pins, newest first (the first
+  # is the rollback). docs/UPSTREAM.md's Pinned images table holds why it's pinned, not these.
+  # The dated notes above are each pin's detail.
+  # pin-current: prism-b10822-bf8c069 · image tag b10822-bf8c069 · pinned 2026-10-25
+  # pin-earlier: prism-b10819-909f0ca `ae963910…` (2026-10-25); prism-b10787-73bfe6c `8426b957…` (2026-10-20); prism-b10776-d00e252 `e4ad4998…` (2026-10-14, ships PrismML #355); prism-b10770-6684606 `8dbbd2a6…` (2026-10-10); prism-b10754-2459f68 (2026-10-06); prism-b10735-842b188 (2026-09-24); prism-b10685-7dffb15 `919ee810…` (2026-09-18)
   spec: ghcr.io/noonghunna/llamacpp-prism@sha256:7724902b6ebb61a22007be98a251d1a569ece987d590910f8dcba0cb3f8d2549
 
 # ---------------------------------------------------------------------------

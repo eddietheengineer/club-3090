@@ -8,8 +8,8 @@ this does its mechanical part:
   1. resolve the release to an image digest (docker pull), read its labels and the upstream commit;
   2. check, in the new image, what our launchers rely on (below) and refuse when one changed;
   3. edit every place the pin lives: engine-pin-bump.sh (install.spec + compose image defaults),
-     lineage.source_ref, the two `pin-` lines in the engine profile, the engine's docs/UPSTREAM.md
-     row, and (Strata) the "Pinned" line of docs/engines/STRATA.md;
+     lineage.source_ref, the two `pin-` lines in the engine profile, and (Strata) the "Pinned" line of
+     docs/engines/STRATA.md. docs/UPSTREAM.md's Pinned images table carries no pin, so a bump never edits it;
   4. re-record the settings evidence (engine_config_reads.py verify <engine> --record);
   5. boot one slug through switch.sh, check the container runs the pinned digest, send 3 warm-up
      requests, run verify-full, read the host's free RAM and swap, and stop it;
@@ -64,7 +64,6 @@ STRATA_ENTRYPOINT_ENV = ("MODEL", "FAMILY", "MODEL_PATH", "CONTEXT", "KV", "VISI
 
 STRATA_CONFIG = "models/qwen3.8-flash-next/strata/launcher/strata_config.py"
 MAYA_PREPARE = "models/glm-5.3-flash/strata-maya/launcher/maya_prepare.py"
-UPSTREAM = "docs/UPSTREAM.md"
 STRATA_DOC = "docs/engines/STRATA.md"
 
 
@@ -282,28 +281,6 @@ def plan_edits(root: Path, engine: str, old: dict, new: dict) -> dict[str, str]:
         outgoing = f"{old['version']} `{old['short']}…` (upstream {old['upstream']}, recipe {old['recipe']}, {old['pinned']})"
     text = re.sub(r"^  # pin-earlier: ", lambda m: m.group(0) + outgoing + "; ", text, count=1, flags=re.M)
     out[yml_rel] = text
-
-    up = (root / UPSTREAM).read_text(encoding="utf-8")
-    row = one(r"^\| `" + re.escape(yml_rel) + r"` → .*$", up, UPSTREAM, re.M)
-    line = row.group(0)
-    repo = re.escape(ENGINES[engine]["repo"])
-    if engine == "strata":
-        seg = (repo + r"@sha256:[0-9a-f]{8}…` \(digest; Strata [^,;]+, upstream commit `[0-9a-f]{8}`, "
-               r"engine [^,;]+, pinned \d{4}-\d{2}-\d{2}\.")
-        new_seg = (f"{ENGINES[engine]['repo']}@sha256:{new['short']}…` (digest; Strata {new['version']}, upstream commit "
-                   f"`{new['upstream'][:8]}`, engine {new['engine']}, pinned {new['date']}.")
-        earlier = f"{old['version']} `{old['short']}…` (engine {old['engine']}, {old['pinned']})"
-    else:
-        seg = (repo + r"@sha256:[0-9a-f]{8}…` \(digest; Project Maya [^,;]+, upstream commit `[0-9a-f]{8}`, "
-               r"recipe `[0-9a-f]{8}`, archs [0-9;]+, pinned \d{4}-\d{2}-\d{2}\.")
-        new_seg = (f"{ENGINES[engine]['repo']}@sha256:{new['short']}…` (digest; Project Maya {new['version']}, upstream "
-                   f"commit `{new['upstream'][:8]}`, recipe `{new['recipe']}`, archs {new['archs']}, pinned {new['date']}.")
-        earlier = f"{old['version']} `{old['short']}…` ({old['pinned']})"
-    one(seg, line, f"{UPSTREAM} ({engine} row, current pin)")
-    one(r"Earlier pins: ", line, f"{UPSTREAM} ({engine} row)")
-    line = re.sub(seg, lambda m: new_seg, line)
-    line = line.replace("Earlier pins: ", "Earlier pins: " + earlier + "; ", 1)
-    out[UPSTREAM] = up[:row.start()] + line + up[row.end():]
 
     if engine == "strata":
         doc = (root / STRATA_DOC).read_text(encoding="utf-8")

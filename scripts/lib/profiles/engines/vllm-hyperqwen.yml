@@ -22,6 +22,9 @@ install:
   # and tagged ghcr.io/syv-ai/hyperqwen:sha-<7>. This is :sha-95ee3b6 (commit 95ee3b64, 2026-10-11),
   # the OCI index digest; it pulls without credentials. syv-ai publishes no versioned releases,
   # so a bump moves to a newer :sha-<7> digest after a rig boot and verify-full.
+  # The pin's record: pin-current is what spec pins now; pin-earlier lists earlier pins, newest first (the first
+  # is the rollback). docs/UPSTREAM.md's Pinned images table holds why it's pinned, not these.
+  # pin-current: :sha-95ee3b6 · commit 95ee3b64 (2026-10-11) · vLLM 0.31.0 + their patch series · pinned 2026-10-14
   spec: ghcr.io/syv-ai/hyperqwen@sha256:e99df7e6dc73208971ae0d1f1063deb100c997308248f253174176cf0514cb9e
 supported_model_families:
   - qwen35-dense          # Qwen3.8-27B. HyperQwen is written and measured for this checkpoint

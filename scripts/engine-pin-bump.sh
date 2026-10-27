@@ -12,7 +12,10 @@
 #     `image:` default carrying the old ref        pin-asserting test fixtures (they assert
 #                                                    what the resolver EMITS — update after
 #                                                    the resolver is right)
-#                                                  docs/UPSTREAM.md engine-pin row
+#                                                  the engine profile's `# pin-` lines (what
+#                                                    is pinned now, and the rollback)
+#                                                  docs/UPSTREAM.md mentions (dated bump rows:
+#                                                    history; the Pinned images table has no pin)
 #                                                  prose mentions (engine notes:, compose
 #                                                    headers, docs) — history, not config
 #
@@ -209,8 +212,9 @@ grep = subprocess.run(
 buckets = {
     "fixtures — update to the new tag IN THIS BUMP (they assert resolver output)": [],
     "arch_patches.yml — add an engine_pin loads:true row AFTER live boot; keep old row": [],
-    "docs/UPSTREAM.md — update the engine-pin row in this bump": [],
+    "docs/UPSTREAM.md — dated bump rows are history: leave them; add this bump's own row": [],
     "hand-written launcher/setup suggestion strings — repoint if stale": [],
+    "engine profile `# pin-` lines — move pin-current to the front of pin-earlier (the rollback), write the new pin-current": [],
 }
 PROSE = "prose / history (compose headers, baselines quality_env, docs, registry notes) — usually LEAVE"
 prose_files = {}
@@ -232,6 +236,8 @@ for line in grep.stdout.splitlines():
         buckets[list(buckets)[1]].append(line)
     elif rel == "docs/UPSTREAM.md":
         buckets[list(buckets)[2]].append(line)
+    elif rel == os.path.relpath(eng_path, ROOT) and "# pin-" in content:
+        buckets[list(buckets)[4]].append(line)
     elif rel.startswith("scripts/") and not rel.startswith("scripts/lib/profiles/"):
         buckets[list(buckets)[3]].append(line)
     else:
@@ -258,7 +264,10 @@ print(f"""
   3. Fixtures asserting the literal old pin (see report above) → update to {new_tag}.
   4. Live boot via switch.sh, 3 warm-up requests BEFORE judging output, verify-full
      (pass MODEL=<served-name>), high-ctx NIAH if KV-affecting.
-  5. docs/UPSTREAM.md engine-pin row + a dated models/<model>/CHANGELOG.md entry.
+  5. The engine profile's `# pin-current:` / `# pin-earlier:` lines (the old pin goes to the
+     front of pin-earlier: it is the rollback); a dated engine-pin row in docs/UPSTREAM.md's
+     Active follow-ups saying what the bump inherits (the Pinned images table carries no pin,
+     so leave it); a dated models/<model>/CHANGELOG.md entry.
   6. Targeted guards: test-launch-compat, test-diagnose-profile, test-patch-attribution,
      registry emit/JSON.
   7. If {ENGINE} has an entry in engine-config-reads.json (its launcher writes the engine's

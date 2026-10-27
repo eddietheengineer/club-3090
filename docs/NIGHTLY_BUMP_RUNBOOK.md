@@ -132,6 +132,11 @@ optimization), file an upstream issue and decide if the bump is still worth it.
 
 ### 6. Land the bump
 
+Record the pin in the engine profile, beside `install.spec`: the old `# pin-current:` line becomes the first entry
+of `# pin-earlier:` (it is the rollback), and a new `# pin-current:` says what is pinned now (the release, its source
+commit, the date and what was booted). `docs/UPSTREAM.md`'s Pinned images table says why an image is pinned and
+carries no pin, so leave it; `bash scripts/maintenance/list-image-pins.sh --pins` shows the result.
+
 ```bash
 git add <compose-file>
 git commit -m "bump <compose-name> to <engine>:<new-tag>"
@@ -219,7 +224,8 @@ does, and what to do by hand when it refuses.
    bump's PR.
 2. **In the pin worktree,** pull the image and pin its digest everywhere: `scripts/engine-pin-bump.sh <engine>
    <repo>@sha256:<digest>` (the spec and the compose defaults), `lineage.source_ref`, the engine profile's two `pin-`
-   lines, the engine's `docs/UPSTREAM.md` row and, for Strata, the "Pinned" line of `docs/engines/STRATA.md`. The
+   lines and, for Strata, the "Pinned" line of `docs/engines/STRATA.md`. `docs/UPSTREAM.md` carries no pin, so a
+   bump never edits it. The
    launchers inject the profile's image, so a boot from that worktree runs the new digest. Before that, check in the
    new image what the launchers rely on: for Strata, that `strata launch --kv` still offers `KV_FORMATS`, the `--spec`
    help still says setup writes `SETUP_SPEC` (both in `launcher/strata_config.py`) and the entrypoint still reads the
