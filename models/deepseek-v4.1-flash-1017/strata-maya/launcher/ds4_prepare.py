@@ -52,6 +52,10 @@ WEIGHTS = {
         },
     },
 }
+# Each tag's files as Maya shows them (its dashboard, /health and /metrics' model_label: tools/maya_quants.config_label,
+# from the installer record's ds4_quant - without one it names Maya's own EXL3 2.9 bpw quant). ISTA's quant is not one
+# of Maya's, so the name is shown as given.
+SHOWN = {"ista-iq2-xxs": "ISTA IQ2_XXS"}
 
 
 def say(msg: str) -> None:
@@ -172,7 +176,8 @@ def config(tag: str, d: Path, p: Path, a) -> Path:
         "port": 8080,
         "host": "0.0.0.0",
         "log": str(d / "maya-ds4.log"),
-        "installer": {"quant": tag, "written_by": "club-3090 ds4_prepare.py"},
+        "installer": {"family": "deepseek", "ds4_quant": SHOWN[tag], "quant": tag,
+                      "written_by": "club-3090 ds4_prepare.py"},
     }
     cfg.update(keys)                                  # reasoning_effort (high unless set), thinking_budget, model_name
     cfg["args"] += args                               # --cpu-threads
