@@ -28,9 +28,10 @@ empty when there is nothing to divide by (no drafts offered: accept_rate is empt
 
 Project Maya (the strata-maya engine, a Strata fork) serves the same document with its version in
 `engine.maya_version` and no draft counts in `totals`: its per-request "glm spec: N of M drafts
-accepted" lines (DeepSeek's maya-ds4: "maya ds4 serve: drafts N of M kept") go only to the engine log,
-`<storage.path>/maya.log` in the GLM recipe's layout. DeepSeek's server names no storage.path, so
-there the log is the `log` of the config its command line names (--config). Given
+accepted" lines (DeepSeek's maya-ds4: "maya ds4 serve: drafts N of M kept") go only to the engine log:
+the `log` of the run config the server's command line names (--config), for every engine, else
+`<storage.path>/maya.log` (the GLM recipe's layout; from v1.1.31 DeepSeek's server sends a
+storage.path too, which is its folder, not its log's). Given
 the container (--container, read with docker exec) or the log itself (--log-file), `snapshot` sums
 those lines into totals.drafts_offered / drafts_accepted, so `delta` reads Maya's drafts like
 Strata's, and `recent` sums the newest N of them. Without either, a Maya document reads with no
@@ -97,7 +98,7 @@ MAYA_DS4_CPU_LANE = re.compile(r"\bds4: \d+ routed experts on the CPU lane \(([0
 
 def maya_log_lines(data, source):
     """The engine log's per-request draft lines, oldest first, as (accepted, offered) pairs.
-    source: ("container", name) reads <storage.path>/maya.log there; ("file", path) reads a file."""
+    source: ("container", name) reads the engine log there (maya_log_text); ("file", path) reads a file."""
     return [(int(m.group(1) or m.group(3)), int(m.group(2) or m.group(4)))
             for m in MAYA_SPEC.finditer(maya_log_text(data, source))]
 
@@ -129,39 +130,61 @@ def maya_log_text(data, source):
         except OSError as e:
             fail(f"could not read {where}: {e}")
     else:
+        # The run config's `log` first: each Maya engine's config names its own (GLM maya.log, DeepSeek
+        # maya-ds4.log). /metrics' storage.path is only the quant's folder, and from v1.1.31 DeepSeek's
+        # server sends it too, where <storage.path>/maya.log isn't its log. <storage.path>/maya.log stays the
+        # fallback for a GLM server whose command line names no config.
         store = (data.get("storage") or {}).get("path") or ""
-        log = store.rstrip("/") + "/maya.log" if store.startswith("/") else config_log(where)
-        text = container_cat(where, log)
+        log = config_log(where, required=not store.startswith("/"))
+        text = container_cat(where, log or store.rstrip("/") + "/maya.log")
     return text
 
 
-def container_cat(where, path):
-    """A file's text in container `where` (docker exec), or exit 3."""
+def container_read(where, path):
+    """(a file's text in container `where` (docker exec), or None; why it couldn't be read)."""
     try:
         r = subprocess.run(["docker", "exec", where, "cat", path], capture_output=True,
                            encoding="utf-8", errors="replace", timeout=30)
     except (OSError, subprocess.TimeoutExpired) as e:
-        fail(f"could not read {path} in {where}: {e}")
+        return None, f"could not read {path} in {where}: {e}"
     if r.returncode != 0:
-        fail(f"could not read {path} in {where}: {r.stderr.strip() or 'docker exec failed'}")
-    return r.stdout
+        return None, f"could not read {path} in {where}: {r.stderr.strip() or 'docker exec failed'}"
+    return r.stdout, ""
 
 
-def config_log(where):
-    """The engine log a Maya server writes, when /metrics names no storage.path (DeepSeek's server): the
-    `log` of the run config its command line names (serve/server.py --config FILE, the container's
-    process 1 once the entrypoint has exec'd it), or exit 3."""
-    args = container_cat(where, "/proc/1/cmdline").split("\0")
+def container_cat(where, path):
+    """A file's text in container `where` (docker exec), or exit 3."""
+    text, why = container_read(where, path)
+    if text is None:
+        fail(why)
+    return text
+
+
+def config_log(where, required=True):
+    """The engine log a Maya server writes: the `log` of the run config its command line names
+    (serve/server.py --config FILE, the container's process 1 once the entrypoint has exec'd it). When it
+    can't be found: exit 3, or None when not `required` (the caller has a fallback)."""
+    def none(msg):
+        if required:
+            fail(msg)
+        return None
+    cmdline, why = container_read(where, "/proc/1/cmdline")
+    if cmdline is None:
+        return none(why)
+    args = cmdline.split("\0")
     if "--config" not in args[:-1]:
-        fail("Project Maya's /metrics names no storage.path and its server's command line no --config, "
-             "so its engine log can't be found")
+        return none("Project Maya's /metrics names no storage.path and its server's command line no --config, "
+                    "so its engine log can't be found")
     cfg = args[args.index("--config") + 1]
+    text, why = container_read(where, cfg)
+    if text is None:
+        return none(why)
     try:
-        log = json.loads(container_cat(where, cfg)).get("log") or ""
+        log = json.loads(text).get("log") or ""
     except (ValueError, AttributeError):
-        fail(f"{cfg} in {where} is not a JSON run config")
+        return none(f"{cfg} in {where} is not a JSON run config")
     if not str(log).startswith("/"):
-        fail(f"{cfg} in {where} names no engine log")
+        return none(f"{cfg} in {where} names no engine log")
     return str(log)
 
 

@@ -101,7 +101,7 @@
   },
   "strata-maya": {
    "engine_profile": "scripts/lib/profiles/engines/strata-maya.yml",
-   "verified_image": "ghcr.io/noonghunna/strata-maya-club3090@sha256:455863e787bd5ddeb11f3bf0ed631b46f47257aa09cf6e8d143081dc08dff2c3",
+   "verified_image": "ghcr.io/noonghunna/strata-maya-club3090@sha256:c94aa0e164a12b1f98db31a049adc44a68c9003bdd439034702df5fa4ce2cfa1",
    "render": "maya_prepare",
    "programs": [
     "models/glm-5.3-flash/strata-maya/launcher/maya_settings.py",
@@ -154,7 +154,7 @@
   },
   "strata-maya:ds4": {
    "engine_profile": "scripts/lib/profiles/engines/strata-maya.yml",
-   "verified_image": "ghcr.io/noonghunna/strata-maya-club3090@sha256:455863e787bd5ddeb11f3bf0ed631b46f47257aa09cf6e8d143081dc08dff2c3",
+   "verified_image": "ghcr.io/noonghunna/strata-maya-club3090@sha256:c94aa0e164a12b1f98db31a049adc44a68c9003bdd439034702df5fa4ce2cfa1",
    "render": "maya_ds4_prepare",
    "programs": [
     "models/deepseek-v4.1-flash-1017/strata-maya/launcher/ds4_settings.py",
