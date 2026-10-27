@@ -48,6 +48,9 @@ write >/dev/null || bad "config() failed with no settings"
 [[ "$(get 'c["sampling"]')" == "{'temperature': 1.0, 'top_p': 1.0}" ]] && ok "sampling 1.0 / 1.0" || bad "sampling: $(get 'c["sampling"]')"
 [[ "$(get 'c["model_name"]')" == deepseek-v4.1-flash ]] && ok "served as deepseek-v4.1-flash" || bad "model_name: $(get 'c.get("model_name")')"
 [[ "$(get 'c["exe"]')" == /opt/maya/build/maya-ds4 ]] && ok "exe maya-ds4" || bad "exe: $(get 'c["exe"]')"
+# (Maya's model_label reads ds4_quant: without it, the files are named "EXL3 2.9 bpw" - Maya's own quant)
+[[ "$(get 'c["installer"]["family"], c["installer"]["ds4_quant"]')" == "('deepseek', 'ISTA IQ2_XXS')" ]] \
+  && ok "installer record: family deepseek, ds4_quant ISTA IQ2_XXS" || bad "installer: $(get 'c["installer"]')"
 [[ "$(arg --tp) $(arg --vision) $(arg --dspark) $(arg --max-context)" == "1 off on 65536" ]] \
   && ok "--tp 1 (layer split), --vision off, --dspark on, --max-context 65536" || bad "args: $(get 'a')"
 want="$(env $(clean) python3 -c "import sys; sys.path.insert(0, '$L'); import ds4_settings; print(ds4_settings.threads())")"
