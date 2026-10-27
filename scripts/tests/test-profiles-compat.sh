@@ -36,7 +36,7 @@ p = load_profiles()
 assert len(p.hardware) == 12  # +dgx-spark (#576 follow-up), +rtx-a6000 (#948 thread), +cmp-170hx-64gb
 _p = __import__("pathlib").Path
 _nloc = lambda d: len(list(_p(d).glob("*.yml"))) if _p(d).is_dir() else 0
-assert len(p.models) - _nloc("scripts/lib/profiles-local/models.d") == 24   # +inkling-small, +qwen3.8-27b, +glm-5.3-flash, +qwen3.8-flash-next, +deepseek-v4-flash-vision-exp, +mimo-v2.6-9b, +thinkingcap-qwen3.8-27b, +deepseek-v4.1-flash-1017
+assert len(p.models) - _nloc("scripts/lib/profiles-local/models.d") == 25   # +inkling-small, +qwen3.8-27b, +glm-5.3-flash, +qwen3.8-flash-next, +deepseek-v4-flash-vision-exp, +mimo-v2.6-9b, +thinkingcap-qwen3.8-27b, +deepseek-v4.1-flash-1017, +nanbeige4.3-33b
 assert len(p.workloads) == 5
 _p = __import__("pathlib").Path
 _nloc = lambda d: len(list(_p(d).glob("*.yml"))) if _p(d).is_dir() else 0
@@ -222,6 +222,16 @@ p = load_profiles()
 # weight variant — live-verified 2026-07-14 (dual-fast autoround-int4 + 35b-a3b-dual both boot,
 # FlashInfer selected, coherent). So C5 must PASS even with autoround-int4 weights on the 3090.
 r = fits([p.hardware["rtx-3090"], p.hardware["rtx-3090"]], p.models["qwen3.6-27b"], p.workloads["long-ctx-single"], p.engines["vllm-stable"], p.drafters["qwen-mtp-builtin"], kv_format="fp8_e4m3", tp=2, weights_variant="autoround-int4", project_vram=False)
+assert "C5" not in r.diagnostics["constraints_failed"], r.reasons
+PY
+
+run_test "C5 hardware KV support: Ampere ALLOWS fp8_e4m3 for a generic dense W4A16 (FlashInfer path)" <<'PY'
+from scripts.lib.profiles.compat import load_profiles, fits
+p = load_profiles()
+# A standard GQA decoder (head_dim 128) takes FlashInfer on sm_86 whatever its weights; the Triton
+# fallback that rejects gemma above is head-dim driven. Live-verified 2026-10-26: nanbeige4.3-33b
+# AutoRound W4A16, TP=2, vLLM v0.32.0 logged "Using FLASHINFER attention backend", verify-full pass.
+r = fits([p.hardware["rtx-3090"], p.hardware["rtx-3090"]], p.models["nanbeige4.3-33b"], p.workloads["long-ctx-single"], p.engines["vllm-stable"], kv_format="fp8_e4m3", tp=2, weights_variant="autoround-int4", project_vram=False)
 assert "C5" not in r.diagnostics["constraints_failed"], r.reasons
 PY
 
@@ -552,7 +562,7 @@ from scripts.lib.profiles.compat import load_profiles
 p = load_profiles()  # raises UnknownProfileKeyError on any unknown key
 _p = __import__("pathlib").Path
 _nloc = lambda d: len(list(_p(d).glob("*.yml"))) if _p(d).is_dir() else 0
-assert len(p.models) - _nloc("scripts/lib/profiles-local/models.d") == 24
+assert len(p.models) - _nloc("scripts/lib/profiles-local/models.d") == 25
 PY
 
 run_test "strict keys: typo'd top-level model key fails naming file + closest key" <<'PY'

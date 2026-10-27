@@ -1,0 +1,168 @@
+# ===========================================================================
+# Profile (at-a-glance):
+#   Model:     Nanbeige4.3-33B (club-3090's own AutoRound INT4 — 4-bit, group 128, sym, packing
+#              auto_round:auto_gptq; iters 200, nsamples 512, seqlen 2048; 20.8 GB, lm_head and the
+#              embeddings bf16). A DENSE LlamaForCausalLM: 52 layers, GQA 56 query / 8 KV heads,
+#              head_dim 128, vocab 166,912, RoPE theta 1.2e8, 524,288 native context.
+#   Topology:  Dual 3090 PCIe (TP=2, no NVLink; NVLINK_MODE=auto detects)
+#   Drafter:   none (the checkpoint has no MTP head; a community DFlash2 drafter,
+#              ProCreations/Nanbeige4.3-33B-DFlash2, exists but is untested here)
+#   KV:        fp8_e4m3 (KV_CACHE_DTYPE override): ~104 KiB a token across both cards
+#   Vision:    no (a text model)
+#   Max ctx:   204800 — inside the measured fp8 KV pool (207,616 tokens), so ONE full-length request at
+#              a time (131072 gave 1.58x); the model supports 524288
+#   Genesis:   N/A — Genesis is Qwen3-Next-specific
+#   Status:    🐣 Incubating
+#   Caveats:   Not gate-passing yet: quality unmeasured (8-pack pending) and no clean throughput row —
+#              the first benches (2026-10-26) ran with the reference rig's GPU0 overheating (clock
+#              sagging to 555-790 MHz), so they measure its cooling as much as the engine.
+#   Best for:  long-context reasoning and agentic tool use (the model card's two scenarios)
+# ---------------------------------------------------------------------------
+# Derived from models/qwen3.8-27b/vllm/compose/dual/autoround-int4/mtp.yml (same AutoRound recipe,
+# same TP=2 + fp8 KV shape). Dropped as Qwen3.8-only: the MTP drafter and its patches (no MTP head
+# here), the Mamba/GDN cache knobs (no SSM state: every layer is attention), the effort-budget
+# patches and the chat-template override (this template reads enable_thinking, not
+# reasoning_effort), and W4A8 (a vendored int8-activation patch: the first boot stays on the stock
+# image, W4A8 is a later A/B), and the KV-offload tiers (test-kv-offload-knob allows them only on the
+# validated dual MTP composes). What remains is stock vLLM.
+#
+# BOOTED 2026-10-26 (2x 3090, 230 W): ready in 122 s on the first start (torch.compile 30 s; 87 s with
+#   the shared compile cache warm), Marlin int4 kernels, verify-full passes every applicable check.
+# CHECKED AGAINST THE PINNED IMAGE (vllm/vllm-openai:v0.32.0, transformers 5.19) before the boot:
+#   - config.json is transformers-5 shaped: RoPE theta lives only in rope_parameters (no top-level
+#     rope_theta). transformers 5.19 reads it, and vLLM's llama.py passes config.rope_parameters to
+#     get_rope, so theta 1.2e8 is honoured (an older stack would fall back to 10000: garbage).
+#   - quant_method "auto-round" -> vLLM's `inc` method (INCConfig.override_quantization_method); its
+#     default packing is auto_round:auto_gptq, the same as the Qwen3.8 AutoRound slugs. So no
+#     --quantization flag: the checkpoint's own config decides.
+#   - Every quantized layer divides into 128-groups whole at TP=2 (qkv 4608, o 3584, gate/up 11008,
+#     down 11008 a member): arithmetic, not a kernel test.
+#   - Tokenizer: the fast tokenizer.json and use_fast=False (the card's example) encode chat text,
+#     tool-call XML and <think> identically. BOS is <|im_start|> itself, so templated prompts
+#     start with it; eos <|im_end|> (166101) matches generation_config.
+#
+# THINKING AND TOOLS (the model card's Quickstart):
+#   - enable_thinking defaults ON (ENABLE_THINKING=false for non-thinking); reasoning goes to
+#     reasoning_content through --reasoning-parser qwen3 (<think> ... </think>).
+#   - preserve_thinking: the card recommends true for multi-turn tool use / agents and false for
+#     chat. Unset in the template means preserve, so agents get the recommended behaviour; a chat
+#     client can send chat_template_kwargs {"preserve_thinking": false} per request.
+#   - Tools: the template's default tool_call_format is "xml" (<function=...><parameter=...>), the
+#     card's recommendation, parsed by --tool-call-parser qwen3_coder. A client that switches the
+#     template to "json" needs TOOL_CALL_PARSER=hermes.
+#
+# SAMPLER — the card publishes two rows by scenario, not by thinking mode:
+#   agentic and tool use   temperature 1.0, top_p 0.95  <- the default here
+#   reasoning and chat     temperature 0.6, top_p 0.95  (TEMP=0.6)
+#   It names no top_k / min_p, so those fall back to vLLM's neutral values (top_k 0, min_p 0.0,
+#   repetition_penalty 1.0) unless TOP_K / MIN_P / REPEAT_PENALTY are set. A static command-list flag
+#   (test-compose-sampler-profiles: an entry without sampler_profiles keeps no sampler logic).
+#
+# MEMORY — MEASURED 2026-10-26 (2x 3090, this compose, util 0.90): weights 9.83 GiB a card, "GPU KV
+#   cache size: 207,616 tokens" (fp8), 21,842 MiB a card after boot. 204800 fits one full-length request
+#   with ~2.8K tokens to spare: lower GPU_MEMORY_UTILIZATION and the pool falls below it (vLLM then
+#   refuses to start), and KV_CACHE_DTYPE=auto (bf16) halves the pool, so pair it with MAX_MODEL_LEN<=~100000.
+# MODEL_DIR must hold the model folder itself: a symlink in MODEL_DIR pointing outside it does not
+#   resolve inside the container.
+# ===========================================================================
+services:
+  vllm-nanbeige43-33b-dual:
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.32.0}
+    container_name: "${ESTATE_CONTAINER:-vllm-nanbeige43-33b-dual}"
+    user: "0:${DOCKER_GID:-1000}"
+    # Repo contract (test-compose-restart-policy). ⚠️ When debugging a boot failure set
+    # CLUB3090_RESTART=no: under unless-stopped a failing container restart-loops and reads as
+    # "Up 1 second" — `docker inspect --format '{{.RestartCount}}'` is the tell.
+    restart: ${CLUB3090_RESTART:-unless-stopped}
+    shm_size: "16gb"
+    ipc: host
+    ports:
+      - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8048}}:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - ${MODEL_DIR:-../../../../../../models-cache}:/root/.cache/huggingface
+      - ../../../../../../scripts/detect_nvlink.sh:/etc/club3090/detect_nvlink.sh:ro
+      - ${CLUB3090_ENGINE_CACHE_DIR:-../../../cache}/torch_compile:/root/.cache/vllm/torch_compile_cache
+      - ${CLUB3090_ENGINE_CACHE_DIR:-../../../cache}/triton:/root/.triton/cache
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
+      - CUDA_VISIBLE_DEVICES
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+      - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-${OFFLINE:-0}}
+      - TRANSFORMERS_OFFLINE=${TRANSFORMERS_OFFLINE:-${OFFLINE:-0}}
+      - VLLM_WORKER_MULTIPROC_METHOD=spawn
+      - NVLINK_MODE=${NVLINK_MODE:-auto}
+      # Orthogonal to NVLINK_MODE: keep the peer TRANSPORT, drop vLLM's custom all-reduce kernel
+      # (#922 mitigation, #1332). Interpolated so the container never sees an EMPTY string —
+      # detect_nvlink.sh validates it against {0,1}.
+      - DISABLE_CUSTOM_ALL_REDUCE=${DISABLE_CUSTOM_ALL_REDUCE:-0}
+      - VLLM_SKIP_P2P_CHECK
+      - NCCL_CUMEM_ENABLE=0
+      - NCCL_P2P_DISABLE=${NCCL_P2P_DISABLE:-1}
+      - VLLM_NO_USAGE_STATS=1
+      - VLLM_USE_FLASHINFER_SAMPLER=${VLLM_USE_FLASHINFER_SAMPLER:-0}
+      - OMP_NUM_THREADS=1
+      - PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}
+    entrypoint:
+      - bash
+      - -c
+      - |
+        umask 0002
+        set -e
+        source /etc/club3090/detect_nvlink.sh
+        AR=""
+        # Gate on _CUSTOM_AR_ENABLED, not _NVLINK_ENABLED: the transport being up and the custom kernel
+        # running are two decisions (#1332). Falls back to _NVLINK_ENABLED for an older detect_nvlink.sh.
+        [ "$${_CUSTOM_AR_ENABLED:-$${_NVLINK_ENABLED:-0}}" = "1" ] || AR="--disable-custom-all-reduce"
+        exec vllm serve $$AR "$$@"
+      - --
+    command:
+      # Sampler: the card's agentic row, vLLM's neutral top_k / min_p / repetition_penalty (see the header).
+      # vLLM applies these as the defaults for requests that send none; a request's own values still win.
+      - --override-generation-config
+      - '{"temperature":${TEMP:-1.0},"top_p":${TOP_P:-0.95},"top_k":${TOP_K:-0},"min_p":${MIN_P:-0.0},"repetition_penalty":${REPEAT_PENALTY:-1.0}}'
+      - --model
+      - /root/.cache/huggingface/nanbeige4.3-33b-autoround-int4
+      # SERVED_NAME renames the model the API serves (default: nanbeige4.3-33b).
+      - --served-model-name
+      - ${SERVED_NAME:-nanbeige4.3-33b}
+      - --dtype
+      - bfloat16
+      - --tensor-parallel-size
+      - "${TP:-2}"
+      - --max-model-len
+      - "${MAX_MODEL_LEN:-204800}"
+      - --gpu-memory-utilization
+      - "${GPU_MEMORY_UTILIZATION:-0.90}"
+      - --max-num-seqs
+      - "${MAX_NUM_SEQS:-8}"
+      - --max-num-batched-tokens
+      - "${MAX_NUM_BATCHED_TOKENS:-8192}"
+      # Head-of-line-blocking mitigation (the qwen3.6 / qwen3.8 dual-fast precedent): interleaves a
+      # long prefill with concurrent decodes. LONG_PREFILL_TOKEN_THRESHOLD=0 disables.
+      - --long-prefill-token-threshold
+      - "${LONG_PREFILL_TOKEN_THRESHOLD:-4096}"
+      - --kv-cache-dtype
+      - "${KV_CACHE_DTYPE:-fp8_e4m3}"
+      - "${PREFIX_CACHE_ARG:---enable-prefix-caching}"
+      - --enable-chunked-prefill
+      - --reasoning-parser
+      - qwen3
+      - --enable-auto-tool-choice
+      - --tool-call-parser
+      - ${TOOL_CALL_PARSER:-qwen3_coder}
+      - --default-chat-template-kwargs
+      - '{"enable_thinking": ${ENABLE_THINKING:-true}}'
+      # usage.prompt_tokens_details.cached_tokens (#1246): pure response shaping, off upstream only
+      # because vLLM defaults the flag to False. Opt out: PROMPT_TOKENS_DETAILS_ARG=--no-enable-prompt-tokens-details
+      - "${PROMPT_TOKENS_DETAILS_ARG:---enable-prompt-tokens-details}"
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"

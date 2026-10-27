@@ -103,6 +103,12 @@
    "REASONING_EFFORT": "no reasoning_effort in its chat template",
    "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); it has no effort levels"
   },
+  "nanbeige4.3-33b": {
+   "evidence": "the checkpoint's own chat_template.jinja (Nanbeige/Nanbeige4.3-33B, byte-identical in our AutoRound INT4): reads enable_thinking, preserve_thinking and tool_call_format only",
+   "ENABLE_THINKING": true,
+   "REASONING_EFFORT": "the template has no reasoning-effort control: no reasoning_effort variable, thinking is only on or off (enable_thinking)",
+   "THINKING_BUDGETS": "the per-effort budget knobs key on reasoning-effort levels (effort_budget.py LEVELS), which this template doesn't have; no thinking budget is applied"
+  },
   "nemotron-3-puzzle-75b": {
    "evidence": "nvidia/NVIDIA-Nemotron-Labs-3-Puzzle-75B-A9B-NVFP4 chat_template.jinja: enable_thinking",
    "ENABLE_THINKING": true,
