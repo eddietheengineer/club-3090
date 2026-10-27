@@ -101,7 +101,7 @@
   },
   "strata-maya": {
    "engine_profile": "scripts/lib/profiles/engines/strata-maya.yml",
-   "verified_image": "ghcr.io/noonghunna/strata-maya-club3090@sha256:0ea83d74e9e60800938858e96dd4ed03bdd549c03b98baff70a9e859ce2fff8f",
+   "verified_image": "ghcr.io/noonghunna/strata-maya-club3090@sha256:0495a19aafd20e1db746b41578ccda1204a95fb9559157c65ac3ec1212185508",
    "render": "maya_prepare",
    "programs": [
     "models/glm-5.3-flash/strata-maya/launcher/maya_settings.py",
@@ -119,7 +119,8 @@
     "PRESENCE_PENALTY": "0.5",
     "REPEAT_PENALTY": "1.1",
     "CONTEXT": "65536",
-    "SERVED_NAME": "llm"
+    "SERVED_NAME": "llm",
+    "LOOP_GUARD": "false"
    },
    "setup_only": {},
    "server": "/opt/maya/serve/server.py",
@@ -128,11 +129,13 @@
     "--help"
    ],
    "config_receivers": [
-    "cfg"
+    "cfg",
+    "cfg or {}"
    ],
    "config_scopes": [
     "main",
-    "sampling_defaults_from_config"
+    "sampling_defaults_from_config",
+    "loop_guard_setting"
    ],
    "reads": {
     "reasoning_effort": "main(): svc.default_effort (logged 'thinking level when a request names none: ...')",
@@ -145,12 +148,13 @@
     "sampling.repetition_penalty": "sampling_defaults_from_config()",
     "args:--kv": "the engine's own flag (its GLM path reads only int8: the launcher refuses q4_0 / k8v4, a value rule this gate doesn't check)",
     "args:--max-context": "the engine's own flag: KV/state capacity",
-    "model_name": "main(): the served name (/v1/models, /props, every answer's model field)"
+    "model_name": "main(): the served name (/v1/models, /props, every answer's model field)",
+    "loop_guard": "loop_guard_setting(), from main(): svc.loop_guard (serve/loop_guard.py; MAYA_LOOP_GUARD in the environment wins, and no compose forwards it)"
    }
   },
   "strata-maya:ds4": {
    "engine_profile": "scripts/lib/profiles/engines/strata-maya.yml",
-   "verified_image": "ghcr.io/noonghunna/strata-maya-club3090@sha256:0ea83d74e9e60800938858e96dd4ed03bdd549c03b98baff70a9e859ce2fff8f",
+   "verified_image": "ghcr.io/noonghunna/strata-maya-club3090@sha256:0495a19aafd20e1db746b41578ccda1204a95fb9559157c65ac3ec1212185508",
    "render": "maya_ds4_prepare",
    "programs": [
     "models/deepseek-v4.1-flash-1017/strata-maya/launcher/ds4_settings.py",
@@ -168,7 +172,8 @@
     "REPEAT_PENALTY": "1.1",
     "CONTEXT": "32768",
     "SERVED_NAME": "llm",
-    "THREADS": "7"
+    "THREADS": "7",
+    "LOOP_GUARD": "false"
    },
    "setup_only": {},
    "server": "/opt/maya/serve/server.py",
@@ -177,11 +182,13 @@
     "--help"
    ],
    "config_receivers": [
-    "cfg"
+    "cfg",
+    "cfg or {}"
    ],
    "config_scopes": [
     "main",
-    "sampling_defaults_from_config"
+    "sampling_defaults_from_config",
+    "loop_guard_setting"
    ],
    "reads": {
     "reasoning_effort": "main(): svc.default_effort (DeepSeek's template: deepseek_effort_kwargs, logged 'thinking level when a request names none: ...')",
@@ -194,7 +201,8 @@
     "sampling.repetition_penalty": "sampling_defaults_from_config()",
     "args:--max-context": "maya-ds4's own flag: KV capacity",
     "args:--cpu-threads": "maya-ds4's own flag: the CPU lane's threads (the experts VRAM doesn't hold)",
-    "model_name": "main(): the served name (/v1/models, /props, every answer's model field)"
+    "model_name": "main(): the served name (/v1/models, /props, every answer's model field)",
+    "loop_guard": "loop_guard_setting(), from main(): svc.loop_guard (serve/loop_guard.py; MAYA_LOOP_GUARD in the environment wins, and no compose forwards it)"
    }
   }
  },

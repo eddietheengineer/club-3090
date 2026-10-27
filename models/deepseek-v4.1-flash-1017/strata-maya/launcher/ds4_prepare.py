@@ -13,8 +13,8 @@ names the model folder it indexes (ds4.txt model_dir), so the pack lives on /dat
 
 Steps, each skipped when already done: check the files' SHA-256 against WEIGHTS (Maya's own tables don't list ISTA's
 quant; minutes, once, again only when a file's size or time changes); build the pack (seconds; again when a file
-changed after it was built); seed the expert profile; fill the DSpark geometry the GGUF lacks (fix_dspark); write the
-config. Python stdlib only, plus the image's /opt/maya."""
+changed after it was built; Maya's pack builder fills in the DSpark geometry ISTA's GGUF lacks, from v1.1.30); seed the
+expert profile; write the config. Python stdlib only, plus the image's /opt/maya."""
 from __future__ import annotations
 
 import argparse
@@ -52,12 +52,6 @@ WEIGHTS = {
         },
     },
 }
-# DeepSeek-V4.1-Flash-1017's DSpark geometry, for a GGUF that carries only dspark.target_layers (ISTA's): the values
-# unsloth's UD-Q8_K_XL metadata and Strata's pack of the same files carry. pack_gguf.py reads them from the GGUF with
-# a default of 0, and a drafter whose block size is 0 is loaded but never drafts, silently (Maya v1.1.27-v1.1.29;
-# docs/UPSTREAM.md tracks it). Written only when the pack says 0, so a pack_gguf.py that fills them wins.
-DSPARK_GEOMETRY = {"dspark_block_size": 5, "dspark_noise_token_id": 128799, "dspark_markov_rank": 256,
-                   "dspark_n_routed_experts": 128, "dspark_num_experts_per_tok": 3}
 
 
 def say(msg: str) -> None:
@@ -161,26 +155,6 @@ def seed_profile(p: Path) -> None:
         say("expert profile seeded from data/expert-profile-ds4.bin")
 
 
-def fix_dspark(p: Path) -> None:
-    """Write DSPARK_GEOMETRY into the pack's ds4.txt where pack_gguf.py left 0 (see DSPARK_GEOMETRY)."""
-    f = p / "ds4.txt"
-    lines = f.read_text(encoding="utf-8").splitlines()
-    out, fixed = [], []
-    for ln in lines:
-        key, _, val = ln.partition(" ")
-        if key in DSPARK_GEOMETRY and val.strip() == "0":
-            ln = f"{key} {DSPARK_GEOMETRY[key]}"
-            fixed.append(key)
-        out.append(ln)
-    if not fixed:
-        return
-    tmp = f.with_name(f.name + ".tmp")
-    tmp.write_text("\n".join(out) + "\n", encoding="utf-8")
-    os.replace(tmp, f)
-    say(f"DSpark geometry missing from the GGUF: wrote DeepSeek-V4.1-Flash's ({', '.join(fixed)}); "
-        "without it the drafter never drafts")
-
-
 def config(tag: str, d: Path, p: Path, a) -> Path:
     gpus = [int(g) for g in a.gpus.split(",") if g.strip() != ""]
     keys, sampling, args, notes = ds4_settings.settings()   # checked once already at the start of main()
@@ -237,7 +211,6 @@ def main() -> int:
         say("VERIFY=0: the files' SHA-256 is not checked")
     p = pack(model, drafter, d, a.repack == "1")
     seed_profile(p)
-    fix_dspark(p)
     config(a.tag, d, p, a)
     return 0
 
