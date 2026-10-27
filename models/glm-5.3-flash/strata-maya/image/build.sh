@@ -55,6 +55,11 @@ REQUIRED_PACK_FLAGS="${REQUIRED_PACK_FLAGS:---gguf --out --compat-bf16}"
 # and passes to the pack builder: the same rule, for build/maya-ds4 and tools/ds4/pack_gguf.py
 REQUIRED_DS4_FLAGS="${REQUIRED_DS4_FLAGS:---pack --max-context --tp --cpu-threads --dspark --vision --serve}"
 REQUIRED_DS4_PACK_FLAGS="${REQUIRED_DS4_PACK_FLAGS:---model --out --drafter --shards}"
+# ... and our MiniMax launcher (the MiniMax-M3.1-Flash strata-maya slugs'), for build/maya-mm3 and tools/mm3/pack_gguf.py.
+# maya-mm3's usage text leaves out flags its parser takes (--profile, --serve), so these are checked in the binary
+# itself: each must be one of its strings, exactly (the parser compares the argument against that literal).
+REQUIRED_MM3_FLAGS="${REQUIRED_MM3_FLAGS:---pack --max-context --profile --kv-cache --kv-streaming --cpu-threads --dspark --vision --serve}"
+REQUIRED_MM3_PACK_FLAGS="${REQUIRED_MM3_PACK_FLAGS:---model --out --companions --shards}"
 
 TAG="" PUSH=0 FORCE=0 VERIFY="" JOBS=""
 usage() { awk 'NR > 1 && !/^#/ {exit} NR > 1 {sub(/^# ?/, ""); print}' "$0"; }
@@ -175,6 +180,34 @@ $help"
   "${run[@]}" test "$ref" -s /opt/maya/data/expert-profile-ds4.bin \
     || die "data/expert-profile-ds4.bin is missing (the DeepSeek launcher seeds each pack's profile from it)"
   say "check: maya-ds4 resolves and it and tools/ds4/pack_gguf.py offer every flag the DeepSeek launcher passes; its expert profile is there"
+
+  # MiniMax-M3.1-Flash's engine and pack builder (its strata-maya slugs)
+  local mm3=/opt/maya/build/maya-mm3
+  "${run[@]}" test "$ref" -x "$mm3" || die "$ref has no $mm3 (the release's CMakeLists.txt no longer defines maya-mm3?)"
+  missing="$("${run[@]}" ldd "$ref" "$mm3" | command grep 'not found' \
+             | command grep -v -E 'libcuda\.so|libnvidia' || true)"
+  [[ -z "$missing" ]] || die "libraries of $mm3 missing from the image:
+$missing"
+  absent="$("${run[@]}" /opt/maya/.venv/bin/python "$ref" -c '
+import sys
+data = open(sys.argv[1], "rb").read()
+print(" ".join(f for f in sys.argv[2:] if b"\0" + f.encode() + b"\0" not in data))' "$mm3" $REQUIRED_MM3_FLAGS 2>&1)" \
+    || die "could not read $mm3's strings:
+$absent"
+  [[ -z "$absent" ]] || die "maya-mm3 no longer takes: $absent (update the MiniMax launcher before taking this release)"
+  help="$("${run[@]}" /opt/maya/.venv/bin/python "$ref" /opt/maya/tools/mm3/pack_gguf.py --help 2>&1)" \
+    || die "tools/mm3/pack_gguf.py --help failed:
+$help"
+  absent=""
+  for f in $REQUIRED_MM3_PACK_FLAGS; do
+    command grep -q -E -- "(^|[^a-z-])$f([^a-z-]|$)" <<<"$help" || absent="$absent $f"
+  done
+  [[ -z "$absent" ]] || die "tools/mm3/pack_gguf.py no longer offers:$absent (update the MiniMax launcher before taking this release)"
+  "${run[@]}" test "$ref" -s /opt/maya/data/expert-profile-mm3.bin \
+    || die "data/expert-profile-mm3.bin is missing (the MiniMax launcher passes it as the engine's --profile)"
+  "${run[@]}" test "$ref" -s /opt/maya/tools/mm3/chat_template.jinja \
+    || die "tools/mm3/chat_template.jinja is missing (the MiniMax pack builder copies it into every pack)"
+  say "check: maya-mm3 resolves and takes every flag the MiniMax launcher passes; tools/mm3/pack_gguf.py offers its flags; the expert profile and chat template are there"
 
   # the launcher's first start builds a pack. gguf-py must import as the tools find it, and the pack
   # builder must index the release's own 12 MB synthetic GLM-5 model with the flags the launcher passes.
