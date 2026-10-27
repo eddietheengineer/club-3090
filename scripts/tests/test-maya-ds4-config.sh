@@ -6,13 +6,13 @@
 #   1. no settings: effort high, sampling 1.0 / 1.0, name deepseek-v4.1-flash, maya-ds4 with --tp 1 (a layer
 #      split on two GPUs), --vision off, --dspark on and a --cpu-threads from threads();
 #   2. each setting lands on Maya's key; medium / xhigh become high / max; ENABLE_THINKING=false wins;
-#      THREADS sets --cpu-threads; KV / SPEC_N write nothing (maya-ds4 has neither);
+#      THREADS sets --cpu-threads; KV / SPEC_N write nothing (maya-ds4 has neither); LOOP_GUARD true / false
+#      writes loop_guard (unset writes nothing: Maya's own, on);
 #   3. the config is rewritten from scratch each time, so a setting removed is gone;
 #   4. a bad value exits 2 from `validate` and stops ds4_prepare.py's main() before it looks at any file;
 #   5. threads(): half the CPUs (nproc / 2), at least 1, and with no argument the same count as the shell's nproc;
-#   6. fix_dspark(): writes DeepSeek-V4.1-Flash's DSpark geometry only where the pack says 0, keeps the rest;
-#   7. verify(): a file whose SHA-256 is wrong stops the boot; a matching set is recorded and not hashed again;
-#   8. every key a setting writes has evidence that the pinned Maya reads it (engine_config_reads.py check).
+#   6. verify(): a file whose SHA-256 is wrong stops the boot; a matching set is recorded and not hashed again;
+#   7. every key a setting writes has evidence that the pinned Maya reads it (engine_config_reads.py check).
 set -uo pipefail
 export PYTHONDONTWRITEBYTECODE=1   # the launcher folder is mounted into the container: leave no __pycache__
 export CLUB3090_CONFIG_DIR=/nonexistent/club-3090-test-config   # tests never read your real settings (#1466)
@@ -26,7 +26,7 @@ ok()  { echo "  ✓ $*"; }
 bad() { echo "  ✗ $*"; rc=1; }
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-SETTINGS="REASONING_EFFORT ENABLE_THINKING THINKING_BUDGET MAX_TOKENS KV SPEC_N TEMP TOP_P TOP_K MIN_P PRESENCE_PENALTY REPEAT_PENALTY SERVED_NAME THREADS"
+SETTINGS="REASONING_EFFORT ENABLE_THINKING THINKING_BUDGET MAX_TOKENS KV SPEC_N TEMP TOP_P TOP_K MIN_P PRESENCE_PENALTY REPEAT_PENALTY SERVED_NAME THREADS LOOP_GUARD"
 clean() { for v in $SETTINGS; do printf -- '-u %s ' "$v"; done; }
 # config() for ista-iq2-xxs into $work/ista-iq2-xxs/maya-ds4.json, with the given settings
 write() {
@@ -52,8 +52,8 @@ write >/dev/null || bad "config() failed with no settings"
   && ok "--tp 1 (layer split), --vision off, --dspark on, --max-context 65536" || bad "args: $(get 'a')"
 want="$(env $(clean) python3 -c "import sys; sys.path.insert(0, '$L'); import ds4_settings; print(ds4_settings.threads())")"
 [[ "$(arg --cpu-threads)" == "$want" && "$want" -ge 1 ]] && ok "--cpu-threads $want = threads()" || bad "--cpu-threads $(arg --cpu-threads), threads() $want"
-[[ "$(get '"thinking_budget" in c or "--kv" in a or "--spec" in a')" == False ]] \
-  && ok "no thinking_budget / --kv / --spec: Maya's own" || bad "an unset setting was written"
+[[ "$(get '"thinking_budget" in c or "--kv" in a or "--spec" in a or "loop_guard" in c')" == False ]] \
+  && ok "no thinking_budget / --kv / --spec / loop_guard: Maya's own" || bad "an unset setting was written"
 [[ "$(get 'c["gpu"]') $(get 'c["log"].endswith("/ista-iq2-xxs/maya-ds4.log")')" == "[0, 1] True" ]] \
   && ok "GPUs [0, 1], the engine log in the quant's folder" || bad "gpu/log: $(get 'c["gpu"], c["log"]')"
 
@@ -69,18 +69,20 @@ write REASONING_EFFORT=medium THINKING_BUDGET=8192 TEMP=0.7 TOP_P=0.9 TOP_K=40 M
   && ok "sampler settings" || bad "sampling: $(get 'c["sampling"]')"
 write REASONING_EFFORT=xhigh >/dev/null; [[ "$(get 'c["reasoning_effort"]')" == max ]] && ok "xhigh -> max" || bad "xhigh"
 write SERVED_NAME=llm >/dev/null; [[ "$(get 'c["model_name"]')" == llm ]] && ok "SERVED_NAME=llm -> model_name llm" || bad "served name: $(get 'c["model_name"]')"
+write LOOP_GUARD=false >/dev/null; [[ "$(get 'c["loop_guard"]')" == False ]] && ok "LOOP_GUARD=false -> loop_guard false" || bad "loop guard off: $(get 'c.get("loop_guard")')"
+write LOOP_GUARD=true >/dev/null; [[ "$(get 'c["loop_guard"]')" == True ]] && ok "LOOP_GUARD=true -> loop_guard true" || bad "loop guard on: $(get 'c.get("loop_guard")')"
 out="$(write ENABLE_THINKING=false REASONING_EFFORT=low)"
 [[ "$(get 'c["reasoning_effort"]')" == none ]] && command grep -q "ENABLE_THINKING=false wins" <<<"$out" \
   && ok "ENABLE_THINKING=false -> none, with a note" || bad "thinking off: $out"
 
 echo "== 3. a removed setting is gone"
 write >/dev/null
-[[ "$(get 'c["reasoning_effort"], "thinking_budget" in c, c["model_name"], a[a.index("--cpu-threads")+1]')" == "('high', False, 'deepseek-v4.1-flash', '$want')" ]] \
+[[ "$(get 'c["reasoning_effort"], "thinking_budget" in c, c["model_name"], a[a.index("--cpu-threads")+1], "loop_guard" in c')" == "('high', False, 'deepseek-v4.1-flash', '$want', False)" ]] \
   && ok "back to the defaults" || bad "a setting lingered: $(get 'c["reasoning_effort"], "thinking_budget" in c, c["model_name"], a')"
 
 echo "== 4. a bad value"
 for probe in REASONING_EFFORT=minimal REASONING_EFFORT=75 ENABLE_THINKING=off THINKING_BUDGET=-1 TEMP=x TOP_P=0 \
-             TOP_K=65 MIN_P=2 PRESENCE_PENALTY=-1 REPEAT_PENALTY=0 THREADS=0 THREADS=four; do
+             TOP_K=65 MIN_P=2 PRESENCE_PENALTY=-1 REPEAT_PENALTY=0 THREADS=0 THREADS=four LOOP_GUARD=off LOOP_GUARD=0; do
   err="$(env $(clean) "$probe" python3 "$L/ds4_settings.py" validate 2>&1)"; r=$?
   [[ $r -eq 2 && "$err" == *"${probe%%=*}"* ]] && ok "$probe refused" || bad "$probe: rc=$r $err"
 done
@@ -111,27 +113,7 @@ mine="$(python3 -c "import sys; sys.path.insert(0, '$L'); import ds4_settings; p
 shell="$(env -u OMP_NUM_THREADS -u OMP_THREAD_LIMIT nproc)"; shell=$(( shell / 2 )); (( shell < 1 )) && shell=1
 [[ "$mine" == "$shell" ]] && ok "threads() = nproc / 2 here ($mine)" || bad "threads() $mine, nproc / 2 $shell"
 
-echo "== 6. fix_dspark(): only where the pack says 0"
-mkdir -p "$work/pack0" "$work/packok"
-printf 'hidden_size 5120\ndspark_block_size 0\ndspark_noise_token_id 0\ndspark_markov_rank 0\ndspark_n_routed_experts 0\ndspark_num_experts_per_tok 0\ndspark_target_layer_ids 37,38,39\nformat gguf\n' > "$work/pack0/ds4.txt"
-printf 'hidden_size 5120\ndspark_block_size 4\ndspark_noise_token_id 7\ndspark_markov_rank 8\ndspark_n_routed_experts 64\ndspark_num_experts_per_tok 2\ndspark_target_layer_ids 37,38,39\n' > "$work/packok/ds4.txt"
-cp "$work/packok/ds4.txt" "$work/packok.orig"
-out="$(python3 - "$L" "$work" <<'PY'
-import sys
-from pathlib import Path
-sys.path.insert(0, sys.argv[1])
-import ds4_prepare
-w = Path(sys.argv[2])
-ds4_prepare.fix_dspark(w / "pack0")
-ds4_prepare.fix_dspark(w / "packok")
-PY
-)"
-[[ "$(cat "$work/pack0/ds4.txt")" == "$(printf 'hidden_size 5120\ndspark_block_size 5\ndspark_noise_token_id 128799\ndspark_markov_rank 256\ndspark_n_routed_experts 128\ndspark_num_experts_per_tok 3\ndspark_target_layer_ids 37,38,39\nformat gguf')" ]] \
-  && command grep -q 'DSpark geometry missing' <<<"$out" && ok "zeros -> DeepSeek-V4.1-Flash's geometry, with a note; the other lines kept" \
-  || bad "pack0: $(cat "$work/pack0/ds4.txt") / $out"
-cmp -s "$work/packok/ds4.txt" "$work/packok.orig" && ok "a pack that has its geometry is left alone" || bad "packok changed: $(cat "$work/packok/ds4.txt")"
-
-echo "== 7. verify(): the SHA-256 table stops a damaged file; a match is recorded"
+echo "== 6. verify(): the SHA-256 table stops a damaged file; a match is recorded"
 out="$(python3 - "$L" "$work" <<'PY' 2>&1
 import hashlib, sys
 from pathlib import Path
@@ -156,7 +138,7 @@ command grep -q "every file matches" <<<"$out" && command grep -q "not rehashed"
 command grep -q "SHA-256 mismatch" <<<"$out" && ! command grep -q "NOT STOPPED" <<<"$out" \
   && ok "a changed file is hashed again and stops the boot" || bad "verify mismatch: $out"
 
-echo "== 8. the pinned engine reads every key a setting writes (engine-config-reads.json; no docker)"
+echo "== 7. the pinned engine reads every key a setting writes (engine-config-reads.json; no docker)"
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/lib/profiles/engine_config_reads.py check --engine strata-maya:ds4 || rc=1
 
 if [[ "$rc" -eq 0 ]]; then echo "test-maya-ds4-config: ok"; else echo "test-maya-ds4-config: FAILED" >&2; fi

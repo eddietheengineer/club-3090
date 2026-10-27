@@ -21,6 +21,9 @@ boot. Maya's serve/server.py (the strata-maya-club3090 image) reads:
   REPEAT_PENALTY         sampling.repetition_penalty > 0 (1 = off)
   SERVED_NAME            model_name            the name /v1/models reports; unset = deepseek-v4.1-flash. One name,
                                                no spaces
+  LOOP_GUARD             loop_guard            true | false: the server's loop guard (serve/loop_guard.py, v1.1.30
+                                               on), which breaks an answer or a thinking block stuck repeating one
+                                               block of tokens; unset = Maya's own (on)
   THREADS                args: --cpu-threads   the CPU lane's threads (the experts VRAM doesn't hold are computed
                                                there, from RAM); whole number >= 1. Unset: half the CPUs this
                                                container may use, at least 1 (threads(), below)
@@ -127,6 +130,11 @@ def settings():
         if any(c.isspace() for c in served):
             raise Bad(f"SERVED_NAME={served!r}: expected one name, without spaces")
         keys["model_name"] = served
+    guard = _env("LOOP_GUARD")
+    if guard is not None:
+        if guard not in ("true", "false"):
+            raise Bad(f"LOOP_GUARD={guard!r}: expected true or false")
+        keys["loop_guard"] = guard == "true"
     n = _env("THREADS")
     if n is not None:
         args += ["--cpu-threads", str(_int("THREADS", n, 1))]

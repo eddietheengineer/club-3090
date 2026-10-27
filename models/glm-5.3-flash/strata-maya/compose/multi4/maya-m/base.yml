@@ -66,7 +66,8 @@ services:
       MAYA_PCIE_SHARE: "${MAYA_PCIE_SHARE:-}"
       MAYA_CPU_LANE: "${MAYA_CPU_LANE:-}"
       # Maya's server defaults, written into maya.json at every boot by maya_prepare.py
-      # (launcher/maya_settings.py maps each); unset = effort max, sampling 1.0 / 0.95, Maya's 32K budget, the name glm-5.3-flash
+      # (launcher/maya_settings.py maps each); unset = effort max, sampling 1.0 / 0.95, Maya's 32K budget, the name glm-5.3-flash,
+      # the loop guard on (Maya's own)
       REASONING_EFFORT:
       ENABLE_THINKING:
       THINKING_BUDGET:
@@ -78,6 +79,7 @@ services:
       PRESENCE_PENALTY:
       REPEAT_PENALTY:
       SERVED_NAME:
+      LOOP_GUARD:
       # the entrypoint passes --host 0.0.0.0 and --port 8080 itself
     volumes:
       - "${MODEL_DIR:-../../../../../../models-cache}/glm-5.3-flash-maya-gguf/Maya-M:/gguf:ro"

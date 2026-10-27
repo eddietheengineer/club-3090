@@ -20,8 +20,8 @@
 #              the data volume (under a second: an index, no weights copied): ready in 183 s. A later start
 #              skips both: ready in 56 s on the reference rig, from a cold page cache.
 #              Maya v1.1.27-v1.1.29's pack builder left the DSpark geometry at 0 for ISTA's GGUF, which carries none,
-#              so the drafter loaded and never drafted; v1.1.30's fills in DeepSeek-V4.1-Flash's own values, and the
-#              launcher's copy of them stays as a fallback (docs/UPSTREAM.md). Maya copies every CPU-side expert into RAM when it
+#              so the drafter loaded and never drafted unless the launcher wrote the values in; v1.1.30's pack
+#              builder fills in DeepSeek-V4.1-Flash's own (docs/UPSTREAM.md). Maya copies every CPU-side expert into RAM when it
 #              fits (--mmap-experts auto): 100.4 GB here, so a host with less RAM reads them from the files while
 #              it answers (slower, not measured). The CPU lane's threads default to half the CPUs (nproc / 2,
 #              safe on any host); a rig that has measured its own sets THREADS. The reference rig runs 24 of 32:
@@ -72,7 +72,7 @@ services:
       MAYA_TP: "${MAYA_TP:-1}"
       # Maya's server defaults, written into maya-ds4.json at every boot by ds4_prepare.py
       # (launcher/ds4_settings.py maps each); unset = effort high, sampling 1.0 / 1.0, the name deepseek-v4.1-flash,
-      # a CPU lane of half the CPUs (nproc / 2)
+      # a CPU lane of half the CPUs (nproc / 2), the loop guard on (Maya's own)
       REASONING_EFFORT:
       ENABLE_THINKING:
       THINKING_BUDGET:
@@ -83,6 +83,7 @@ services:
       PRESENCE_PENALTY:
       REPEAT_PENALTY:
       SERVED_NAME:
+      LOOP_GUARD:
       THREADS:
       # the entrypoint passes --host 0.0.0.0 and --port 8080 itself
     volumes:
