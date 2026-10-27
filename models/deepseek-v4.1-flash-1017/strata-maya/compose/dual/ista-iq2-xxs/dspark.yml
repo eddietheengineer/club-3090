@@ -19,7 +19,7 @@
 #              start SHA-256-checks the 7 files (~255 GB: 2 min on the reference rig) and builds Maya's pack on
 #              the data volume (under a second: an index, no weights copied): ready in 183 s. A later start
 #              skips both: ready in 56 s on the reference rig, from a cold page cache.
-#              Maya v1.1.28's pack builder leaves the DSpark geometry at 0 for ISTA's GGUF, which carries none;
+#              Maya v1.1.27-v1.1.29's pack builder leaves the DSpark geometry at 0 for ISTA's GGUF, which carries none;
 #              the launcher writes DeepSeek-V4.1-Flash's own values into the pack (docs/UPSTREAM.md tracks it),
 #              or the drafter would load and never draft. Maya copies every CPU-side expert into RAM when it
 #              fits (--mmap-experts auto): 100.4 GB here, so a host with less RAM reads them from the files while
@@ -52,7 +52,7 @@
 # a 6K prompt -35%; not re-measured on this compose).
 services:
   strata-maya:
-    image: ${STRATA_MAYA_IMAGE:-ghcr.io/noonghunna/strata-maya-club3090@sha256:a39baf73c37cfdd8e8ab68a859603715b6181e3389b1fe573bcf13c816c10e7c}
+    image: ${STRATA_MAYA_IMAGE:-ghcr.io/noonghunna/strata-maya-club3090@sha256:0ea83d74e9e60800938858e96dd4ed03bdd549c03b98baff70a9e859ce2fff8f}
     container_name: ${ESTATE_CONTAINER:-strata-maya-deepseek41-flash-dual-ista-iq2-xxs}
     restart: ${CLUB3090_RESTART:-unless-stopped}
     # root, with the launcher's group: what Maya writes to the data volume stays removable by the user
