@@ -181,7 +181,12 @@ build_model_dir() {
   mk "$MD/fx-gguf/.cache/huggingface/download/Q8/fx-Q8.gguf.metadata" meta
   mk "$MD/fx-gguf/.cache/huggingface/download/Q4/fx-Q4-00001-of-00002.gguf.metadata" meta
   mk "$MD/fx-gguf/notes.txt" "a user's own file beside the quants"
+  mk "$MD/fx-gguf/.setup-verified.tsv" "sha	1	1	main	Q8/fx-Q8.gguf"
   mk "$MD/fx-drafter-gguf/fx-drafter.gguf"
+  # folder bookkeeping: goes only once nothing else is left in the recipe's folder
+  mk "$MD/fx-drafter-gguf/.setup-verified.tsv" "sha	1	1	main	fx-drafter.gguf"
+  mk "$MD/fx-drafter-gguf/.cache/huggingface/CACHEDIR.TAG" tag
+  mk "$MD/fx-drafter-gguf/.cache/huggingface/.gitignore" "*"
   mk "$MD/fx-other-gguf/fx-other.gguf"
   # symlinked folder: MODEL_DIR/fx-linked-gguf → another disk
   mk "$DISK2/fx-linked-gguf/A/fx-a.gguf"; mk "$DISK2/fx-linked-gguf/B/fx-b.gguf"
@@ -237,6 +242,8 @@ check "a real-catalog slug is unknown here (rc=$rc)" '[[ $rc == 1 ]]'
 echo "== show: path, symlink resolved, state, size, other users"
 out="$(W show llamacpp/fx-q4 --json)"
 check "Q4 folder is complete" '[[ "$(J "[f[\"state\"] for f in d[\"folders\"] if f[\"path\"].endswith(\"fx-gguf/Q4\")][0]" <<<"$out")" == complete ]]'
+check "Q4 shows its folder size and its own files' size" \
+  '[[ "$(J "[(f[\"size_bytes\"] > 0, f[\"recipe_bytes\"] > 0) for f in d[\"folders\"] if f[\"path\"].endswith(\"fx-gguf/Q4\")][0]" <<<"$out")" == "(True, True)" ]]'
 check "the deprecated slug is named as a user of Q4" \
   '[[ "$(J "[u[\"slug\"]+\":\"+u[\"status\"] for f in d[\"folders\"] if f[\"path\"].endswith(\"Q4\") for u in f[\"users\"]]" <<<"$out")" == *"llamacpp-club3090/fx-q4-old:deprecated"* ]]'
 check "the Q8 slug (other quant, same bucket) is NOT a user of the Q4 folder" \
@@ -261,8 +268,8 @@ W remove llamacpp/fx-q8 --yes >/dev/null; rc=$?
 check "remove --yes: rc 0" '[[ $rc == 0 ]]'
 check "Q8 file and its hf record are gone, the emptied Q8 dir too" \
   '[[ ! -e "$MD/fx-gguf/Q8/fx-Q8.gguf" && ! -e "$MD/fx-gguf/.cache/huggingface/download/Q8/fx-Q8.gguf.metadata" && ! -d "$MD/fx-gguf/Q8" ]]'
-check "Q4 beside it, its hf record, and a user's own file all survive" \
-  '[[ -f "$MD/fx-gguf/Q4/fx-Q4-00001-of-00002.gguf" && -f "$MD/fx-gguf/Q4/fx-Q4-00002-of-00002.gguf" && -f "$MD/fx-gguf/.cache/huggingface/download/Q4/fx-Q4-00001-of-00002.gguf.metadata" && -f "$MD/fx-gguf/notes.txt" ]]'
+check "Q4 beside it, its hf record, a user's own file and the folder's verify marker all survive" \
+  '[[ -f "$MD/fx-gguf/Q4/fx-Q4-00001-of-00002.gguf" && -f "$MD/fx-gguf/Q4/fx-Q4-00002-of-00002.gguf" && -f "$MD/fx-gguf/.cache/huggingface/download/Q4/fx-Q4-00001-of-00002.gguf.metadata" && -f "$MD/fx-gguf/notes.txt" && -f "$MD/fx-gguf/.setup-verified.tsv" ]]'
 
 echo "== shared folder: refused while another slug needs the files (deprecated counts)"
 build_model_dir
@@ -276,6 +283,7 @@ check "remove --yes without --allow-shared: rc 3, nothing deleted" \
 W remove llamacpp/fx-q4 --yes --allow-shared >/dev/null; rc=$?
 check "positive control — --allow-shared: rc 0, Q4 + drafter gone" \
   '[[ $rc == 0 && ! -e "$MD/fx-gguf/Q4/fx-Q4-00001-of-00002.gguf" && ! -e "$MD/fx-drafter-gguf/fx-drafter.gguf" ]]'
+check "  the drafter's folder, emptied, goes whole — its verify marker and hf tags with it" '[[ ! -e "$MD/fx-drafter-gguf" ]]'
 check "  …and fx-other's own weights, Q8 and the user's file survive" \
   '[[ -f "$MD/fx-other-gguf/fx-other.gguf" && -f "$MD/fx-gguf/Q8/fx-Q8.gguf" && -f "$MD/fx-gguf/notes.txt" ]]'
 build_model_dir

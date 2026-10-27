@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # weights.sh — the weights folders a slug mounts, and removing them safely (#1814).
 #
-#   bash scripts/weights.sh show   <slug> [--json]
+#   bash scripts/weights.sh show   <slug> [--json] [--model-dir DIR]
 #   bash scripts/weights.sh remove <slug> --dry-run [--json]
 #   bash scripts/weights.sh remove <slug> [--yes] [--allow-shared] [--digest D]
 #

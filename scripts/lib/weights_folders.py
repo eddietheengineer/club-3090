@@ -70,6 +70,11 @@ EXIT_OK, EXIT_ERROR, EXIT_SHARED, EXIT_REFUSED, EXIT_UNCONFIRMED = 0, 1, 3, 4, 5
 FILE_KNOBS = ("GGUF_FILE", "DRAFT_FILE", "MMPROJ_FILE")
 # hf --local-dir bookkeeping for one file: <subdir>/.cache/huggingface/download/<f>…
 HF_STAGE = Path(".cache") / "huggingface" / "download"
+# Bookkeeping of a whole recipe folder, not of one file: setup.sh's hash marker and
+# hf --local-dir's cache tags. They go only when NOTHING else would be left in the
+# recipe's own local_subdir — otherwise the emptied folder lingers, and c3 reads a
+# folder with no weights in it as an interrupted (PARTIAL) download, not an absent one.
+FOLDER_BOOKKEEPING = (".setup-verified.tsv", ".cache/huggingface/CACHEDIR.TAG", ".cache/huggingface/.gitignore")
 GIB = 1024 ** 3
 
 
@@ -365,6 +370,10 @@ def show(idx: Index, slug: str) -> dict:
         size, count = _du(Path(real)) if os.path.exists(real) else (0, 0)
         f.update({"state": state, "size_bytes": size, "file_count": count,
                   "users": _folder_users(idx, slug, real, needed or [real])})
+        # A recipe's own files can be a sliver of the folder they sit in (a vision
+        # projector in a bucket of quants): say both, or "75 GiB" reads as its size.
+        if needed:
+            f["recipe_bytes"] = sum(_du(Path(n))[0] for n in set(needed) if os.path.isfile(n))
         if note:
             f["note"] = note
         out.append(f)
@@ -479,7 +488,7 @@ def plan_remove(idx: Index, slug: str, *, docker: str = "docker") -> Plan:
     touched: dict[str, str] = {}          # resolved folder → as configured
     top_links: dict[str, Path] = {}
     shared: dict[str, dict] = {}          # folder → {users, files}: ONE refusal per folder
-    subdirs: set[str] = set()             # resolved recipe subdirs — the rmdir ceiling
+    subdirs: dict[str, tuple[str, str]] = {}   # resolved recipe subdir → (folder shown, recipe)
     for m in mine:
         folder = model_dir / m.folder_rel
         if not m.recipe:
@@ -511,7 +520,7 @@ def plan_remove(idx: Index, slug: str, *, docker: str = "docker") -> Plan:
                         folder=str(folder))
             continue
         base = model_dir / m.subdir
-        subdirs.add(_real(base))
+        subdirs.setdefault(_real(base), (str(folder), m.key))
         for f in m.files:
             if not _rel_ok(f):
                 plan.refuse("escape", f"recipe {m.key}: file {f!r} is not a plain relative path", folder=str(folder))
@@ -563,7 +572,25 @@ def plan_remove(idx: Index, slug: str, *, docker: str = "docker") -> Plan:
         plan.notes.append("nothing of this slug's recipes is on disk")
 
     going = {t["resolved"] for t in plan.targets}
-    plan.dirs = _emptied_dirs(going, subdirs, set(roots))
+    if plan.targets:
+        for sd, (folder, key) in sorted(subdirs.items()):
+            if not any(_under(sd, r) for r in roots) or sd in roots:
+                continue        # never MODEL_DIR / a model root itself, never outside one
+            left = [f for f in _regular_and_links_under(sd) if f not in going]
+            marks = {os.path.join(sd, b) for b in FOLDER_BOOKKEEPING}
+            if not left or not all(f in marks for f in left):
+                continue
+            for f in sorted(left):
+                st = os.lstat(f)
+                if not stat.S_ISREG(st.st_mode):
+                    continue
+                plan.targets.append({
+                    "path": f, "resolved": f, "folder": folder, "recipe": key,
+                    "bytes": st.st_blocks * 512, "freed_bytes": st.st_blocks * 512 if st.st_nlink == 1 else 0,
+                    "ino": st.st_ino, "bookkeeping": True,
+                })
+        going = {t["resolved"] for t in plan.targets}
+    plan.dirs = _emptied_dirs(going, set(subdirs), set(roots))
     # A folder link goes only when nothing is left behind it (hf bookkeeping aside).
     for top in top_links.values():
         tgt = _real(top)
@@ -600,6 +627,14 @@ def _emptied_dirs(going: set[str], subdirs: set[str], roots: set[str]) -> list[s
         if all((e in going) or (e in empty) for e in entries):
             empty.append(d)
     return empty
+
+
+def _regular_and_links_under(d: str) -> list[str]:
+    """Every non-directory entry under ``d`` (files AND symlinks), no link followed."""
+    out = []
+    for dirpath, _dirs, files in os.walk(d, followlinks=False):
+        out += [os.path.join(dirpath, n) for n in files]
+    return out
 
 
 def _files_left(target: str, going: set[str]) -> list[str]:
@@ -730,7 +765,9 @@ def print_show(d: dict) -> None:
         if f["linked"]:
             print(f"    resolved  {f['resolved']}")
         print(f"    state     {f['state']}" + (f"  ({f['note']})" if f.get("note") else ""))
-        print(f"    size      {_gib(f['size_bytes'])} · {f['file_count']} file(s)")
+        own = (f"  (this recipe's files: {_gib(f['recipe_bytes'])})"
+               if "recipe_bytes" in f and f["recipe_bytes"] < 0.99 * f["size_bytes"] else "")
+        print(f"    size      {_gib(f['size_bytes'])} · {f['file_count']} file(s){own}")
         if f["recipes"]:
             print(f"    recipe    {', '.join(f['recipes'])}")
         need = [u for u in f["users"] if u["needs_files"]]
@@ -772,7 +809,7 @@ def print_plan(d: dict) -> None:
             print(f"    delete  {shown}  {_gib(t['bytes'])}" + (f"  ({t['note']})" if t.get("note") else ""))
         bk = [t for t in ts if t["bookkeeping"]]
         if bk:
-            print(f"    delete  {len(bk)} hf download record(s) for these files (.cache/huggingface/download)")
+            print(f"    delete  {len(bk)} bookkeeping file(s) (hf download records, setup.sh's verify marker)")
     for dd in d.get("dirs") or []:
         print(f"  rmdir   {dd}  (empty once the files go)")
     for lk in d["links"]:
@@ -799,13 +836,15 @@ def print_plan(d: dict) -> None:
 def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(prog="weights.sh", description=__doc__.split("\n\n")[0])
     ap.add_argument("--root", required=True, help="repo checkout")
-    ap.add_argument("--model-dir", default="")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("show", help="the weights folders a slug mounts")
     s.add_argument("slug")
     s.add_argument("--json", action="store_true")
     r = sub.add_parser("remove", help="remove a slug's recipe files (dry-run first)")
     r.add_argument("slug")
+    for p in (s, r):
+        # The model dir to look in; default MODEL_DIR (settings), as switch.sh uses.
+        p.add_argument("--model-dir", default="")
     r.add_argument("--dry-run", action="store_true")
     r.add_argument("--yes", action="store_true", help="don't ask (the plan is still printed first)")
     r.add_argument("--allow-shared", action="store_true",
