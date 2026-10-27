@@ -182,8 +182,9 @@ python3 "$SM" host-ram "http://127.0.0.1:1" >/dev/null 2>&1; r=$?
 # its /metrics names no storage.path, so the log is the one its run config names (the server's
 # --config), and its host-RAM evidence is the CPU lane's experts. A stub docker serves the
 # container's files from a folder, so the lookup runs without a container.
-mkdir -p "$work/ds4" "$work/bin" "$work/ctr/proc/1" "$work/ctr/data/ista" "$work/ctr-nocfg/proc/1" \
-  "$work/ctr-nolog/proc/1" "$work/ctr-nolog/data/ista" "$work/ctr/data/maya-s"
+mkdir -p "$work/ds4" "$work/ds4-131" "$work/bin" "$work/ctr/proc/1" "$work/ctr/data/ista" "$work/ctr-nocfg/proc/1" \
+  "$work/ctr-nolog/proc/1" "$work/ctr-nolog/data/ista" "$work/ctr/data/maya-s" \
+  "$work/ctr-glm/proc/1" "$work/ctr-glm/data/maya-s" "$work/ctr-glm-nocfg/proc/1" "$work/ctr-glm-nocfg/data/maya-s"
 python3 - "$work" <<'PY'
 import json, sys
 w = sys.argv[1]
@@ -191,6 +192,13 @@ doc = json.load(open(f"{w}/maya/metrics"))
 doc["engine"]["maya_version"] = "1.1.28"
 doc["storage"] = None                              # what DeepSeek's server sends
 json.dump(doc, open(f"{w}/ds4/metrics", "w"))
+doc["storage"] = {"path": "/data/ista"}            # what DeepSeek's server sends from v1.1.31 (its quant's folder)
+json.dump(doc, open(f"{w}/ds4-131/metrics", "w"))
+glm = ["/opt/maya/.venv/bin/python", "/opt/maya/serve/server.py", "--engine", "strata",
+       "--config", "/data/maya-s/maya.json", "--host", "0.0.0.0", "--port", "8080"]
+open(f"{w}/ctr-glm/proc/1/cmdline", "w").write("\0".join(glm) + "\0")
+json.dump({"log": "/data/maya-s/maya.log", "args": []}, open(f"{w}/ctr-glm/data/maya-s/maya.json", "w"))
+open(f"{w}/ctr-glm-nocfg/proc/1/cmdline", "w").write("\0".join(glm[:4]) + "\0")
 argv = ["/opt/maya/.venv/bin/python", "/opt/maya/serve/server.py", "--engine", "strata",
         "--config", "/data/ista/maya-ds4.json", "--host", "0.0.0.0", "--port", "8080"]
 for d in ("ctr", "ctr-nolog"):
@@ -207,6 +215,8 @@ printf '%s\n' "ds4: 9000 routed experts on the CPU lane (80.0 GB): 9000 copied i
   "maya ds4 serve: drafts 995 of 1181 kept; per position (kept / reached): 1: 510/603 85%" > "$work/ctr/data/ista/maya-ds4.log"
 head -2 "$work/ctr/data/ista/maya-ds4.log" > "$work/ds4-early.log"
 cp "$work/maya.log" "$work/ctr/data/maya-s/maya.log"
+cp "$work/maya.log" "$work/ctr-glm/data/maya-s/maya.log"
+cp "$work/maya.log" "$work/ctr-glm-nocfg/data/maya-s/maya.log"
 cat > "$work/bin/docker" <<'SH'
 #!/bin/sh
 # stub: `docker exec <container> cat <path>` reads <path> under $work/<container>
@@ -235,9 +245,17 @@ sdocker python3 "$SM" snapshot "$base/ds4" --container ctr-nocfg >/dev/null 2>&1
 [[ $r -eq 3 ]] && ok "maya-ds4: a server command line without --config: exit 3" || bad "ds4 no --config: exit $r, want 3"
 sdocker python3 "$SM" snapshot "$base/ds4" --container ctr-nolog >/dev/null 2>&1; r=$?
 [[ $r -eq 3 ]] && ok "maya-ds4: a run config that names no log: exit 3" || bad "ds4 config without log: exit $r, want 3"
-out="$(sdocker python3 "$SM" snapshot "$base/maya" --container ctr)"
+# the run config's log comes first for every Maya engine; <storage.path>/maya.log is GLM's fallback only
+out="$(sdocker python3 "$SM" snapshot "$base/ds4-131" --container ctr)"; r=$?
+python3 -c 'import json,sys; t=json.loads(sys.argv[1])["totals"]; sys.exit(0 if (t["drafts_accepted"], t["drafts_offered"]) == (1036, 1226) else 1)' "$out" 2>/dev/null \
+  && ok "maya-ds4 from v1.1.31 (/metrics names storage.path /data/ista): still the log its --config names, not <storage.path>/maya.log" \
+  || bad "ds4 v1.1.31 storage.path: rc=$r, got: $out"
+out="$(sdocker python3 "$SM" snapshot "$base/maya" --container ctr-glm)"
 python3 -c 'import json,sys; t=json.loads(sys.argv[1])["totals"]; sys.exit(0 if t["drafts_offered"] == 216 else 1)' "$out" 2>/dev/null \
-  && ok "GLM Maya --container still reads <storage.path>/maya.log" || bad "GLM container path: got $out"
+  && ok "GLM Maya --container: the log its --config names (maya.log)" || bad "GLM container path: got $out"
+out="$(sdocker python3 "$SM" snapshot "$base/maya" --container ctr-glm-nocfg)"
+python3 -c 'import json,sys; t=json.loads(sys.argv[1])["totals"]; sys.exit(0 if t["drafts_offered"] == 216 else 1)' "$out" 2>/dev/null \
+  && ok "GLM Maya --container, no --config on its command line: falls back to <storage.path>/maya.log" || bad "GLM fallback path: got $out"
 out="$(python3 "$SM" host-ram "$base/ds4" --log-file "$work/ctr/data/ista/maya-ds4.log")"; r=$?
 [[ $r -eq 0 && "$out" == "engine log (CPU lane: 100.40 GB of experts)" ]] \
   && ok "host-ram: maya-ds4's CPU lane, the latest start's line" || bad "host-ram ds4: rc=$r, got: $out"
