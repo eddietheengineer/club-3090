@@ -5,6 +5,7 @@ from .detect import (
     ServingTarget,
     detect_endpoint,
     get_gpu_info,
+    throttle_tag,
     detect_from_registry,
     match_target_to_registry,
     ENGINE_PREFIXES,

@@ -86,6 +86,7 @@ from textual.message import Message
 
 from rich.text import Text
 
+from club3090_tui_core.detect import throttle_tag
 from club3090_tui_core.registry import VariantRow
 from club3090_tui_core.widgets.live_pane import LivePane
 
@@ -4392,6 +4393,26 @@ class ConfirmActionScreen(ModalScreen):
         self.app.pop_screen()
 
 
+def _gpu_clock_text(gpu: Any) -> str:
+    """The GPU card's clock line: ``clock: 1,665 / 2,115 MHz`` (#1813).
+
+    A value the driver doesn't report is ``—`` — never 0, which would read as a
+    stalled card.  A busy card the driver is holding back gets a short tag,
+    ``(power cap)`` / ``(thermal)``, from ``clocks_event_reasons.active``.
+    """
+    def _mhz(v: Any) -> str:
+        return f"{v:,}" if isinstance(v, int) and not isinstance(v, bool) else "—"
+
+    cur = getattr(gpu, "clock_sm_mhz", None)
+    peak = getattr(gpu, "clock_max_sm_mhz", None)
+    text = f"clock: {_mhz(cur)} / {_mhz(peak)} MHz"
+    tag = throttle_tag(getattr(gpu, "clock_event_reasons", None),
+                       busy=(getattr(gpu, "utilization", 0) or 0) > 0)
+    if tag:
+        text += f" [yellow]({tag})[/yellow]"
+    return text
+
+
 def _with_force(plan: ActionPlan) -> list[str]:
     """Insert --force into a serve switch.sh command for the forced re-issue.
 
@@ -4905,6 +4926,10 @@ class OperateOrchPane(Container):
             lines = [
                 f"  {bar_str}  {used / 1024:.1f} / {total / 1024:.1f} GiB · {pct}%",
                 f"  power: {pwr:.0f} / {pwr_lim:.0f} W{cap_note} · {temp}°C · util {util}%",
+                # #1813: its own line, straight under power: — appended to the power
+                # line it ran 87-96 cells against an 82-cell card at 120 columns and
+                # wrapped mid-number ("… 2,115" / "MHz (power cap)").
+                f"  {_gpu_clock_text(gpu)}",
             ]
             # Batch 5 (GPU-VRAM → container attribution): WHO holds this card's
             # VRAM — closes the Batch-1 "GPU0's 22GB owner is invisible" loop.

@@ -14,7 +14,7 @@ Two modes, shown as a tab bar; the producer mode is hidden in the lean view.
 
 - **`1` Run & Operate** *(always shown)*
   - **Catalog** — the full registry of model variants; filter, inspect, and **serve** one (`⏎`).
-  - **Orchestration** — live GPU cards, the `gpu-mode` scenes (incl. `ai-studio`), and supporting services; switch scene / stop.
+  - **Orchestration** — live GPU cards (VRAM, power and cap, temperature, utilisation, and the SM clock against its maximum with a `power cap` / `thermal` tag when a busy card is held back), the `gpu-mode` scenes (incl. `ai-studio`), and supporting services; switch scene / stop.
   - **Containers** — running/stopped services with engine + port; drill into **Logs / Top / Config**, start a stopped one.
   - **Doctor** — "is it serving correctly?" — six checks you can arrow through and run with `⏎` (or by hotkey): `health.sh` live, `verify` / `verify-full`, basic / full reports, and the power-cap sweep.
 - **`2` Bring & Validate** *(producer lane — hidden in lean view)*

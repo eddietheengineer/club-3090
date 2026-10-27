@@ -4348,6 +4348,42 @@ class TestBatch1PowerCapCard:
             assert "cap 230W" in bar  # capped card annotates the active cap
 
     @pytest.mark.asyncio
+    async def test_gpu_card_shows_sm_clock_and_throttle_tag(self):
+        """#1813 — each card shows its SM clock now / max on the line straight under
+        power:, and a busy card the driver is holding back says why; an unreported
+        field is "—"."""
+        gpus = [
+            GpuInfo(index=0, mem_used_mib=18 * 1024, mem_total_mib=24 * 1024,
+                    utilization=99, power_draw_w=230, power_limit_w=230, temp_c=83,
+                    clock_sm_mhz=1665, clock_max_sm_mhz=2115, clock_event_reasons=0x4),
+            GpuInfo(index=1, mem_used_mib=18 * 1024, mem_total_mib=24 * 1024,
+                    utilization=97, power_draw_w=180, power_limit_w=230, temp_c=91,
+                    clock_sm_mhz=555, clock_max_sm_mhz=2100, clock_event_reasons=0x40),
+            # an older driver / card that reports neither clock nor reason
+            GpuInfo(index=2, mem_used_mib=1024, mem_total_mib=24 * 1024, utilization=5),
+            # idle: sw_power_cap alone at 0 % util is a driver blip, not a cause
+            GpuInfo(index=3, mem_used_mib=1, mem_total_mib=24 * 1024, utilization=0,
+                    clock_sm_mhz=210, clock_max_sm_mhz=2100, clock_event_reasons=0x4),
+        ]
+        app, _, _ = make_app(gpus=gpus, target=ServingTarget(gpus=gpus))
+        async with app.run_test(size=(120, 60)) as pilot:
+            await _enter_operate(pilot)
+            # a second estate poll — the existing GPU repaint — fills cards 2-3,
+            # which mount (async) on the first pass
+            app._periodic_estate_refresh()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            bars = [str(app.query_one(f"#gpu{i}-bar", Static).render()) for i in range(4)]
+            lines0 = bars[0].splitlines()
+            at = next(i for i, ln in enumerate(lines0) if "power:" in ln)
+            assert lines0[at + 1] == "  clock: 1,665 / 2,115 MHz (power cap)"
+            assert "clock: 555 / 2,100 MHz (thermal)" in bars[1]
+            assert "clock: — / — MHz" in bars[2]
+            assert "(" not in bars[2].split("clock:", 1)[1]  # no tag without a reason
+            assert "clock: 210 / 2,100 MHz" in bars[3]
+            assert "power cap" not in bars[3]
+
+    @pytest.mark.asyncio
     async def test_cap_write_repolls_estate(self, monkeypatch):
         wr = FakeWriteRunner()
         app, runner, _ = make_app(write_runner=wr)
