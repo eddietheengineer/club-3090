@@ -16,6 +16,9 @@ lineage:
   delta: "our vllm#40391 per-head-KV and vllm#42006 tool-parser overlays"
 install:
   method: docker_image
+  # The pin's record: pin-current is what spec pins now; pin-earlier lists earlier pins, newest first (the first
+  # is the rollback). docs/UPSTREAM.md's Pinned images table holds why it's pinned, not these.
+  # pin-current: v0.22.0 · overlay-carrying (#42006 on both gemma duals, #40391 on gemma-int8-mtp) · split off vllm-stable in #324 · pinned 2026-06-01 (#287)
   spec: vllm/vllm-openai:v0.22.0
 min_sm: 7.5
 supported_model_families:

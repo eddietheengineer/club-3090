@@ -5,7 +5,7 @@
 # engine_config_reads.py, so nothing is pulled, run or booted (the boot cases refuse before it).
 # What it holds:
 #   - a full --no-boot bump edits exactly the files the pin lives in, with the right values, and
-#     records the settings evidence;
+#     records the settings evidence; docs/UPSTREAM.md, which carries no pin, stays byte-identical;
 #   - --check writes nothing;
 #   - a no-op, a mislabelled image, a changed interface in the image (each check) and a checkout
 #     on master are refused or failed with nothing written;
@@ -140,15 +140,12 @@ command grep -qx "  # pin-current: 9.9.9 · upstream 12345678 · engine 9.9.8 ·
 command grep -q "^  # pin-earlier: $OLD_VER \`$OLD_SHORT…\` (upstream " "$y" || fail "strata: outgoing pin not first in pin-earlier"
 [[ "$(command grep -c "strata@$DIGEST" "$d"/models/qwen3.8-flash-next/strata/compose/*/*/base.yml | awk -F: '{s+=$2} END{print s}')" == 5 ]] \
   || fail "strata: not all 5 compose image defaults repointed"
-row="$(command grep '^| `scripts/lib/profiles/engines/strata.yml` →' "$d/docs/UPSTREAM.md")"
-[[ "$row" == *"strata@sha256:aaaaaaaa…\` (digest; Strata 9.9.9, upstream commit \`12345678\`, engine 9.9.8, pinned $TODAY."* ]] \
-  || fail "strata: UPSTREAM current pin not rewritten"
-[[ "$row" == *"Earlier pins: $OLD_VER \`$OLD_SHORT…\` (engine $OLD_ENG, $OLD_DATE); "* ]] || fail "strata: UPSTREAM earlier pins not prepended"
+cmp -s "$PRISTINE/docs/UPSTREAM.md" "$d/docs/UPSTREAM.md" || fail "strata: the bump edited docs/UPSTREAM.md (the pin lives in the profile)"
 command grep -qxF -- "- **Pinned:** 9.9.9 (engine 9.9.8), since $TODAY ($OLD_VER, engine $OLD_ENG, from $OLD_DATE)." "$d/docs/engines/STRATA.md" \
   || fail "strata: STRATA.md Pinned line wrong"
 [[ "$(cat "$STUB_DIR/recorded")" == "verify strata --record" ]] || fail "strata: settings evidence not re-recorded"
 command grep -qxF -- "- **Releases skipped since the last pin:** v9.9.7" <<<"$OUT" || fail "strata: skipped releases wrong (drafts and the two pins don't count): $OUT"
-want="$(printf '%s\n' docs/UPSTREAM.md docs/engines/STRATA.md scripts/lib/profiles/engines/strata.yml \
+want="$(printf '%s\n' docs/engines/STRATA.md scripts/lib/profiles/engines/strata.yml \
   $(cd "$d" && ls models/qwen3.8-flash-next/strata/compose/*/*/base.yml) | sort)"
 [[ "$(changed "$d")" == "$want" ]] || fail "strata: changed files differ from the pin's places:\n$(changed "$d")"
 ok
@@ -164,17 +161,14 @@ command grep -qx "  spec: ghcr.io/noonghunna/strata-maya-club3090@$DIGEST" "$y" 
 command grep -qx "  # pin-current: v9.9.9 · upstream 12345678 · recipe fedcba98 · archs 75;80;86;89;120 · pinned $TODAY · booted pending" "$y" \
   || fail "maya: pin-current line wrong: $(command grep pin-current "$y")"
 command grep -q "^  # pin-earlier: $M_OLD \`" "$y" || fail "maya: outgoing pin not first in pin-earlier"
-row="$(command grep '^| `scripts/lib/profiles/engines/strata-maya.yml` →' "$d/docs/UPSTREAM.md")"
-[[ "$row" == *"(digest; Project Maya v9.9.9, upstream commit \`12345678\`, recipe \`fedcba98\`, archs 75;80;86;89;120, pinned $TODAY."* ]] \
-  || fail "maya: UPSTREAM current pin not rewritten"
-[[ "$row" == *"Earlier pins: $M_OLD \`"* ]] || fail "maya: UPSTREAM earlier pins not prepended"
+cmp -s "$PRISTINE/docs/UPSTREAM.md" "$d/docs/UPSTREAM.md" || fail "maya: the bump edited docs/UPSTREAM.md (the pin lives in the profile)"
 # every compose whose image default is the engine's (GLM's 9 and DeepSeek's), each repointed
 m_composes="$(cd "$d" && command grep -l 'STRATA_MAYA_IMAGE:-' models/*/strata-maya/compose/*/*/*.yml)"
 [[ "$(wc -l <<<"$m_composes")" -ge 10 ]] || fail "maya: expected the GLM and DeepSeek composes, found: $m_composes"
 for c in $m_composes; do
   command grep -q "STRATA_MAYA_IMAGE:-ghcr.io/noonghunna/strata-maya-club3090@$DIGEST}" "$d/$c" || fail "maya: $c not repointed"
 done
-want="$(printf '%s\n' docs/UPSTREAM.md scripts/lib/profiles/engines/strata-maya.yml $m_composes | sort)"
+want="$(printf '%s\n' scripts/lib/profiles/engines/strata-maya.yml $m_composes | sort)"
 [[ "$(changed "$d")" == "$want" ]] || fail "maya: changed files differ from the pin's places:\n$(changed "$d")"
 ok
 
@@ -231,9 +225,6 @@ mutate "no pin-current line"      "$Y" '/^  # pin-current: /d'
 mutate "pin-current lacks engine" "$Y" 's/ · engine [^ ]*//'
 mutate "two pin-earlier lines"    "$Y" 's/^\(  # pin-earlier: .*\)$/\1\n\1/'
 mutate "no source_ref"            "$Y" 's/^  source_ref: /  source_url: /'
-mutate "UPSTREAM current pin"     docs/UPSTREAM.md '/engines\/strata.yml` →/s/upstream commit/commit/'
-mutate "UPSTREAM earlier pins"    docs/UPSTREAM.md '/engines\/strata.yml` →/s/Earlier pins: /Older pins: /'
-mutate "two UPSTREAM rows"        docs/UPSTREAM.md 's/^\(| `scripts\/lib\/profiles\/engines\/strata.yml` → .*\)$/\1\n\1/'
 mutate "no Pinned line"           docs/engines/STRATA.md '/^- \*\*Pinned:\*\* /d'
 
 # ── 6. Strata's boot needs an explicit slug ───────────────────────────────────────────────────────

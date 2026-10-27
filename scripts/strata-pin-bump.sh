@@ -11,8 +11,8 @@
 #      choices, the --spec help, the entrypoint's settings; Maya: the quant names in maya.py) and
 #      refuses when one changed;
 #   3. edits every place the pin lives (engine-pin-bump.sh's spec + compose defaults, source_ref,
-#      the engine profile's pin- lines, the docs/UPSTREAM.md row, Strata's "Pinned" line), each
-#      target checked to match exactly once before anything is written;
+#      the engine profile's pin- lines, Strata's "Pinned" line), each target checked to match exactly
+#      once before anything is written. docs/UPSTREAM.md carries no pin, so it is never edited;
 #   4. re-records the settings evidence (engine_config_reads.py verify <engine> --record);
 #   5. boots ONE slug through switch.sh, checks it runs the pinned digest, sends 3 warm-ups, runs
 #      verify-full, reads free RAM and swap, and stops it;

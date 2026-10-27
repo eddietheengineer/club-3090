@@ -308,7 +308,7 @@ The compose layout, header and registry contract are the same as in [ADDING_MODE
     - `docs/engines/README.md`
     - `docs/README.md`
     - the `AGENTS.md` engine-pinning table
-    - `docs/UPSTREAM.md` (pinned-images row plus an upstream section)
+    - `docs/UPSTREAM.md` (a pinned-images row: why it's pinned, which composes use it, when it can retire; plus an upstream section). The pin itself goes in the profile, as `install.spec` and a `# pin-current:` line beside it, not in that row
     - an engine-specific section in `docs/NIGHTLY_BUMP_RUNBOOK.md`
     - BENCHMARKS rows and the model CHANGELOG
 
