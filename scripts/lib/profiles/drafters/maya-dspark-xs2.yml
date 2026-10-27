@@ -21,7 +21,7 @@ status: incubating
 #
 # n is the draft block length, which comes from the pack's geometry (ds4.txt dspark_block_size), not from a flag:
 # maya-ds4 has no depth setting, so n_default = n_max = 5 (DeepSeek-V4.1-Flash's own). ⚠️ ISTA's GGUF carries no
-# DSpark geometry and Maya v1.1.27-v1.1.28's pack builder then writes 0, so the drafter loads and never drafts,
+# DSpark geometry and Maya v1.1.27-v1.1.29's pack builder then writes 0, so the drafter loads and never drafts,
 # silently; the launcher (ds4_prepare.py fix_dspark) writes DeepSeek-V4.1-Flash's values when the pack says 0
 # (docs/UPSTREAM.md).
 #
