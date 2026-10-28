@@ -22,7 +22,7 @@ What it does, from its README:
 
 ## Image
 
-The author publishes `ghcr.io/bpx03/qengine` (text only, about 0.3 GB; the `:vision` tags add the vision encoder and PyTorch, about 3 GB). Each image's `org.opencontainers.image.revision` label names its source commit. The profile pins **`1.3`** by digest (`sha256:b9d1b0af…`, source `d15a4d3a` = git tag `v1.3`), and the launchers will inject it as `QENGINE_IMAGE`. Both slugs were re-booted on `1.3` (2026-10-28): the 27B slug passes the full gate (verify-full / bench / stress / soak / 8-pack both legs); the Flash-Next slug passes verify-full / bench / stress with `FLASH_COMM=ce` (see the two warnings below).
+The author publishes `ghcr.io/bpx03/qengine` (text only, about 0.3 GB; the `:vision` tags add the vision encoder and PyTorch, about 3 GB). Each image's `org.opencontainers.image.revision` label names its source commit. The profile pins **`1.3`** by digest (`sha256:b9d1b0af…`, source `d15a4d3a` = git tag `v1.3`), and the launchers will inject it as `QENGINE_IMAGE`. Both slugs were re-booted on `1.3` (2026-10-28): the 27B slug passes the full gate (verify-full / bench / stress / soak / 8-pack both legs); the Flash-Next slug passes verify-full / bench / stress / continuous soak and the thinking-OFF 8-pack with `FLASH_COMM=ce` + `FLASH_MAX_SEQS=4` (see the two warnings below).
 
 ## Settings
 
@@ -45,7 +45,7 @@ Its own environment variables (the image's entrypoint passes `QE_EXTRA_ARGS` to 
 
 ⚠️ **Flash-Next long-prefill NaN (measured 2026-10-28, 2× 3090 PCIe).** With `FLASH_COMM=auto` (the default) the interconnect probe picks the P2P SM load/store path, and a ~76K-token prefill then produces non-finite `lm_head` inputs: the guard fails the request (HTTP 500) and, after 5 faults in 5 minutes, exits ("shared state is likely corrupt"). Measured **identical on 1.3 and 1.3-rc4** — same position, same block count — so it is the SM path, not a release regression. `FLASH_COMM=ce` (copy-engine transfers) measured clean (4×76K prefills, no faults); the flash-next compose ships it as the default.
 
-⚠️ **Flash-Next VRAM OOM at 8 sequence slots (measured 2026-10-28, 2× 3090).** The QE-INT4 weights + 51.8 GB pinned n-gram table leave only ~0.25 GiB free per card at `FLASH_MAX_SEQS=8`; concurrent multi-turn load (the 8-pack's hermesagent-20, 136K-token prompts) exhausts it — `graph instantiate out of memory` then `cudaErrorMemoryAllocation at gemm.cu:3456` → abort. This is a **headroom** failure, distinct from the NaN. `FLASH_MAX_SEQS=4` measured clean through the full 8-pack (117/150, restarts=0); the flash-next compose ships 4 as the default.
+⚠️ **Flash-Next VRAM OOM at 8 sequence slots (measured 2026-10-28, 2× 3090).** The QE-INT4 weights + 51.8 GB pinned n-gram table leave only ~0.25 GiB free per card at `FLASH_MAX_SEQS=8`; concurrent multi-turn load (the 8-pack's hermesagent-20, 136K-token prompts) exhausts it — `graph instantiate out of memory` then `cudaErrorMemoryAllocation at gemm.cu:3456` → abort. This is a **headroom** failure, distinct from the NaN. `FLASH_MAX_SEQS=4` measured clean through the thinking-OFF 8-pack (117/150, restarts=0, fresh boot) and continuous soak; the compose ships 4 as the default. ⚠️ Residual: hermesagent-20 (the peak-memory pack) still exceeds VRAM at 4 slots under thinking-ON (16K budgets, died on a fresh boot) and on warm combined-rebench runs — a 2×24 GB rig ceiling (upstream tunes this half for 3 cards).
 
 ## What's wired
 
@@ -59,4 +59,4 @@ Its own environment variables (the image's entrypoint passes `QE_EXTRA_ARGS` to 
 - weights variants `bpx03-qengine-int4` on both models (`RedHatAI/Qwen3.8-27B-INT4`, `bpx03/Qwen3.8-Flash-Next-QEngine`);
 - the composes, booted on this rig (two 3090s, P2P granted) with verify-full 10/10 each on the 1.3 pin.
 
-**Left for later:** c3's own engine-family handling, and the Flash-Next soak / continuous-soak / promotion review past 🐣 (verify-full, bench, stress and the 8-pack both legs pass on 1.3 with the two compose fixes above).
+**Left for later:** c3's own engine-family handling, and the Flash-Next promotion review past 🐣 (verify-full, bench, stress, continuous soak and the thinking-OFF 8-pack pass on 1.3 with the two compose fixes above; the thinking-ON 8-pack leg hits the hermesagent-20 VRAM cliff on 2×24 GB).

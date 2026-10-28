@@ -13,12 +13,12 @@ standalone (8-pack thinking-OFF 117/150, restarts=0), so the compose now ships 4
 (overridable). Both flash-half defects reproduce identically on 1.3-rc4, so neither is a bump
 regression.
 
-⚠️ **Residual cliff (same day).** On the combined `rebench-full` run — the 8-pack executed
-*after* bench + stress on one warm boot — 4 slots still hit a VRAM OOM at hermesagent-20
-(`cudaErrorMemoryAllocation at flash_batch.cuh:704`), where the standalone 4-slot 8-pack passed.
-The CUDA-graph pool grows across the pipeline and the marginal 2×24 GB headroom runs out under
-the heaviest pack. This is a rig ceiling, not a config bug (upstream tunes this half for 3
-cards); it keeps the slug 🐣. The thinking-ON 8-pack leg and soak are owed before any promotion.
+⚠️ **Residual cliff (same day).** hermesagent-20 — the 8-pack's peak-memory pack — still
+exceeds VRAM at 4 slots in two regimes: thinking-ON (16K budgets; died on a *fresh* boot at
+`cudaErrorMemoryAllocation at flash_batch.cuh:704`) and the combined `rebench-full` (the 8-pack
+after bench + stress on one warm boot). The clean pass is a fresh boot with thinking-OFF
+(117/150, restarts=0). A 2×24 GB rig ceiling, not a config bug (upstream tunes this half for
+3 cards); it keeps the slug 🐣. Continuous soak passes (172/200 MiB growth, 0 errors).
 
 ## 2026-10-28 — long-prefill NaN found; the slug ships FLASH_COMM=ce
 

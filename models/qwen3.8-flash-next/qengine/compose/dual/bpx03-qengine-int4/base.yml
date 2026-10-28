@@ -11,7 +11,7 @@
 #   Max ctx:   131072
 #   Genesis:   N/A — Genesis is Qwen3-Next-specific
 #   Status:    🐣 Incubating
-#   Quality:   toolcall-15 15/15 (100%) · instructfollow-15 12/15 (80%) · structoutput-15 11/15 (73%) · dataextract-15 10/15 (67%) · reasonmath-15 14/15 (93%) · bugfind-15 14/15 (93%) · hermesagent-20 13/20 (65%) · cli-40 28/40 (70%) (--full, thinking OFF, sampling=server, validity=valid, packs tc1.0.1·if2.0.0·so2.1.0·de1.2.0·rm1.1.0·bf1.0.1·hm1.0.0·cli1.0.2, 2026-10-28)
+#   Quality:   toolcall-15 15/15 (100%) · instructfollow-15 12/15 (80%) · structoutput-15 11/15 (73%) · dataextract-15 10/15 (67%) · reasonmath-15 14/15 (93%) · bugfind-15 14/15 (93%) · hermesagent-20 13/20 (65%) · cli-40 28/40 (70%) (--full, thinking OFF, sampling=server, validity=valid, packs tc1.0.1·if2.0.0·so2.1.0·de1.2.0·rm1.1.0·bf1.0.1·hm1.0.0·cli1.0.2, 2026-10-28); thinking-ON leg NOT publishable on 2x24 GB — hermesagent-20 VRAM cliff (see Caveats)
 #   Caveats:   Not gate-passing yet. ⚠️ Two flash-half defects found validating on 1.3,
 #              both fixed in this compose (both reproduce identically on 1.3-rc4, so neither
 #              is a bump regression): (1) Long-prefill NaN — the engine's FLASH_COMM=auto
@@ -20,12 +20,12 @@
 #              FLASH_COMM=ce (copy-engine) measures clean through bench's 90K + stress's 91K.
 #              (2) VRAM OOM at 8 sequence slots — the n-gram + expert weights leave only
 #              ~0.25 GiB/card, and concurrent multi-turn load (the 8-pack's hermesagent-20)
-#              exhausts it; shipped FLASH_MAX_SEQS=4, which passes the 8-pack standalone
-#              (117/150, restarts=0). ⚠️ Residual: on 2×24 GB the flash artifact still hits
-#              a VRAM cliff (flash_batch.cuh OOM) when the 8-pack runs back-to-back after
-#              bench+stress on one warm boot — a rig ceiling, not a config bug (upstream
-#              tunes this half for 3 cards). Continuous soak PASS (172/200 MiB growth, 0
-#              errors, 100% retention). Kept 🐣.
+#              exhausts it; shipped FLASH_MAX_SEQS=4, which passes the thinking-OFF 8-pack
+#              standalone (117/150, restarts=0). ⚠️ Residual: hermesagent-20 (the peak-memory
+#              pack) still exceeds VRAM at 4 slots under thinking-ON (16K budgets; died on a
+#              fresh boot) and on warm combined-rebench runs — a 2×24 GB rig ceiling, not a
+#              config bug (upstream tunes this half for 3 cards). Continuous soak PASS
+#              (172/200 MiB growth, 0 errors, 100% retention). Kept 🐣.
 #              ⚠️ The SAME artifact produced garbled
 #              multilingual output on the 1.3-rc1/rc2 images (2026-10-26); this slug
 #              runs the 1.3 pin and MUST be output-checked on every boot (the clean
