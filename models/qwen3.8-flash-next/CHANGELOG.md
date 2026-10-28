@@ -2,6 +2,18 @@
 
 Dated history for Qwen3.8-Flash-Next configs in this repo. Append-only — add a new entry, don't rewrite past ones.
 
+## 2026-10-28 — QEngine pin bump: 1.3-rc4 → 1.3 (shared image)
+
+The QEngine image pin moved to the final `1.3` (`sha256:b9d1b0af…`, source `d15a4d3a` = git tag
+`v1.3`). 1.3 is a functional delta from rc4 (per-GPU engine process + GPU lock; the host-RAM
+archive is now capped at `MemAvailable` minus a margin and returned under pressure — relevant
+here, where the archive is already lowered to 16 GB for the pinned n-gram table; over-ctx
+prompts now get HTTP 400; `src/flash/*` heavily rewritten). **Contract-checked on the image,
+not live-booted at bump time:** the entrypoint, every `FLASH_*`/`QE_*` knob this compose sets,
+and `--think`/`--mtp-k`/`--max-ctx`/`--served-name` are all present on `1.3`. The 2026-10-27
+verify-full / output-clean numbers are rc4-measured — re-boot and re-run `verify-full` on `1.3`
+before trusting them. Pin row: `docs/UPSTREAM.md`.
+
 ## 2026-10-28 — QEngine Flash-Next slug ships 131K context
 
 `qengine/qwen38-flash-next-dual` now ships **131,072** context (was 262,144): the compose's

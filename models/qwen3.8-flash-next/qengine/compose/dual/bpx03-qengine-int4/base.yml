@@ -2,7 +2,7 @@
 # Profile (at-a-glance):
 #   Model:     Qwen3.8-Flash-Next (bpx03 QE-INT4: converted AutoRound W4A16 + INT8
 #              n-gram table + MTP head — loads in NO engine but QEngine's libqflash)
-#   Engine:    QEngine 1.3-rc4 (ghcr.io/bpx03/qengine, pinned by digest; libqflash.so)
+#   Engine:    QEngine 1.3 (ghcr.io/bpx03/qengine, pinned by digest; libqflash.so)
 #   Topology:  Dual 3090 PCIe (TP=2, QE_GPUS 0,1). ⚠️ Upstream tests this half on
 #              3 cards only; 2 is allowed by run.sh, untested there.
 #   Drafter:   MTP (adaptive, default k=3) + lookup drafts from the history (FLASH_LOOKUP=1)
@@ -13,7 +13,8 @@
 #   Status:    🐣 Incubating
 #   Caveats:   Not gate-passing yet. ⚠️ The SAME artifact produced garbled
 #              multilingual output on the 1.3-rc1/rc2 images (2026-10-26); this slug
-#              runs the 1.3-rc4 pin and MUST be output-checked on every boot.
+#              runs the 1.3 pin and MUST be output-checked on every boot (the clean
+#              en/ja/fr result was measured on the 1.3-rc4 image — re-boot on 1.3).
 #              ⚠️ HOST RAM: the 51.8 GB INT8 n-gram table is pinned by default
 #              (FLASH_NGRAM_PIN=1) — about 80 GB with the 16 GB archive on a 92 GB rig;
 #              free the cards (stop the vLLM dual) before launching. FLASH_NGRAM_PIN=0
@@ -31,7 +32,7 @@
 # the curated engine profile (one image ships both engine libraries).
 services:
   qengine:
-    image: ${QENGINE_IMAGE:-ghcr.io/bpx03/qengine@sha256:18b3c4bb43604fa3dcbff023710ec8e799725070f957cf667882319a544c0537}
+    image: ${QENGINE_IMAGE:-ghcr.io/bpx03/qengine@sha256:b9d1b0afe8f96547b3a05de73aff437077effcb1117c82ab2e0fe62bf000b3da}
     container_name: ${ESTATE_CONTAINER:-qengine-qwen38-flash-next-dual}
     restart: ${CLUB3090_RESTART:-unless-stopped}
     user: "0:${DOCKER_GID:-1000}"

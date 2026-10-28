@@ -2,6 +2,18 @@
 
 Dated history for Qwen3.8-27B configs in this repo. Append-only — add a new entry, don't rewrite past ones.
 
+## 2026-10-28 — QEngine pin bump: 1.3-rc4 → 1.3
+
+`qengine/qwen38-27b-dual` now runs the final `1.3` image (`ghcr.io/bpx03/qengine` digest
+`sha256:b9d1b0af…`, source `d15a4d3a` = git tag `v1.3`; was `1.3-rc4` `18b3c4bb…`). 1.3 is a
+functional delta from rc4: one engine process per GPU (with a GPU lock, `QE_ALLOW_SHARED_GPU=1`
+to skip), the host-RAM KV archive is now capped at `MemAvailable` minus a margin and returned
+under pressure, an over-ctx prompt returns HTTP 400, and the Flash-Next kernels were rewritten.
+**Contract-checked on the image, not live-booted at bump time** (the entrypoint, every `QE_*`
+knob this compose sets, and `--think`/`--mtp-k`/`--max-ctx`/`--served-name` are all present on
+`1.3`). The 2026-10-27 "verify-full 9/9 + canonical bench" numbers are rc4-measured — re-boot
+and re-run `verify-full` on `1.3` before trusting them. Pin row: `docs/UPSTREAM.md`.
+
 ## 2026-10-28 — HyperQwen moves to commit ce9615c4; CTX=long changes backend
 
 `vllm-hyperqwen/qwen38-27b-single-ultrafast` now runs syv-ai's `:sha-ce9615c` (commit
