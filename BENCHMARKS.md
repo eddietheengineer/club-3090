@@ -813,6 +813,12 @@ alongside TPS). Depth behaviour is the model's real story and is tracked separat
 `learnings/glm-5.3-flash.md`; the engine-level mechanism lives in `learnings/moe-cache-engine.md`.
 
 
+**On the [`qengine`](docs/engines/QENGINE.md) engine (🐣)** — QEngine 1.3's Flash-Next engine (`libqflash.so`), the author's image `ghcr.io/bpx03/qengine@sha256:b9d1b0af…`, on bpx03's QEngine INT4 layout of Intel's AutoRound (128 GB): routed experts split evenly over the two cards, about half the expert groups in pinned host RAM, FP8 attention KV, 16 slots, MTP up to 3 drafts a step. ⚠️ PolyForm Noncommercial.
+
+| Compose | Rig | KV | Max ctx | Narr / Code TPS | PP tok/s | Peak VRAM | Date | Notes |
+| --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
+| `qengine/compose/dual/qengine-int4/mtp.yml` (`qengine/qwen38-flash-next-dual`), shipped defaults (`FLASH_COMM=auto`, 16 slots, 48 GB archive) | @noonghunna (2× 3090 PCIe, P2P on, 230 W) | fp8 e4m3 | 262144 | **163.95 / 170.60** decode (CV 2.5% / 8.7%); 160.44 / 164.13 wall | 1921 @10K (CV 14.7%) · 2373 @90K (n=1) | 24,122 / 24,122 MiB | 2026-10-28 | 🐣 `bench.sh` on its own boot (ready 64 s; the first start took 113 s, with the weights already in the page cache). TTFT 132 / 95 ms; decode 97.8 at 10K depth, 71.5 at 90K. MTP mean acceptance length 2.83. QEngine's probe put prefill transfers on P2P loads (`FLASH_COMM=auto`). Host RAM: MemAvailable fell 88 GB at ready, 99 GB after the bench. verify-full 8 + 2 n/a. Quality not measured. |
+
 **On the [`strata-maya`](docs/engines/STRATA_MAYA.md) engine (🐣, Project Maya: a Strata fork for this model)** — Maya's own
 quants, its per-layer VRAM expert pool + pinned RAM tier, MTP on two cards (none on one), 131K, fp16 latent KV with 32K
 positions in VRAM. Canonical bench (3 warm + 5 measured, fresh boot); one request at a time; thinking off; our rows at 370 / 420 W.

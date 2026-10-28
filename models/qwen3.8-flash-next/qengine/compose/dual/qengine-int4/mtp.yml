@@ -16,20 +16,30 @@
 #   Status:    🐣 Incubating
 #   Caveats:   ⚠️ QEngine is PolyForm Noncommercial 1.0.0: free for non-commercial use only.
 #              Upstream calls this engine a preview: tested on one machine, no quality benchmark
-#              yet. Not booted here yet. On two cards about half the expert groups stay in pinned
-#              host RAM (~15 GB a card), next to the 51.8 GB INT8 n-gram table: ~85 GB of host RAM
-#              with the archive off, ~130 GB at the defaults (upstream's figures). At most 16
-#              sequence slots. No thinking-budget cap (QEngine has none). The default effort is
+#              yet; quality isn't measured here either. On two cards about half the expert groups
+#              stay in pinned host RAM (~15 GB a card), next to the 51.8 GB INT8 n-gram table:
+#              MemAvailable fell 88 GB at ready and up to 114 GB as the 48 GB archive filled
+#              (measured; FLASH_KV_ARCHIVE_GB=0 keeps it off). At most 16 sequence slots, and each
+#              card has ~0.24 GiB of VRAM left after loading.
+#              On another two-card rig, community PR #1836 (eddietheengineer) found a long-prefill
+#              NaN with FLASH_COMM=auto and an out-of-memory in the 8-pack's agent pack at 8 slots.
+#              Neither reproduced here (90K and 107K needles on auto; 8 concurrent conversations
+#              to 27.7K tokens at 16 slots); if you hit either, FLASH_COMM=ce and FLASH_MAX_SEQS=4
+#              are its fixes.
+#              Measured 2026-10-28 on two 3090s at 230 W (bench.sh on its own boot): 164.0 / 170.6
+#              decode, 1,921 prefill @10K (CV 15%), 2,373 @90K, MTP acceptance length 2.8, 24.1 GB
+#              a card. First start 113 s with the weights already in the page cache (a cold start
+#              reads 128 GB from disk first), later 64 s. No thinking-budget cap (QEngine has none). The default effort is
 #              low, as on the other Qwen3.8 slugs, by a copy of QEngine's own template made at
 #              boot (its default is xhigh); a request's own effort maps high -> xhigh but minimal
 #              and max -> medium.
 #   Best for:  Qwen3.8-Flash-Next on two 3090s at QEngine's decode speed, with host RAM to spare
 # ---------------------------------------------------------------------------
-# CPU-Offload-Host-RAM-GB: 85
-#   ⤷ upstream's two-card figure with the conversation archive off (FLASH_KV_ARCHIVE_GB=0): the
-#     51.8 GB INT8 n-gram table and about half the expert groups, pinned. The archive (48 GB by
-#     default, ~130 GB together) is elastic: it stops at MemAvailable minus a margin and gives
-#     memory back, so it isn't part of the need. Not measured here yet.
+# CPU-Offload-Host-RAM-GB: 88
+#   ⤷ MEASURED 2026-10-28 on two 3090s: MemAvailable fell 88 GB at ready (the 51.8 GB INT8 n-gram
+#     table and ~30 GB of expert groups, pinned; upstream says ~85 GB with the archive off). The
+#     archive (48 GB by default) then grows to ~114 GB in all, but it's elastic: it stops at
+#     MemAvailable minus a margin and gives memory back, so it isn't part of the need.
 # Requires-min-vram-gb: 24
 # Requires-min-gpu-count: 2
 # Tensor-parallel: 2
@@ -42,7 +52,7 @@
 # It needs P2P for its prefill exchanges or falls back to the copy engine or host memory.
 #
 #   bash scripts/setup.sh qengine/qwen38-flash-next-dual          # 128 GB, ready to run
-#   READY_TIMEOUT=3600 bash scripts/switch.sh --force qengine/qwen38-flash-next-dual
+#   READY_TIMEOUT=1800 bash scripts/switch.sh --force qengine/qwen38-flash-next-dual   # a cold start reads 128 GB
 #
 # The engine opens every .safetensors file in the model folder, so nothing else may sit in it.
 #

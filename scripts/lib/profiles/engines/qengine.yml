@@ -18,7 +18,7 @@ install:
   # The author's own image, ghcr.io/bpx03/qengine:<release> (text only; the :vision tags add the vision encoder and
   # PyTorch, ~3 GB). Its org.opencontainers.image.revision label is the source commit: 1.3 is git tag v1.3, a single
   # squashed release commit on main (the rc tags were a branch of their own, so diff rc4 → 1.3 by tree).
-  # pin-current: 1.3 · source d15a4d3a · pinned 2026-10-28 · booted 2026-10-28 on qengine/qwen38-27b-dual (verify-full 8 + 2 n/a, bench.sh); qengine/qwen38-flash-next-dual not booted yet
+  # pin-current: 1.3 · source d15a4d3a · pinned 2026-10-28 · booted 2026-10-28 on both slugs (verify-full 8 + 2 n/a each, bench.sh)
   # pin-earlier: 1.3-rc4 `18b3c4bb…` (source 116bd8d9, 2026-10-27)
   spec: ghcr.io/bpx03/qengine@sha256:b9d1b0afe8f96547b3a05de73aff437077effcb1117c82ab2e0fe62bf000b3da
 supported_model_families:
