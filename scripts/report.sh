@@ -1636,6 +1636,16 @@ stage_record() {
   local key="$1" rc="$2" raw="${3:-}" verdict detail advisory=0 hard=0
   if [[ "$rc" -eq 0 ]]; then
     verdict="PASS"; detail="—"
+    # A check the stage could not run (verify-stress's `skipped (not run):` lines,
+    # #1826) is named here, so a PASS that left the ceiling ladder unrun says so.
+    # It doesn't change the verdict or the exit code: what ran, passed.
+    if [[ -n "$raw" && -f "$raw" ]]; then
+      local not_run
+      not_run="$(sed -E 's/\x1b\[[0-9;]*[mK]//g' "$raw" | command grep 'skipped (not run):' \
+        | sed -E 's/^.*skipped \(not run\):[[:space:]]*//' | head -3 | paste -sd';' - \
+        | sed -E 's/;/ · /g')" || true
+      [[ -z "$not_run" ]] || detail="did not run: ${not_run}"
+    fi
   else
     if [[ -n "$raw" && -f "$raw" ]]; then
       hard="$(command grep -c '✗' "$raw" 2>/dev/null || true)"
