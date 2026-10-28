@@ -111,14 +111,14 @@ Maya runs MiniMaxAI's [MiniMax-M3.1-Flash](https://huggingface.co/MiniMaxAI/Mini
 
   Its 2.3 GB comes out of an expert pool: 1,625 experts resident instead of 1,800 on two cards, 146 instead of 320 on one. `DSPARK=off` turns it off.
 - **Prefill calibration:** none needed on 3090s. Maya's `tools/calibrate_mm3_prefill.py` tries a prompt chunk above 1,024 only where every routed expert is in VRAM, and hipBLASLt only on AMD, so on these cards it measures the defaults alone (chunk 1024, cuBLAS) and keeps them. Without its `prefill-tune.txt` a start only logs a NOTE.
-- **⚠️ The start's CPU-lane probe can misread.** At load the engine times one expert on the CPU lane against a copy to VRAM (`CPU lane vs staging (measured): an expert 0.31 ms on the CPU lane … 1 staged`) and keeps that choice for the session. One start of the single slug read 3.98 ms instead of the usual 0.25–0.35, staged every expert, and decoded ~21% slower. A slow start shows in that line: anything but `1 staged` is worth a restart ([mw00/project-maya#548](https://github.com/mw00/project-maya/issues/548), [UPSTREAM.md](../UPSTREAM.md)).
+- **⚠️ The start's CPU-lane probe can misread.** At load the engine times one expert on the CPU lane against a copy to VRAM (`CPU lane vs staging (measured): an expert 0.31 ms on the CPU lane … 1 staged`) and keeps that choice for the session. One start of the single slug read 3.98 ms instead of the usual 0.25–0.35, staged every expert, and decoded ~21% slower. From v1.1.34 the engine measures a reading like that one (four experts no slower than one) again, up to three rounds, and the start line says so. A reading off the other way isn't caught, so the line is still worth a look: anything but `1 staged` is worth a restart ([mw00/project-maya#548](https://github.com/mw00/project-maya/issues/548), [UPSTREAM.md](../UPSTREAM.md)).
 - **Settings:** the same as the GLM slugs' table above, with MiniMax's defaults and levels.
   - **Effort:** `auto` by default (Maya's own: MiniMax's adaptive thinking, the model decides whether to think). `low`, `medium`, `high`, `xhigh` and `max` reach the template as they are (MiniMax has five levels; for GLM, `medium` and `xhigh` fold into `high` and `max`). `none`, or `ENABLE_THINKING=false`, turns thinking off.
   - **Sampling and name:** temperature 1.0 / top_p 0.95, the model card's. The name is `minimax-m3.1-flash`.
   - **Three more settings:**
     - `KV` (`--kv-cache`): `int8` or `bf16`. fp8 isn't validated on these cards, and fp4 is below the stack's KV floor; both are refused.
     - `DSPARK` (`on` / `off`).
-    - `THREADS` (`--cpu-threads`): half the CPUs by default, as DeepSeek's.
+    - `THREADS` (`--cpu-threads`): half the CPUs by default, as DeepSeek's. From v1.1.34 that's the lane's threads in all; earlier images started one more (mw00/project-maya#552).
 - **Context:** 204,800. Maya's own setup defaults to 65,536 and recommends more where the PC's memory holds it; the model reaches 1M, and Maya has run 256K end to end.
 - **Measured on the slugs** (2026-10-27, v1.1.31 image `c94aa0e1`, through `switch.sh`, `bench.sh` on each slug's own boot, DSpark on, thinking off, the cards capped at 230 W):
 
@@ -128,7 +128,7 @@ Maya runs MiniMaxAI's [MiniMax-M3.1-Flash](https://huggingface.co/MiniMaxAI/Mini
   | single | 18.12 (CV 0.9%) | 20.67 (15.70–22.41) | 181 / 170 | 80.3% | 146 | 23,410 MiB | 124 GB (`/metrics`: 7,150 expert slots, 100.4 GB, in RAM) |
 
   - **Code decode varies within a boot.** On two cards it fell from 24.56 to ~18.3 tok/s over the five runs while GPU0's clock held at ~1,770 MHz and the short prompt's first token went from 67 to 85 ms. Narrative stays within a few percent, so compare on that: 18.37 tok/s on v1.1.30 with DSpark on, 20.13 on v1.1.31.
-  - **One card reads prompts faster than two** (8% at 10K, 16% at 60K). Not explained yet; asked upstream ([mw00/project-maya#549](https://github.com/mw00/project-maya/issues/549), [UPSTREAM.md](../UPSTREAM.md)).
+  - **One card reads prompts faster than two** (8% at 10K, 16% at 60K). Not explained yet; upstream has noted it for a closer look ([mw00/project-maya#549](https://github.com/mw00/project-maya/issues/549), closed on its `--bench` fix; [UPSTREAM.md](../UPSTREAM.md)).
   - **Drafts kept** is the bench's figure under `bench.sh`'s sampler (0.6 / 0.95 / top-k 20); the model card's 1.0 / 0.95, which the slugs serve, may keep fewer.
   - Host RAM is the `MemAvailable` fall, decimal, at its peak through the bench on a 224 GB host. `verify-full` passes every applicable check on both.
   - The first starts (v1.1.30, DSpark off) were ready in 72 s (dual) and 48 s (single).
