@@ -25,6 +25,11 @@ workload): hermesagent-20 thinking-ON passes clean at 1 slot + 131K (12/20, rest
 4 slots cliffs thinking-ON and 8 cliffs thinking-OFF. Continuous soak passes throughout (172/200
 MiB growth, 0 errors). A 2×24 GB rig ceiling — upstream tunes this half for 3 cards.
 
+Correction to the entry below, from the full crash log: the NaN is **not** long-prefill-specific
+— faults were logged at prefill positions 10,273 / 12,859 / 13,335 / 76,418 / 85,894 tokens, all
+on `FLASH_COMM=auto` boots, zero on any `ce` boot. The 76K repro is just the cleanest
+single-request form; the P2P SM path is numerically broken across prefill sizes on this rig.
+
 ## 2026-10-28 — long-prefill NaN found; the slug ships FLASH_COMM=ce
 
 Re-validating this slug on the 1.3 pin, `bench.sh`'s 90K-prefill step killed the engine:
