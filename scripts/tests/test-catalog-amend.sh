@@ -12,6 +12,9 @@ rc=0
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/scripts" "$TMP/tools"
 cp -r scripts/lib "$TMP/scripts/"; cp -r tools/tui-core "$TMP/tools/"
+# Not the developer's own local layer (gitignored, under scripts/lib): its entries are not this
+# test's fixture, and a locally promoted slug failed the invariant check below.
+rm -rf "$TMP/scripts/lib/profiles-local"
 
 printf '{"hidden_size":64,"num_hidden_layers":2,"num_attention_heads":4,"num_key_value_heads":2,"max_position_embeddings":65536}\n' > "$TMP/cfg.json"
 cat > "$TMP/c.yml" <<'YML'
@@ -56,11 +59,19 @@ fi
 chk "real rename"                      0 scripts/catalog.sh rename --slug their-engine/amend-probe --to their-engine/renamed --root "$TMP"
 chk "real update"                      0 scripts/catalog.sh update --slug their-engine/renamed --set workload=fast-chat --root "$TMP"
 
-# The slug's namespace IS the engine, so the two must never drift apart.
+# The slug's namespace IS the engine, so the two must never drift apart —
+# except entries attached to a curated engine, which carry the core profile
+# id (e.g. engine: llama-cpp-local under the llamacpp/ namespace): the
+# documented '<engine>/<name>' shape (#1202 P3).
 if python3 - "$REG" <<'PY'
 import json, sys
-d = json.load(open(sys.argv[1]))
-raise SystemExit(0 if all(k.split("/", 1)[0] == v.get("engine") for k, v in d.items()) else 1)
+from pathlib import Path
+reg = Path(sys.argv[1])
+d = json.load(open(reg))
+core = {p.stem for p in reg.parents[1].glob("profiles/engines/*.yml")}
+bad = [k for k, v in d.items()
+       if v.get("engine") not in core and k.split("/", 1)[0] != v.get("engine")]
+raise SystemExit(1 if bad else 0)
 PY
 then echo "  ok   slug namespace and entry.engine agree"
 else echo "  FAIL slug namespace and entry.engine disagree after amend"; rc=1; fi
