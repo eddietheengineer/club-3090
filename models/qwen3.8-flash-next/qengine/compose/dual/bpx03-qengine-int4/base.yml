@@ -1,0 +1,97 @@
+# ===========================================================================
+# Profile (at-a-glance):
+#   Model:     Qwen3.8-Flash-Next (bpx03 QE-INT4: converted AutoRound W4A16 + INT8
+#              n-gram table + MTP head — loads in NO engine but QEngine's libqflash)
+#   Engine:    QEngine 1.3-rc4 (ghcr.io/bpx03/qengine, pinned by digest; libqflash.so)
+#   Topology:  Dual 3090 PCIe (TP=2, QE_GPUS 0,1). ⚠️ Upstream tests this half on
+#              3 cards only; 2 is allowed by run.sh, untested there.
+#   Drafter:   MTP (adaptive, default k=3) + lookup drafts from the history (FLASH_LOOKUP=1)
+#   KV:        fp8_e4m3; conversation archive lowered to 16 GB (upstream default 48)
+#   Vision:    no (the Flash-Next engine has no encoder yet)
+#   Max ctx:   262144
+#   Genesis:   N/A — Genesis is Qwen3-Next-specific
+#   Status:    🐣 Incubating
+#   Caveats:   Not gate-passing yet. ⚠️ The SAME artifact produced garbled
+#              multilingual output on the 1.3-rc1/rc2 images (2026-10-26); this slug
+#              runs the 1.3-rc4 pin and MUST be output-checked on every boot.
+#              ⚠️ HOST RAM: the 51.8 GB INT8 n-gram table is pinned by default
+#              (FLASH_NGRAM_PIN=1) — about 80 GB with the 16 GB archive on a 92 GB rig;
+#              free the cards (stop the vLLM dual) before launching. FLASH_NGRAM_PIN=0
+#              switches to disk mode (page-cache reads; needs the NVIDIA open kernel
+#              modules — this rig runs 615.71 open). Thinking ON by default; toggle
+#              with ENABLE_THINKING=false (SPEC_N 0..4 maps onto --mtp-k; the engine
+#              has no server-side reasoning_effort default and no token budgets —
+#              unsupported knobs, docs/engines/QENGINE.md). PolyForm Noncommercial
+#              licence.
+#   Best for:  trying QEngine's Flash-Next preview on two cards (upstream: ~270 tok/s
+#              short-prompt c=1 on three)
+# ---------------------------------------------------------------------------
+# The server picks libqflash.so automatically from this model dir's config.json
+# (model_type qwen4_exp*) — see scripts/lib/profiles/engines/qengine.yml
+# the curated engine profile (one image ships both engine libraries).
+services:
+  qengine:
+    image: ${QENGINE_IMAGE:-ghcr.io/bpx03/qengine@sha256:18b3c4bb43604fa3dcbff023710ec8e799725070f957cf667882319a544c0537}
+    container_name: ${ESTATE_CONTAINER:-qengine-qwen38-flash-next-dual}
+    restart: ${CLUB3090_RESTART:-unless-stopped}
+    user: "0:${DOCKER_GID:-1000}"
+    ipc: host
+    ulimits:
+      memlock: -1           # the n-gram table + expert groups are page-locked
+    stop_grace_period: 60s
+    ports:
+      - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8146}}:8080"
+      - "127.0.0.1:${QE_METRICS_PORT_HOST:-9395}:9393"
+    # club-3090 standard knobs -> QEngine flags (the image entrypoint appends the
+    # command line to server/app.py). QE_EXTRA_ARGS naming the same flag wins.
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        umask 0002          # cache files stay group-writable for the host user
+        _knob=()
+        if [ "$${ENABLE_THINKING:-}" != "" ]; then
+          case "$${ENABLE_THINKING}" in true|false) ;;
+            *) echo "[qengine] ENABLE_THINKING='$${ENABLE_THINKING}' must be true or false." >&2; exit 2 ;;
+          esac
+          case " $${QE_EXTRA_ARGS:-} " in *" --think "*) ;;
+            *) if [ "$${ENABLE_THINKING}" = true ]; then _knob+=(--think 1); else _knob+=(--think 0); fi ;;
+          esac
+        fi
+        if [ "$${SPEC_N:-}" != "" ]; then
+          case "$${SPEC_N}" in
+            ''|*[!0-9]*) echo "[qengine] SPEC_N='$${SPEC_N}' must be an integer 0..$${QE_MTP_K_MAX:-7}." >&2; exit 2 ;;
+            *) if [ "$${SPEC_N}" -gt "$${QE_MTP_K_MAX:-7}" ]; then echo "[qengine] SPEC_N='$${SPEC_N}' must be an integer 0..$${QE_MTP_K_MAX:-7}." >&2; exit 2; fi ;;
+          esac
+          case " $${QE_EXTRA_ARGS:-} " in *" --mtp-k "*) ;;
+            *) _knob+=(--mtp-k "$${SPEC_N}") ;;
+          esac
+        fi
+        exec /usr/local/bin/qengine-entrypoint "$${_knob[@]}" "$@"
+    environment:
+      QE_GPUS: "${QE_GPUS:-0,1}"
+      QE_MODEL: /app/models/Qwen3.8-Flash-Next-QE-INT4
+      FLASH_MAX_SEQS: "${FLASH_MAX_SEQS:-8}"       # 1..16; frees VRAM for the expert cache
+      FLASH_MAX_PREFILLS: "${FLASH_MAX_PREFILLS:-2}"
+      FLASH_KV_ARCHIVE_GB: "${FLASH_KV_ARCHIVE_GB:-16}"  # upstream default 48 — too big for 92 GB
+      FLASH_NGRAM_PIN: "${FLASH_NGRAM_PIN:-1}"     # 0 = disk mode (low-RAM hosts)
+      # the Flash-Next engine drafts adaptively with k=3 (upstream's measured best 2..4)
+      QE_MTP_K_MAX: "4"
+      # club-3090 standard knobs, read by the entrypoint below. Null value on
+      # purpose: the host value passes through when set and the variable is
+      # ABSENT when unset — `- VAR=${VAR:-}` would set it EMPTY-but-present,
+      # which the ratchet forbids for catalogued knobs.
+      ENABLE_THINKING:
+      SPEC_N:
+      # verbatim passthrough to server/app.py: --think 0, --mtp-k N, ...
+      QE_EXTRA_ARGS: "${QE_EXTRA_ARGS:---max-ctx ${MAX_MODEL_LEN:-262144}}"
+    volumes:
+      - "${MODEL_DIR:-../../../../../../models-cache}/qwen3.8-flash-next-qengine:/app/models/Qwen3.8-Flash-Next-QE-INT4:ro"
+      - "${CLUB3090_ENGINE_CACHE_DIR:-../../../cache}/qengine:/root/.cache/qengine"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['${ESTATE_GPUS:-${CUDA_VISIBLE_DEVICES:-0,1}}']
+              capabilities: [gpu]

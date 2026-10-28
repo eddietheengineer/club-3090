@@ -290,6 +290,35 @@ weights:
     kind: main
     verify_glob: "*.safetensors"
     manual_note: "The W4A16 export HyperQwen's prepare step is written for (docker/prepare.sh HF_REPO): a compressed-tensors pack-quantized re-export that keeps '-AutoRound' in its name. Pinned to the revision of 2026-10-14. Served only through vllm-hyperqwen, which prepares it in place at the first start."
+  bpx03-qengine-int4:
+    path: Qwen3.8-27B-INT4
+    local_subdir: Qwen3.8-27B-INT4
+    size_gb: 20.3
+    format: compressed-tensors
+    status: experimental
+    hf_repo: RedHatAI/Qwen3.8-27B-INT4
+    files:
+    - config.json
+    - generation_config.json
+    - chat_template.jinja
+    - processor_config.json
+    - recipe.yaml
+    - tokenizer.json
+    - tokenizer_config.json
+    - model.safetensors
+    - model.safetensors.index.json
+    - model_mtp.safetensors
+    kind: main
+    verify_glob: '*.safetensors'
+    manual_note: 'RedHatAI''s compressed-tensors W4A16 export (pack-quantized, group
+      128, symmetric) — the ONLY weight layout QEngine reads (weight_packed/weight_scale;
+      AutoRound''s auto_gptq packing does not load). On this rig the directory is
+      the HF checkpoint PLUS model_mtp_ft.safetensors (bpx03''s MTP head fine-tuned
+      on the engine''s own answers, a QEngine release asset, +8% accepted drafts;
+      the server picks it up automatically when present) and a SHA256SUMS. Drives
+      qengine/qwen38-27b-dual (TP=2 over PCIe). QEngine reads only text: the checkpoint''s
+      vision tower is ignored by the pinned text-only image.'
+
 default_weight_variant: unsloth-iq4xs
 # Validated drafters for this model (each names a drafters/<id>.yml we ship):
 #   - qwen-mtp-builtin      — embedded nextn head (blk.64.nextn.* in the unsloth

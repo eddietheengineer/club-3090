@@ -6983,6 +6983,70 @@ entries:
     gateway: false
     serve_aliases: []
     category: frontier
+  qengine/qwen38-27b-dual:
+    origin: core
+    model: qwen3.8-27b
+    weights_variant: bpx03-qengine-int4
+    workload: long-ctx-single
+    engine: qengine
+    drafter: null
+    spec_method: mtp
+    kv_format: fp8_e4m3
+    act_format: 16bit
+    act8_capable: false
+    offload: null
+    moe_cache: false
+    host_ram_gb: null
+    kv_offload: null
+    chat_template: native
+    tp: 2
+    max_ctx: 262144
+    max_num_seqs: 32
+    mem_util: null
+    compose_path: models/qwen3.8-27b/qengine/compose/dual/bpx03-qengine-int4/base.yml
+    requires_nvlink: false
+    requires_homogeneous_arch: false
+    required_engine_features: []
+    default_port: 8089
+    kvcalc_key: SKIP
+    status: incubating
+    status_note: "QEngine 1.3-rc4 (ghcr.io/bpx03/qengine, digest-pinned with the curated engine profile), TP=2 over PCIe on 2x3090. RedHatAI W4A16 INT4 + MTP (_ft head when present). Upstream tunes for 3 cards; 2 is author-measured at 72-85% of TP=3 and 1.2-2.0x vLLM dual-fast output TPS on short prompts. fp8_e4m3 is the engine's only KV format; 32 GB host-RAM KV archive. Not gate-passing (no verify-full/stress/soak/8-pack). PolyForm Noncommercial licence."
+    weights_companions: []
+    gateway: false
+    serve_aliases: []
+    served_name: qwen3.8-27b-qengine
+  qengine/qwen38-flash-next-dual:
+    origin: core
+    model: qwen3.8-flash-next
+    weights_variant: bpx03-qengine-int4
+    workload: long-ctx-single
+    engine: qengine
+    drafter: null
+    spec_method: mtp
+    kv_format: fp8_e4m3
+    act_format: 16bit
+    act8_capable: false
+    offload: engine
+    moe_cache: false
+    host_ram_gb: 80
+    kv_offload: null
+    chat_template: native
+    tp: 2
+    max_ctx: 262144
+    max_num_seqs: 8
+    mem_util: null
+    compose_path: models/qwen3.8-flash-next/qengine/compose/dual/bpx03-qengine-int4/base.yml
+    requires_nvlink: false
+    requires_homogeneous_arch: false
+    required_engine_features: []
+    default_port: 8146
+    kvcalc_key: SKIP
+    status: incubating
+    status_note: "QEngine 1.3-rc4's Flash-Next half (libqflash.so) on bpx03's QE-INT4 conversion (INT8 n-gram table pinned: ~80 GB host RAM with the archive lowered to 16 GB; FLASH_NGRAM_PIN=0 for disk mode). ⚠️ Upstream tests this on 3 cards only; 2 is allowed but untested there. ⚠️ The same artifact garbled multilingual output on rc1/rc2 (2026-10-26) — output-check every boot. Not gate-passing. PolyForm Noncommercial licence."
+    weights_companions: []
+    gateway: false
+    serve_aliases: []
+    served_name: qwen3.8-flash-next-qengine
 
 defaults:
   qwen3.6-27b:

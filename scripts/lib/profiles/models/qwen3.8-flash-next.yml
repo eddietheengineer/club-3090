@@ -456,6 +456,91 @@ weights:
     verify_glob: '*.gguf'
     manual_note: 'SC117''s abliterated edition of UkisAI''s Swift 1.5 GSQ-RCO IQ3_S: 144 residual-writer tensors (ssm_out, attn_output, ffn_down_shexp, ffn_down_exps) transplanted from orcarouter''s abliterated release, the other 1080 byte-identical to Swift''s. Two shards at the repo root (44.85 GB + 38.70 GB, LFS sha256 638fbd42a01c7b39… / 091a4f6a53697a12…), pinned to the revision of 2026-10-08; the rest of the repo (other tiers, mmproj, mtp-*, strata/rt) is not fetched. Swift keeps the 28.8 GB per-layer embedding table in shard 1, not shard 2 as ISTA does. Abliterated: its README states it has no reliable built-in guardrails. Swift Open License 1.0 (commercial use free below US$1M annual revenue) on top of the Qwen licence. Strata serves it as its swift family; the MTP draft layer is Strata''s own (from Qwen/Qwen3.8-Flash-Next), shared with the ISTA slugs.'
 
+  bpx03-qengine-int4:
+    path: qwen3.8-flash-next-qengine
+    local_subdir: qwen3.8-flash-next-qengine
+    size_gb: 128
+    format: qengine-int4
+    status: experimental
+    hf_repo: bpx03/Qwen3.8-Flash-Next-QEngine
+    engine: qengine
+    kind: main
+    files:
+    - base.safetensors
+    - chat_template.jinja
+    - cold_experts.json
+    - config.json
+    - convert_report.json
+    - expert_prior.bin
+    - generation_config.json
+    - layer-00.safetensors
+    - layer-01.safetensors
+    - layer-02.safetensors
+    - layer-03.safetensors
+    - layer-04.safetensors
+    - layer-05.safetensors
+    - layer-06.safetensors
+    - layer-07.safetensors
+    - layer-08.safetensors
+    - layer-09.safetensors
+    - layer-10.safetensors
+    - layer-11.safetensors
+    - layer-12.safetensors
+    - layer-13.safetensors
+    - layer-14.safetensors
+    - layer-15.safetensors
+    - layer-16.safetensors
+    - layer-17.safetensors
+    - layer-18.safetensors
+    - layer-19.safetensors
+    - layer-20.safetensors
+    - layer-21.safetensors
+    - layer-22.safetensors
+    - layer-23.safetensors
+    - layer-24.safetensors
+    - layer-25.safetensors
+    - layer-26.safetensors
+    - layer-27.safetensors
+    - layer-28.safetensors
+    - layer-29.safetensors
+    - layer-30.safetensors
+    - layer-31.safetensors
+    - layer-32.safetensors
+    - layer-33.safetensors
+    - layer-34.safetensors
+    - layer-35.safetensors
+    - layer-36.safetensors
+    - layer-37.safetensors
+    - layer-38.safetensors
+    - layer-39.safetensors
+    - layer-40.safetensors
+    - layer-41.safetensors
+    - layer-42.safetensors
+    - layer-43.safetensors
+    - layer-44.safetensors
+    - layer-45.safetensors
+    - layer-46.safetensors
+    - layer-47.safetensors
+    - model.safetensors.index.json
+    - mtp-int4.safetensors
+    - mtp.safetensors
+    - ngram_int8.safetensors
+    - preprocessor_config.json
+    - processor_config.json
+    - token_rank.bin
+    - tokenizer.json
+    - tokenizer_config.json
+    verify_glob: '*.safetensors'
+    manual_note: bpx03's ready-to-run QE-INT4 conversion of Intel/Qwen3.8-Flash-Next-W4A16-AutoRound
+      (routed experts repacked bit-exact INT4; shared expert + DeltaNet + n-gram k/v
+      RTN INT4; QSA attention + lm_head BF16 on disk, INT8 in the engine; INT8 n-gram
+      table; MTP head + INT4 MTP copy; token_rank.bin / expert_prior.bin / cold_experts.json).
+      Works ONLY with QEngine (libqflash.so) — not Transformers/vLLM/llama.cpp. The
+      engine's Flash-Next half is an experimental preview and upstream tests it on
+      3 GPUs; 2 GPUs is allowed by run.sh but untested upstream. This artifact produced
+      garbled multilingual output on the 1.3-rc1/rc2 images (2026-10-26); the slug
+      is registered against the 1.3-rc4 pin and must be output-checked on boot.
+
 default_weight_variant: unsloth-ud-q4kxl
 
 # ---------------------------------------------------------------------------

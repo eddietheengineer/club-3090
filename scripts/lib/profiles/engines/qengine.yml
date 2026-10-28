@@ -17,14 +17,20 @@ install:
   method: docker_image
   # The author's own image, ghcr.io/bpx03/qengine:<release> (text only; the :vision tags add the vision encoder and
   # PyTorch, ~3 GB). Its org.opencontainers.image.revision label is the source commit: 1.3-rc4 is git tag v1.3-rc4.
-  # pin-current: 1.3-rc4 · source 116bd8d9 · pinned 2026-10-27 · not booted (no slug yet)
+  # pin-current: 1.3-rc4 · source 116bd8d9 · pinned 2026-10-27 · booted on both dual slugs (verify-full 9/9 each)
   spec: ghcr.io/bpx03/qengine@sha256:18b3c4bb43604fa3dcbff023710ec8e799725070f957cf667882319a544c0537
 supported_model_families:
-  - qwen35-dense          # Qwen3.8-27B, RedHatAI's INT4 only. Its second engine, for Qwen3.8-Flash-Next (libqflash.so,
-                          # the author's own INT4), is an experimental preview and not listed yet
+  - qwen35-dense          # Qwen3.8-27B, RedHatAI's INT4 only
+  - qwen4exp              # Qwen3.8-Flash-Next via the SAME image's second engine (libqflash.so, chosen from the
+                          # model dir's config.json model_type qwen4_exp*). Upstream calls it an experimental preview
+                          # and tunes it for 3 GPUs; 2 is allowed by run.sh, untested there — the qengine/
+                          # qwen38-flash-next-dual slug carries that as its caveat
 supported_weight_formats:
   - compressed-tensors    # RedHatAI/Qwen3.8-27B-INT4 (pack-quantized W4A16, group 128, symmetric). It reads only
                           # weight_packed / weight_scale, so other INT4 formats (AutoRound's auto_gptq packing) don't load
+  - qengine-int4          # bpx03/Qwen3.8-Flash-Next-QEngine: the QE-INT4 conversion (experts repacked bit-exact INT4,
+                          # dense parts RTN INT4, INT8 n-gram table, MTP head + the three small routing/draft files).
+                          # Loads in NO other engine — a format of its own, not compressed-tensors
 supported_kv_formats:
   - fp8_e4m3              # its one K / V format: FP8 e4m3 in a shared pool per GPU
 supported_drafters:
@@ -46,4 +52,8 @@ notes: >
   presence penalty on the repeated reply and a server note appended to the latest tool result
   (QE_LOOP_GUARD_TURNS=0 turns it off, QE_LOOP_GUARD_NOTE=0 drops only the note, "loop_guard": false in a
   request turns it off for that request). Engine kind `qengine`.
-  Registered with no slug yet (2026-10-27): its log lines, metrics and knobs are wired with the first.
+  Slugs (2026-10-27): qengine/qwen38-27b-dual (TP=2, verify-full 9/9, canonical bench) and
+  qengine/qwen38-flash-next-dual (TP=2, verify-full 9/9, clean en/ja/fr output on the 1.3-rc4 pin —
+  the same artifact garbled on rc1/rc2). Both 🐣 Incubating; stress/soak/8-pack pending. The server's
+  [stats] SpecDecoding lines are the vLLM-modern wording, so capture.sh's acceptance parser reads
+  them unchanged; bench/health/verify-full find the container by its qengine- prefix.
