@@ -2,7 +2,7 @@
 
 Dated history for Qwen3.8-Flash-Next configs in this repo. Append-only — add a new entry, don't rewrite past ones.
 
-## 2026-10-28 — second flash-half defect: 8-slot VRAM OOM → ship FLASH_MAX_SEQS=4
+## 2026-10-28 — second flash-half defect: CUDA-graph VRAM OOM under concurrency → ship FLASH_MAX_SEQS=1
 
 With `FLASH_COMM=ce` in place, the 8-pack still killed the engine — a *different* fault:
 `[flash] graph instantiate out of memory` then `CUDA error cudaErrorMemoryAllocation at
@@ -13,12 +13,17 @@ standalone (8-pack thinking-OFF 117/150, restarts=0), so the compose now ships 4
 (overridable). Both flash-half defects reproduce identically on 1.3-rc4, so neither is a bump
 regression.
 
-⚠️ **Residual cliff (same day).** hermesagent-20 — the 8-pack's peak-memory pack — still
-exceeds VRAM at 4 slots in two regimes: thinking-ON (16K budgets; died on a *fresh* boot at
-`cudaErrorMemoryAllocation at flash_batch.cuh:704`) and the combined `rebench-full` (the 8-pack
-after bench + stress on one warm boot). The clean pass is a fresh boot with thinking-OFF
-(117/150, restarts=0). A 2×24 GB rig ceiling, not a config bug (upstream tunes this half for
-3 cards); it keeps the slug 🐣. Continuous soak passes (172/200 MiB growth, 0 errors).
+⚠️ **Residual cliff → ship 1 slot (same day).** hermesagent-20 — the 8-pack's peak-memory pack
+— still exceeds VRAM at 4 slots under thinking-ON (16K budgets; died on a *fresh* boot at
+`cudaErrorMemoryAllocation at flash_batch.cuh:704`) and on warm combined-rebench runs. The
+~0.25 GiB/card margin is the engine's own `FLASH_EC_MARGIN_MB` default (256 MB), and CUDA-graph
+instantiation needs more. Shrinking `--max-ctx` does **not** help: at 64K the boot still reports
+0.25 GiB free because the expert-cache allocator absorbs the freed VRAM. The real lever is slot
+count — each slot costs 103 MB/card recurrent state plus its own per-shape graph pools. The
+compose now ships **`FLASH_MAX_SEQS=1`** (one long-context stream, this slug's declared
+workload): hermesagent-20 thinking-ON passes clean at 1 slot + 131K (12/20, restarts=0), where
+4 slots cliffs thinking-ON and 8 cliffs thinking-OFF. Continuous soak passes throughout (172/200
+MiB growth, 0 errors). A 2×24 GB rig ceiling — upstream tunes this half for 3 cards.
 
 ## 2026-10-28 — long-prefill NaN found; the slug ships FLASH_COMM=ce
 

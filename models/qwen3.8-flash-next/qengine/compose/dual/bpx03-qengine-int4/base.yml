@@ -18,14 +18,17 @@
 #              path (P2P SM loads/stores on this PCIe rig) produces non-finite lm_head
 #              inputs at ~76K-token prefills, fail-stopping the engine under load; shipped
 #              FLASH_COMM=ce (copy-engine) measures clean through bench's 90K + stress's 91K.
-#              (2) VRAM OOM at 8 sequence slots — the n-gram + expert weights leave only
-#              ~0.25 GiB/card, and concurrent multi-turn load (the 8-pack's hermesagent-20)
-#              exhausts it; shipped FLASH_MAX_SEQS=4, which passes the thinking-OFF 8-pack
-#              standalone (117/150, restarts=0). ⚠️ Residual: hermesagent-20 (the peak-memory
-#              pack) still exceeds VRAM at 4 slots under thinking-ON (16K budgets; died on a
-#              fresh boot) and on warm combined-rebench runs — a 2×24 GB rig ceiling, not a
-#              config bug (upstream tunes this half for 3 cards). Continuous soak PASS
-#              (172/200 MiB growth, 0 errors, 100% retention). Kept 🐣.
+#              (2) VRAM OOM under concurrency — the n-gram + expert weights leave only
+#              ~0.25 GiB/card (that is FLASH_EC_MARGIN_MB's 256 MB default), and CUDA-graph
+#              instantiation needs more. 8 slots dies even thinking-OFF (gemm.cu:3456);
+#              4 slots passes thinking-OFF standalone (117/150) but dies on hermesagent-20
+#              thinking-ON (flash_batch.cuh:704). The compose ships FLASH_MAX_SEQS=1 —
+#              one long-context stream (this slug's workload): hermesagent-20 thinking-ON
+#              passes clean at 1 slot + 131K (12/20, restarts=0). Raising slots or the
+#              margin (FLASH_EC_MARGIN_MB) trades against the expert cache; shrinking
+#              --max-ctx does NOT create headroom (the expert allocator absorbs it).
+#              Continuous soak PASS (172/200 MiB growth, 0 errors, 100% retention).
+#              Kept 🐣.
 #              ⚠️ The SAME artifact produced garbled
 #              multilingual output on the 1.3-rc1/rc2 images (2026-10-26); this slug
 #              runs the 1.3 pin and MUST be output-checked on every boot (the clean
@@ -88,7 +91,7 @@ services:
     environment:
       QE_GPUS: "${QE_GPUS:-0,1}"
       QE_MODEL: /app/models/Qwen3.8-Flash-Next-QE-INT4
-      FLASH_MAX_SEQS: "${FLASH_MAX_SEQS:-4}"       # 1..16; 8 OOMs on 24 GB cards (0.25 GiB/card headroom exhausts under concurrent multi-turn load — the 8-pack's hermesagent-20 died at 8, passes at 4)
+      FLASH_MAX_SEQS: "${FLASH_MAX_SEQS:-1}"       # 1..16; single long-context stream (the slug's workload). 4 OOMs under thinking-ON / warm 8-pack load on 24 GB cards; 1 is the robust default — raise for concurrency at your own risk
       FLASH_MAX_PREFILLS: "${FLASH_MAX_PREFILLS:-2}"
       FLASH_KV_ARCHIVE_GB: "${FLASH_KV_ARCHIVE_GB:-16}"  # upstream default 48 — too big for 92 GB
       FLASH_NGRAM_PIN: "${FLASH_NGRAM_PIN:-1}"     # 0 = disk mode (low-RAM hosts)
