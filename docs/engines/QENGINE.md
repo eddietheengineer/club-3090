@@ -1,6 +1,6 @@
 # QEngine — bpx03's engine for Qwen3.8-27B INT4 on RTX 3090s
 
-**Engine id:** `qengine` · **Slug prefix:** `qengine/` (none yet) · **Status:** registered, no slug yet · **Requires:** NVIDIA RTX 3090 (sm_86 only), ideally three; a driver with CUDA 13.1 support
+**Engine id:** `qengine` · **Slug prefix:** `qengine/` · **Status:** wired, two 🐣 Incubating slugs (`qengine/qwen38-27b-dual`, `qengine/qwen38-flash-next-dual`) · **Requires:** NVIDIA RTX 3090 (sm_86 only), ideally three; a driver with CUDA 13.1 support
 
 > ⚠️ **License: PolyForm Noncommercial 1.0.0.** QEngine is free for non-commercial use only; commercial use needs a licence from its author. Check this before you use it.
 
@@ -45,16 +45,14 @@ Its own environment variables (the image's entrypoint passes `QE_EXTRA_ARGS` to 
 
 ## What's wired
 
-The engine is **registered, not wired**, as `sglang-stable` was before its first compose (#1228):
 - the engine profile (`scripts/lib/profiles/engines/qengine.yml`);
 - engine kind `qengine` in `scripts/lib/engine-kind.sh`, from its id, its profile `type`, a `qengine-` container name, its image and `/v1/models` `owned_by: "qengine"` (it sends no `system_fingerprint`);
 - container discovery (`qengine-` in the prefix set; port 8080 counts with that evidence);
 - the `QENGINE_IMAGE` arm in both launchers;
-- the label in `health.sh`, the Genesis skip in `verify-full.sh`, and the kind in `report.sh`, `run_context.py` and the local registration types.
+- the label in `health.sh`, the Genesis skip in `verify-full.sh`, and the kind in `report.sh`, `run_context.py` and the local registration types;
+- **acceptance + throughput parsing:** the server's `[stats] SpecDecoding metrics: Mean acceptance length: …` lines are the vLLM-modern wording, so `capture.sh`'s acceptance parser and `verify-full.sh`'s MTP check read them unchanged (measured: accept-len 6.39 on the 27B slug, 3.97 on Flash-Next);
+- **the launch knobs mapped onto its own names** — `ENABLE_THINKING` → `--think 1|0` and `SPEC_N` → `--mtp-k N` (0 = drafts off), both resolved in the composes' entrypoint, which validates the domain and stops the boot on a bad value; a flag already named in `QE_EXTRA_ARGS` wins. `REASONING_EFFORT` and the `THINKING_BUDGET_*` knobs are **unsupported**: QEngine has no server-side default for effort (it is a per-request `chat_template_kwargs.reasoning_effort`) and no token budgets at all (the effort levels are prompt instructions, not caps) — declared with this section as the source in `knob-conformance.json`;
+- weights variants `bpx03-qengine-int4` on both models (`RedHatAI/Qwen3.8-27B-INT4`, `bpx03/Qwen3.8-Flash-Next-QEngine`);
+- the composes, booted on this rig (two 3090s, P2P granted) with verify-full 9/9 each.
 
-**Left for the first slug** ([ADDING_ENGINES.md](../ADDING_ENGINES.md), "CONTRACT — wiring it into the tooling"):
-- throughput and acceptance parsing from its logs and metrics (`bench.sh`, `health.sh`, `verify-full.sh`'s acceptance check);
-- the launch knobs mapped onto its `QE_*` names (`REASONING_EFFORT`, `ENABLE_THINKING`, `SPEC_N`);
-- a weights variant for `RedHatAI/Qwen3.8-27B-INT4`, with the release assets (`token_rank.bin`, `model_mtp_ft.safetensors`);
-- the compose, a boot on the reference rig (two 3090s, P2P on) and its bench row;
-- c3's own engine-family handling.
+**Left for later:** c3's own engine-family handling, and the soak / stress / 8-pack gates for promotion past 🐣.

@@ -2,6 +2,18 @@
 
 Dated history for Qwen3.8-Flash-Next configs in this repo. Append-only — add a new entry, don't rewrite past ones.
 
+## 2026-10-27 — QEngine Flash-Next preview slug (🐣)
+
+**`qengine/qwen38-flash-next-dual`** (port 8146) runs the same pinned QEngine image's
+second engine (`libqflash.so`) on bpx03's QE-INT4 conversion
+(`bpx03/Qwen3.8-Flash-Next-QEngine`, 128 GB: W4A16 + INT8 n-gram table + MTP head — a
+weight format that loads in no other engine here). TP=2 on two 3090s: verify-full 9/9
+(MTP accept-len 3.97), clean en/ja/fr output — the same artifact garbled on the 1.3-rc1/rc2
+images (2026-10-26), so the rc4 pin is load-bearing. ⚠️ The 51.8 GB INT8 n-gram table is
+pinned in host RAM (~80 GB total with the archive lowered to 16 GB); `FLASH_NGRAM_PIN=0`
+switches to disk mode. Upstream tests this half on 3 cards only. 🐣 Incubating; bench /
+stress / soak / 8-pack pending.
+
 ## 2026-10-18 — first slug on stock vLLM: `vllm/qwen38-flash-next-dual` (🧪)
 
 Flash-Next on our own `vllm-stable` pin (`vllm/vllm-openai:v0.31.0`), no custom image, for

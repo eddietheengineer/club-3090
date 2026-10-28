@@ -1,548 +1,567 @@
 {
- "_doc": "Which standard launch knobs each live compose must read, and the declared exceptions. Checked by scripts/lib/profiles/knob_conformance.py (run by test-launch-knobs); its docstring has the rules. not_wired.reads_instead is a related setting found by name, not proof it means the same: check what it does before mapping the knob onto it.",
- "knobs": {
-  "REASONING_EFFORT": {
-   "applies": "model",
-   "why": "a server-side default effort, for models whose template takes reasoning_effort"
-  },
-  "ENABLE_THINKING": {
-   "applies": "model",
-   "why": "a server-side thinking on / off, for models whose template takes enable_thinking"
-  },
-  "THINKING_BUDGETS": {
-   "applies": "model",
-   "why": "per-effort thinking budgets (effort_budget.py), for models with Qwen3.8's effort levels"
-  },
-  "THINKING_BUDGET_LOW": {
-   "applies": "model",
-   "model_key": "THINKING_BUDGETS"
-  },
-  "THINKING_BUDGET_MEDIUM": {
-   "applies": "model",
-   "model_key": "THINKING_BUDGETS"
-  },
-  "THINKING_BUDGET_XHIGH": {
-   "applies": "model",
-   "model_key": "THINKING_BUDGETS"
-  },
-  "SPEC_N": {
-   "applies": "drafter",
-   "why": "the draft depth, for every slug with a drafter or a spec method"
-  },
-  "KV_OFFLOAD_GB": {
-   "applies": "never",
-   "why": "an opt-in feature of the KV-offload composes, not expected of every compose"
-  },
-  "KV_OFFLOAD_DISK": {
-   "applies": "never",
-   "why": "an opt-in feature of the KV-offload composes"
-  },
-  "KV_OFFLOAD_DISK_GB": {
-   "applies": "never",
-   "why": "an opt-in feature of the KV-offload composes"
-  }
- },
- "models": {
-  "agents-a1": {
-   "evidence": "InternScience/Agents-A1-FP8-dynamic chat_template.jinja: enable_thinking",
-   "ENABLE_THINKING": true,
-   "REASONING_EFFORT": "no reasoning_effort in its chat template",
-   "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); it has no effort levels"
-  },
-  "deepseek-v4-flash-0731": {
-   "evidence": "unsloth/DeepSeek-V4-Flash-0731-GGUF tokenizer.chat_template (GGUF header): enable_thinking, reasoning_effort high / max",
-   "ENABLE_THINKING": true,
-   "REASONING_EFFORT": true,
-   "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); its levels are high / max"
-  },
-  "deepseek-v4-flash-vision-exp": {
-   "evidence": "unsloth/DeepSeek-V4-Flash-Vision-Exp-GGUF tokenizer.chat_template (GGUF header): enable_thinking, reasoning_effort high / max",
-   "ENABLE_THINKING": true,
-   "REASONING_EFFORT": true,
-   "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); its levels are high / max"
-  },
-  "deepseek-v4.1-flash-1017": {
-   "evidence": "Project Maya's tools/ds4/chat_template.jinja (the template maya-ds4's server renders from the pack's tokenizer/): enable_thinking (false = chat mode), reasoning_effort low / high / max or 1-100",
-   "ENABLE_THINKING": true,
-   "REASONING_EFFORT": true,
-   "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); its levels are low / high / max (or a 1-100 budget)"
-  },
-  "gemma-4-12b": {
-   "evidence": "google/gemma-4-12B-it chat_template.jinja: enable_thinking",
-   "ENABLE_THINKING": true,
-   "REASONING_EFFORT": "no reasoning_effort in its chat template",
-   "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); it has no effort levels"
-  },
-  "gemma-4-26b-a4b": {
-   "evidence": "Intel/gemma-4-26B-A4B-it-int4-mixed-AutoRound chat_template.jinja: enable_thinking",
-   "ENABLE_THINKING": true,
-   "REASONING_EFFORT": "no reasoning_effort in its chat template",
-   "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); it has no effort levels"
-  },
-  "gemma-4-31b": {
-   "evidence": "Intel/gemma-4-31B-it-int4-AutoRound chat_template.jinja: enable_thinking",
-   "ENABLE_THINKING": true,
-   "REASONING_EFFORT": "no reasoning_effort in its chat template",
-   "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); it has no effort levels"
-  },
-  "glm-5.3-flash": {
-   "evidence": "GLM-5.3-Flash GGUF tokenizer.chat_template (Maya-L, the vendor's copy): reasoning_effort in ['low', 'high'] else 'max'; no enable_thinking",
-   "ENABLE_THINKING": "its template has no enable_thinking: it always opens <think> (effort low / high, else max); only an engine that closes the block itself (Project Maya) can turn thinking off",
-   "REASONING_EFFORT": true,
-   "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); its levels are low / high / max"
-  },
-  "inkling-small": {
-   "evidence": "unsloth/Inkling-Small-GGUF tokenizer.chat_template (GGUF header): reasoning_effort none ... max or a number; no enable_thinking",
-   "ENABLE_THINKING": "its template has no enable_thinking (thinking off is reasoning_effort none, which REASONING_EFFORT already covers)",
-   "REASONING_EFFORT": true,
-   "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); its levels are none / minimal / low / medium / high / xhigh / max or a number"
-  },
-  "mimo-v2.6-9b": {
-   "evidence": "bartowski/MiMo-V2.6-Distill-Qwen-9B-GGUF tokenizer.chat_template: enable_thinking",
-   "ENABLE_THINKING": true,
-   "REASONING_EFFORT": "no reasoning_effort in its chat template",
-   "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); it has no effort levels"
-  },
-  "minimax-m3.1-flash": {
-   "evidence": "Project Maya's tools/mm3/chat_template.jinja (the template maya-mm3's server renders from the pack's tokenizer/: MiniMax's own plus thinking_mode \"disabled\"): reasoning_effort low / medium / high / xhigh / max, thinking_mode; serve/frontend.py turns enable_thinking false into thinking_mode \"disabled\"",
-   "ENABLE_THINKING": true,
-   "REASONING_EFFORT": true,
-   "THINKING_BUDGETS": "the per-effort budget knobs are effort_budget.py's, which only the vLLM / SGLang composes run; Maya's server takes one budget for every level (THINKING_BUDGET)"
-  },
-  "nanbeige4.3-33b": {
-   "evidence": "the checkpoint's own chat_template.jinja (Nanbeige/Nanbeige4.3-33B, byte-identical in our AutoRound INT4): reads enable_thinking, preserve_thinking and tool_call_format only",
-   "ENABLE_THINKING": true,
-   "REASONING_EFFORT": "the template has no reasoning-effort control: no reasoning_effort variable, thinking is only on or off (enable_thinking)",
-   "THINKING_BUDGETS": "the per-effort budget knobs key on reasoning-effort levels (effort_budget.py LEVELS), which this template doesn't have; no thinking budget is applied"
-  },
-  "nemotron-3-puzzle-75b": {
-   "evidence": "nvidia/NVIDIA-Nemotron-Labs-3-Puzzle-75B-A9B-NVFP4 chat_template.jinja: enable_thinking",
-   "ENABLE_THINKING": true,
-   "REASONING_EFFORT": "no reasoning_effort in its chat template",
-   "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); it has no effort levels"
-  },
-  "qwen-agentworld-35b-a3b": {
-   "evidence": "cyankiwi/Qwen-AgentWorld-35B-A3B-AWQ-INT4 chat_template.jinja: enable_thinking",
-   "ENABLE_THINKING": true,
-   "REASONING_EFFORT": "no reasoning_effort in its chat template",
-   "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); it has no effort levels"
-  },
-  "qwen3.6-27b": {
-   "evidence": "Lorbus/Qwen3.6-27B-int4-AutoRound chat_template.jinja: enable_thinking",
-   "ENABLE_THINKING": true,
-   "REASONING_EFFORT": "no reasoning_effort in its chat template",
-   "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); it has no effort levels"
-  },
-  "qwen3.6-35b-a3b": {
-   "evidence": "Intel/Qwen3.6-35B-A3B-int4-mixed-AutoRound chat_template.jinja: enable_thinking",
-   "ENABLE_THINKING": true,
-   "REASONING_EFFORT": "no reasoning_effort in its chat template",
-   "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); it has no effort levels"
-  },
-  "qwen3.8-27b": {
-   "evidence": "Qwen3.8-27B GGUF tokenizer.chat_template (unsloth IQ4_XS): enable_thinking, reasoning_effort|default('xhigh') low / medium / xhigh",
-   "ENABLE_THINKING": true,
-   "REASONING_EFFORT": true,
-   "THINKING_BUDGETS": true
-  },
-  "qwen3.8-flash-next": {
-   "evidence": "Qwen3.8-Flash-Next GGUF tokenizer.chat_template (unsloth UD-Q4_K_XL): enable_thinking, reasoning_effort|default('xhigh') low / medium / xhigh",
-   "ENABLE_THINKING": true,
-   "REASONING_EFFORT": true,
-   "THINKING_BUDGETS": true
-  },
-  "thinkingcap-27b": {
-   "evidence": "LeaderboardModel1/ThinkingCap-Qwen3.6-27B-AutoRound-W4A16-Tuning chat_template.jinja: enable_thinking",
-   "ENABLE_THINKING": true,
-   "REASONING_EFFORT": "no reasoning_effort in its chat template",
-   "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); it has no effort levels"
-  },
-  "thinkingcap-qwen3.8-27b": {
-   "evidence": "thinkingcap-qwen3.8-27b-autoround-int4 chat_template.jinja: enable_thinking, reasoning_effort|default('xhigh') low / medium / xhigh",
-   "ENABLE_THINKING": true,
-   "REASONING_EFFORT": true,
-   "THINKING_BUDGETS": true
-  }
- },
- "unsupported": [
-  {
-   "knobs": [
-    "THINKING_BUDGET_LOW",
-    "THINKING_BUDGET_MEDIUM",
-    "THINKING_BUDGET_XHIGH",
-    "THINKING_BUDGETS"
-   ],
-   "match": {
-    "engine": [
-     "strata"
-    ]
-   },
-   "why": "Strata has one thinking budget for every request (THINKING_BUDGET -> reasoning_budget_tokens), not one per effort",
-   "source": {
-    "file": "docs/engines/STRATA.md",
-    "contains": "Strata has no per-effort budgets"
-   }
-  },
-  {
-   "knobs": [
-    "SPEC_N"
-   ],
-   "match": {
-    "engine": [
-     "strata-maya"
-    ]
-   },
-   "why": "Maya's --spec is for its DFlash2 drafter, which the image doesn't carry; GLM's MTP block has no depth setting, DeepSeek's DSpark block length comes from the pack's geometry (maya-ds4 has no depth flag), and MiniMax's from its drafter's own config (maya-mm3 has none either)",
-   "source": {
-    "file": "docs/engines/STRATA_MAYA.md",
-    "contains": "Maya's `--spec` is documented for its DFlash2 drafter"
-   }
-  }
- ],
- "not_wired": [
-  {
-   "compose": "models/agents-a1/vllm/compose/dual/fp8-dynamic/fp8.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ]
-  },
-  {
-   "compose": "models/deepseek-v4-flash-0731/llama-cpp/compose/dual/unsloth-iq2-xxs/offload.yml",
-   "knobs": [
-    "ENABLE_THINKING",
-    "REASONING_EFFORT"
-   ]
-  },
-  {
-   "compose": "models/deepseek-v4-flash-0731/llama-cpp/compose/dual/unsloth-q8-kxl/offload.yml",
-   "knobs": [
-    "ENABLE_THINKING",
-    "REASONING_EFFORT"
-   ]
-  },
-  {
-   "compose": "models/deepseek-v4-flash-0731/llama-cpp/compose/multi4/unsloth-q8-kxl/offload.yml",
-   "knobs": [
-    "ENABLE_THINKING",
-    "REASONING_EFFORT"
-   ]
-  },
-  {
-   "compose": "models/deepseek-v4-flash-0731/llamacpp-club3090/compose/dual/unsloth-q8-kxl/moecache.yml",
-   "knobs": [
-    "ENABLE_THINKING",
-    "REASONING_EFFORT"
-   ]
-  },
-  {
-   "compose": "models/deepseek-v4-flash-0731/llamacpp-club3090/compose/multi4/unsloth-q8-kxl/moecache.yml",
-   "knobs": [
-    "ENABLE_THINKING",
-    "REASONING_EFFORT"
-   ]
-  },
-  {
-   "compose": "models/deepseek-v4-flash-vision-exp/llamacpp-club3090/compose/dual/unsloth-ud-q8kxl/moecache.yml",
-   "knobs": [
-    "ENABLE_THINKING",
-    "REASONING_EFFORT"
-   ]
-  },
-  {
-   "compose": "models/deepseek-v4-flash-vision-exp/llamacpp-club3090/compose/multi4/unsloth-ud-q8kxl/moecache.yml",
-   "knobs": [
-    "ENABLE_THINKING",
-    "REASONING_EFFORT"
-   ]
-  },
-  {
-   "compose": "models/gemma-4-12b/vllm/compose/dual/bf16/mtp.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ]
-  },
-  {
-   "compose": "models/gemma-4-12b/vllm/compose/single/autoround-int8/mtp.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ]
-  },
-  {
-   "compose": "models/gemma-4-12b/vllm/compose/single/qat-w4a16/mtp.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ]
-  },
-  {
-   "compose": "models/gemma-4-26b-a4b/vllm/compose/dual/awq/mtp.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ]
-  },
-  {
-   "compose": "models/gemma-4-26b-a4b/vllm/compose/single/awq/int8.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ]
-  },
-  {
-   "compose": "models/gemma-4-31b/vllm/compose/dual/qat-awq-int4/base.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ]
-  },
-  {
-   "compose": "models/gemma-4-31b/vllm/compose/multi4/google-qat-w4a16/base.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ]
-  },
-  {
-   "compose": "models/qwen-agentworld-35b-a3b/vllm/compose/dual/cyankiwi-awq-int4/fp8.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ]
-  },
-  {
-   "compose": "models/qwen3.6-27b/vllm-lmcache/compose/dual/fp8/lmcache.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ]
-  },
-  {
-   "compose": "models/qwen3.6-27b/vllm/compose/dual/autoround-int4/fp8-mtp.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ]
-  },
-  {
-   "compose": "models/qwen3.6-27b/vllm/compose/dual/fp8/mtp.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ]
-  },
-  {
-   "compose": "models/qwen3.6-27b/vllm/compose/dual/nvfp4/mtp.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ]
-  },
-  {
-   "compose": "models/qwen3.6-27b/vllm/compose/multi4/autoround-int4/mtp.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ]
-  },
-  {
-   "compose": "models/qwen3.6-27b/vllm/compose/multi4/fp8/mtp.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ]
-  },
-  {
-   "compose": "models/qwen3.6-27b/vllm/compose/single/autoround-int4/minimal.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ]
-  },
-  {
-   "compose": "models/qwen3.6-27b/vllm/compose/single/nvfp4/mtp.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ]
-  },
-  {
-   "compose": "models/qwen3.6-35b-a3b/vllm/compose/dual/autoround-int4/fp8.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ]
-  },
-  {
-   "compose": "models/qwen3.6-35b-a3b/vllm/compose/dual/nvfp4-fast/fp8.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ]
-  },
-  {
-   "compose": "models/qwen3.6-35b-a3b/vllm/compose/dual/nvfp4/fp8.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ]
-  },
-  {
-   "compose": "models/qwen3.6-35b-a3b/vllm/compose/single/autoround-int4/preview.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ]
-  },
-  {
-   "compose": "models/qwen3.6-35b-a3b/vllm/compose/single/nvfp4/fp8.yml",
-   "knobs": [
-    "ENABLE_THINKING"
-   ]
-  },
-  {
-   "compose": "models/qwen3.8-27b/llama-cpp-prism/compose/single/prism-ternary-mtp/mtp.yml",
-   "knobs": [
-    "THINKING_BUDGETS",
-    "THINKING_BUDGET_LOW",
-    "THINKING_BUDGET_MEDIUM",
-    "THINKING_BUDGET_XHIGH"
-   ],
-   "reads_instead": {
-    "THINKING_BUDGETS": "REASONING_BUDGET",
-    "THINKING_BUDGET_LOW": "REASONING_BUDGET",
-    "THINKING_BUDGET_MEDIUM": "REASONING_BUDGET",
-    "THINKING_BUDGET_XHIGH": "REASONING_BUDGET"
-   }
-  },
-  {
-   "compose": "models/qwen3.8-27b/llama-cpp-prism/compose/single/prism-ternary-pq2/ternary.yml",
-   "knobs": [
-    "THINKING_BUDGETS",
-    "THINKING_BUDGET_LOW",
-    "THINKING_BUDGET_MEDIUM",
-    "THINKING_BUDGET_XHIGH"
-   ],
-   "reads_instead": {
-    "THINKING_BUDGETS": "REASONING_BUDGET",
-    "THINKING_BUDGET_LOW": "REASONING_BUDGET",
-    "THINKING_BUDGET_MEDIUM": "REASONING_BUDGET",
-    "THINKING_BUDGET_XHIGH": "REASONING_BUDGET"
-   }
-  },
-  {
-   "compose": "models/qwen3.8-27b/llama-cpp/compose/dual/unsloth-q8kxl/q8kv.yml",
-   "knobs": [
-    "THINKING_BUDGETS",
-    "THINKING_BUDGET_LOW",
-    "THINKING_BUDGET_MEDIUM",
-    "THINKING_BUDGET_XHIGH"
-   ],
-   "reads_instead": {
-    "THINKING_BUDGETS": "REASONING_BUDGET",
-    "THINKING_BUDGET_LOW": "REASONING_BUDGET",
-    "THINKING_BUDGET_MEDIUM": "REASONING_BUDGET",
-    "THINKING_BUDGET_XHIGH": "REASONING_BUDGET"
-   }
-  },
-  {
-   "compose": "models/qwen3.8-27b/llama-cpp/compose/single/unsloth-iq4xs/q4kv-vision.yml",
-   "knobs": [
-    "THINKING_BUDGETS",
-    "THINKING_BUDGET_LOW",
-    "THINKING_BUDGET_MEDIUM",
-    "THINKING_BUDGET_XHIGH"
-   ],
-   "reads_instead": {
-    "THINKING_BUDGETS": "REASONING_BUDGET",
-    "THINKING_BUDGET_LOW": "REASONING_BUDGET",
-    "THINKING_BUDGET_MEDIUM": "REASONING_BUDGET",
-    "THINKING_BUDGET_XHIGH": "REASONING_BUDGET"
-   }
-  },
-  {
-   "compose": "models/qwen3.8-27b/vllm-hyperqwen/compose/single/hyperqwen-w4a16/dflash2.yml",
-   "knobs": [
-    "ENABLE_THINKING",
-    "THINKING_BUDGETS",
-    "THINKING_BUDGET_LOW",
-    "THINKING_BUDGET_MEDIUM",
-    "THINKING_BUDGET_XHIGH"
-   ]
-  },
-  {
-   "compose": "models/qwen3.8-flash-next/bucko-vllm/compose/dual/albucino-autoround-int4-fp8ple/base.yml",
-   "knobs": [
-    "ENABLE_THINKING",
-    "REASONING_EFFORT",
-    "THINKING_BUDGETS",
-    "THINKING_BUDGET_LOW",
-    "THINKING_BUDGET_MEDIUM",
-    "THINKING_BUDGET_XHIGH"
-   ],
-   "reads_instead": {
-    "THINKING_BUDGETS": "THINKING_TOKEN_BUDGET",
-    "THINKING_BUDGET_LOW": "THINKING_TOKEN_BUDGET",
-    "THINKING_BUDGET_MEDIUM": "THINKING_TOKEN_BUDGET",
-    "THINKING_BUDGET_XHIGH": "THINKING_TOKEN_BUDGET"
-   }
-  },
-  {
-   "compose": "models/qwen3.8-flash-next/bucko-vllm/compose/dual/ukisai-swift15-autoround-int4/base.yml",
-   "knobs": [
-    "ENABLE_THINKING",
-    "REASONING_EFFORT",
-    "THINKING_BUDGETS",
-    "THINKING_BUDGET_LOW",
-    "THINKING_BUDGET_MEDIUM",
-    "THINKING_BUDGET_XHIGH"
-   ],
-   "reads_instead": {
-    "THINKING_BUDGETS": "THINKING_TOKEN_BUDGET",
-    "THINKING_BUDGET_LOW": "THINKING_TOKEN_BUDGET",
-    "THINKING_BUDGET_MEDIUM": "THINKING_TOKEN_BUDGET",
-    "THINKING_BUDGET_XHIGH": "THINKING_TOKEN_BUDGET"
-   }
-  },
-  {
-   "compose": "models/qwen3.8-flash-next/exllamav3/compose/dual/exl3-3.05bpw/cpumoe.yml",
-   "knobs": [
-    "ENABLE_THINKING",
-    "REASONING_EFFORT",
-    "THINKING_BUDGETS",
-    "THINKING_BUDGET_LOW",
-    "THINKING_BUDGET_MEDIUM",
-    "THINKING_BUDGET_XHIGH"
-   ],
-   "reads_instead": {
-    "ENABLE_THINKING": "REASONING"
-   }
-  },
-  {
-   "compose": "models/qwen3.8-flash-next/exllamav3/compose/dual/exl3-4.05bpw/cpumoe.yml",
-   "knobs": [
-    "ENABLE_THINKING",
-    "REASONING_EFFORT",
-    "THINKING_BUDGETS",
-    "THINKING_BUDGET_LOW",
-    "THINKING_BUDGET_MEDIUM",
-    "THINKING_BUDGET_XHIGH"
-   ],
-   "reads_instead": {
-    "ENABLE_THINKING": "REASONING"
-   }
-  },
-  {
-   "compose": "models/qwen3.8-flash-next/llamacpp-club3090/compose/dual/unsloth-ud-q4kxl/moecache.yml",
-   "knobs": [
-    "REASONING_EFFORT",
-    "THINKING_BUDGETS",
-    "THINKING_BUDGET_LOW",
-    "THINKING_BUDGET_MEDIUM",
-    "THINKING_BUDGET_XHIGH"
-   ]
-  },
-  {
-   "compose": "models/qwen3.8-flash-next/llamacpp-club3090/compose/multi4/unsloth-ud-q4kxl/moecache.yml",
-   "knobs": [
-    "REASONING_EFFORT",
-    "THINKING_BUDGETS",
-    "THINKING_BUDGET_LOW",
-    "THINKING_BUDGET_MEDIUM",
-    "THINKING_BUDGET_XHIGH"
-   ]
-  },
-  {
-   "compose": "models/qwen3.8-flash-next/llamacpp-club3090/compose/multi8/unsloth-ud-q4kxl/moecache.yml",
-   "knobs": [
-    "REASONING_EFFORT",
-    "THINKING_BUDGETS",
-    "THINKING_BUDGET_LOW",
-    "THINKING_BUDGET_MEDIUM",
-    "THINKING_BUDGET_XHIGH"
-   ]
-  }
- ],
- "not_wired_ceiling": 96
+  "_doc": "Which standard launch knobs each live compose must read, and the declared exceptions. Checked by scripts/lib/profiles/knob_conformance.py (run by test-launch-knobs); its docstring has the rules. not_wired.reads_instead is a related setting found by name, not proof it means the same: check what it does before mapping the knob onto it.",
+  "knobs": {
+    "REASONING_EFFORT": {
+      "applies": "model",
+      "why": "a server-side default effort, for models whose template takes reasoning_effort"
+    },
+    "ENABLE_THINKING": {
+      "applies": "model",
+      "why": "a server-side thinking on / off, for models whose template takes enable_thinking"
+    },
+    "THINKING_BUDGETS": {
+      "applies": "model",
+      "why": "per-effort thinking budgets (effort_budget.py), for models with Qwen3.8's effort levels"
+    },
+    "THINKING_BUDGET_LOW": {
+      "applies": "model",
+      "model_key": "THINKING_BUDGETS"
+    },
+    "THINKING_BUDGET_MEDIUM": {
+      "applies": "model",
+      "model_key": "THINKING_BUDGETS"
+    },
+    "THINKING_BUDGET_XHIGH": {
+      "applies": "model",
+      "model_key": "THINKING_BUDGETS"
+    },
+    "SPEC_N": {
+      "applies": "drafter",
+      "why": "the draft depth, for every slug with a drafter or a spec method"
+    },
+    "KV_OFFLOAD_GB": {
+      "applies": "never",
+      "why": "an opt-in feature of the KV-offload composes, not expected of every compose"
+    },
+    "KV_OFFLOAD_DISK": {
+      "applies": "never",
+      "why": "an opt-in feature of the KV-offload composes"
+    },
+    "KV_OFFLOAD_DISK_GB": {
+      "applies": "never",
+      "why": "an opt-in feature of the KV-offload composes"
+    }
+  },
+  "models": {
+    "agents-a1": {
+      "evidence": "InternScience/Agents-A1-FP8-dynamic chat_template.jinja: enable_thinking",
+      "ENABLE_THINKING": true,
+      "REASONING_EFFORT": "no reasoning_effort in its chat template",
+      "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); it has no effort levels"
+    },
+    "deepseek-v4-flash-0731": {
+      "evidence": "unsloth/DeepSeek-V4-Flash-0731-GGUF tokenizer.chat_template (GGUF header): enable_thinking, reasoning_effort high / max",
+      "ENABLE_THINKING": true,
+      "REASONING_EFFORT": true,
+      "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); its levels are high / max"
+    },
+    "deepseek-v4-flash-vision-exp": {
+      "evidence": "unsloth/DeepSeek-V4-Flash-Vision-Exp-GGUF tokenizer.chat_template (GGUF header): enable_thinking, reasoning_effort high / max",
+      "ENABLE_THINKING": true,
+      "REASONING_EFFORT": true,
+      "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); its levels are high / max"
+    },
+    "deepseek-v4.1-flash-1017": {
+      "evidence": "Project Maya's tools/ds4/chat_template.jinja (the template maya-ds4's server renders from the pack's tokenizer/): enable_thinking (false = chat mode), reasoning_effort low / high / max or 1-100",
+      "ENABLE_THINKING": true,
+      "REASONING_EFFORT": true,
+      "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); its levels are low / high / max (or a 1-100 budget)"
+    },
+    "gemma-4-12b": {
+      "evidence": "google/gemma-4-12B-it chat_template.jinja: enable_thinking",
+      "ENABLE_THINKING": true,
+      "REASONING_EFFORT": "no reasoning_effort in its chat template",
+      "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); it has no effort levels"
+    },
+    "gemma-4-26b-a4b": {
+      "evidence": "Intel/gemma-4-26B-A4B-it-int4-mixed-AutoRound chat_template.jinja: enable_thinking",
+      "ENABLE_THINKING": true,
+      "REASONING_EFFORT": "no reasoning_effort in its chat template",
+      "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); it has no effort levels"
+    },
+    "gemma-4-31b": {
+      "evidence": "Intel/gemma-4-31B-it-int4-AutoRound chat_template.jinja: enable_thinking",
+      "ENABLE_THINKING": true,
+      "REASONING_EFFORT": "no reasoning_effort in its chat template",
+      "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); it has no effort levels"
+    },
+    "glm-5.3-flash": {
+      "evidence": "GLM-5.3-Flash GGUF tokenizer.chat_template (Maya-L, the vendor's copy): reasoning_effort in ['low', 'high'] else 'max'; no enable_thinking",
+      "ENABLE_THINKING": "its template has no enable_thinking: it always opens <think> (effort low / high, else max); only an engine that closes the block itself (Project Maya) can turn thinking off",
+      "REASONING_EFFORT": true,
+      "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); its levels are low / high / max"
+    },
+    "inkling-small": {
+      "evidence": "unsloth/Inkling-Small-GGUF tokenizer.chat_template (GGUF header): reasoning_effort none ... max or a number; no enable_thinking",
+      "ENABLE_THINKING": "its template has no enable_thinking (thinking off is reasoning_effort none, which REASONING_EFFORT already covers)",
+      "REASONING_EFFORT": true,
+      "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); its levels are none / minimal / low / medium / high / xhigh / max or a number"
+    },
+    "mimo-v2.6-9b": {
+      "evidence": "bartowski/MiMo-V2.6-Distill-Qwen-9B-GGUF tokenizer.chat_template: enable_thinking",
+      "ENABLE_THINKING": true,
+      "REASONING_EFFORT": "no reasoning_effort in its chat template",
+      "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); it has no effort levels"
+    },
+    "minimax-m3.1-flash": {
+      "evidence": "Project Maya's tools/mm3/chat_template.jinja (the template maya-mm3's server renders from the pack's tokenizer/: MiniMax's own plus thinking_mode \"disabled\"): reasoning_effort low / medium / high / xhigh / max, thinking_mode; serve/frontend.py turns enable_thinking false into thinking_mode \"disabled\"",
+      "ENABLE_THINKING": true,
+      "REASONING_EFFORT": true,
+      "THINKING_BUDGETS": "the per-effort budget knobs are effort_budget.py's, which only the vLLM / SGLang composes run; Maya's server takes one budget for every level (THINKING_BUDGET)"
+    },
+    "nanbeige4.3-33b": {
+      "evidence": "the checkpoint's own chat_template.jinja (Nanbeige/Nanbeige4.3-33B, byte-identical in our AutoRound INT4): reads enable_thinking, preserve_thinking and tool_call_format only",
+      "ENABLE_THINKING": true,
+      "REASONING_EFFORT": "the template has no reasoning-effort control: no reasoning_effort variable, thinking is only on or off (enable_thinking)",
+      "THINKING_BUDGETS": "the per-effort budget knobs key on reasoning-effort levels (effort_budget.py LEVELS), which this template doesn't have; no thinking budget is applied"
+    },
+    "nemotron-3-puzzle-75b": {
+      "evidence": "nvidia/NVIDIA-Nemotron-Labs-3-Puzzle-75B-A9B-NVFP4 chat_template.jinja: enable_thinking",
+      "ENABLE_THINKING": true,
+      "REASONING_EFFORT": "no reasoning_effort in its chat template",
+      "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); it has no effort levels"
+    },
+    "qwen-agentworld-35b-a3b": {
+      "evidence": "cyankiwi/Qwen-AgentWorld-35B-A3B-AWQ-INT4 chat_template.jinja: enable_thinking",
+      "ENABLE_THINKING": true,
+      "REASONING_EFFORT": "no reasoning_effort in its chat template",
+      "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); it has no effort levels"
+    },
+    "qwen3.6-27b": {
+      "evidence": "Lorbus/Qwen3.6-27B-int4-AutoRound chat_template.jinja: enable_thinking",
+      "ENABLE_THINKING": true,
+      "REASONING_EFFORT": "no reasoning_effort in its chat template",
+      "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); it has no effort levels"
+    },
+    "qwen3.6-35b-a3b": {
+      "evidence": "Intel/Qwen3.6-35B-A3B-int4-mixed-AutoRound chat_template.jinja: enable_thinking",
+      "ENABLE_THINKING": true,
+      "REASONING_EFFORT": "no reasoning_effort in its chat template",
+      "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); it has no effort levels"
+    },
+    "qwen3.8-27b": {
+      "evidence": "Qwen3.8-27B GGUF tokenizer.chat_template (unsloth IQ4_XS): enable_thinking, reasoning_effort|default('xhigh') low / medium / xhigh",
+      "ENABLE_THINKING": true,
+      "REASONING_EFFORT": true,
+      "THINKING_BUDGETS": true
+    },
+    "qwen3.8-flash-next": {
+      "evidence": "Qwen3.8-Flash-Next GGUF tokenizer.chat_template (unsloth UD-Q4_K_XL): enable_thinking, reasoning_effort|default('xhigh') low / medium / xhigh",
+      "ENABLE_THINKING": true,
+      "REASONING_EFFORT": true,
+      "THINKING_BUDGETS": true
+    },
+    "thinkingcap-27b": {
+      "evidence": "LeaderboardModel1/ThinkingCap-Qwen3.6-27B-AutoRound-W4A16-Tuning chat_template.jinja: enable_thinking",
+      "ENABLE_THINKING": true,
+      "REASONING_EFFORT": "no reasoning_effort in its chat template",
+      "THINKING_BUDGETS": "the per-effort budget knobs name Qwen3.8's levels (low / medium / xhigh, effort_budget.py LEVELS); it has no effort levels"
+    },
+    "thinkingcap-qwen3.8-27b": {
+      "evidence": "thinkingcap-qwen3.8-27b-autoround-int4 chat_template.jinja: enable_thinking, reasoning_effort|default('xhigh') low / medium / xhigh",
+      "ENABLE_THINKING": true,
+      "REASONING_EFFORT": true,
+      "THINKING_BUDGETS": true
+    }
+  },
+  "unsupported": [
+    {
+      "knobs": [
+        "THINKING_BUDGET_LOW",
+        "THINKING_BUDGET_MEDIUM",
+        "THINKING_BUDGET_XHIGH",
+        "THINKING_BUDGETS"
+      ],
+      "match": {
+        "engine": [
+          "strata"
+        ]
+      },
+      "why": "Strata has one thinking budget for every request (THINKING_BUDGET -> reasoning_budget_tokens), not one per effort",
+      "source": {
+        "file": "docs/engines/STRATA.md",
+        "contains": "Strata has no per-effort budgets"
+      }
+    },
+    {
+      "knobs": [
+        "SPEC_N"
+      ],
+      "match": {
+        "engine": [
+          "strata-maya"
+        ]
+      },
+      "why": "Maya's --spec is for its DFlash2 drafter, which the image doesn't carry; GLM's MTP block has no depth setting, DeepSeek's DSpark block length comes from the pack's geometry (maya-ds4 has no depth flag), and MiniMax's from its drafter's own config (maya-mm3 has none either)",
+      "source": {
+        "file": "docs/engines/STRATA_MAYA.md",
+        "contains": "Maya's `--spec` is documented for its DFlash2 drafter"
+      }
+    },
+    {
+      "knobs": [
+        "REASONING_EFFORT",
+        "THINKING_BUDGET_LOW",
+        "THINKING_BUDGET_MEDIUM",
+        "THINKING_BUDGET_XHIGH",
+        "THINKING_BUDGETS"
+      ],
+      "match": {
+        "engine": [
+          "qengine"
+        ]
+      },
+      "why": "QEngine takes reasoning_effort per request only (chat_template_kwargs) — the server has no default-effort flag to map a server-side knob onto — and no token budgets at all: the effort levels are prompt instructions, not caps",
+      "source": {
+        "file": "docs/engines/QENGINE.md",
+        "contains": "no server-side default for effort"
+      }
+    }
+  ],
+  "not_wired": [
+    {
+      "compose": "models/agents-a1/vllm/compose/dual/fp8-dynamic/fp8.yml",
+      "knobs": [
+        "ENABLE_THINKING"
+      ]
+    },
+    {
+      "compose": "models/deepseek-v4-flash-0731/llama-cpp/compose/dual/unsloth-iq2-xxs/offload.yml",
+      "knobs": [
+        "ENABLE_THINKING",
+        "REASONING_EFFORT"
+      ]
+    },
+    {
+      "compose": "models/deepseek-v4-flash-0731/llama-cpp/compose/dual/unsloth-q8-kxl/offload.yml",
+      "knobs": [
+        "ENABLE_THINKING",
+        "REASONING_EFFORT"
+      ]
+    },
+    {
+      "compose": "models/deepseek-v4-flash-0731/llama-cpp/compose/multi4/unsloth-q8-kxl/offload.yml",
+      "knobs": [
+        "ENABLE_THINKING",
+        "REASONING_EFFORT"
+      ]
+    },
+    {
+      "compose": "models/deepseek-v4-flash-0731/llamacpp-club3090/compose/dual/unsloth-q8-kxl/moecache.yml",
+      "knobs": [
+        "ENABLE_THINKING",
+        "REASONING_EFFORT"
+      ]
+    },
+    {
+      "compose": "models/deepseek-v4-flash-0731/llamacpp-club3090/compose/multi4/unsloth-q8-kxl/moecache.yml",
+      "knobs": [
+        "ENABLE_THINKING",
+        "REASONING_EFFORT"
+      ]
+    },
+    {
+      "compose": "models/deepseek-v4-flash-vision-exp/llamacpp-club3090/compose/dual/unsloth-ud-q8kxl/moecache.yml",
+      "knobs": [
+        "ENABLE_THINKING",
+        "REASONING_EFFORT"
+      ]
+    },
+    {
+      "compose": "models/deepseek-v4-flash-vision-exp/llamacpp-club3090/compose/multi4/unsloth-ud-q8kxl/moecache.yml",
+      "knobs": [
+        "ENABLE_THINKING",
+        "REASONING_EFFORT"
+      ]
+    },
+    {
+      "compose": "models/gemma-4-12b/vllm/compose/dual/bf16/mtp.yml",
+      "knobs": [
+        "ENABLE_THINKING"
+      ]
+    },
+    {
+      "compose": "models/gemma-4-12b/vllm/compose/single/autoround-int8/mtp.yml",
+      "knobs": [
+        "ENABLE_THINKING"
+      ]
+    },
+    {
+      "compose": "models/gemma-4-12b/vllm/compose/single/qat-w4a16/mtp.yml",
+      "knobs": [
+        "ENABLE_THINKING"
+      ]
+    },
+    {
+      "compose": "models/gemma-4-26b-a4b/vllm/compose/dual/awq/mtp.yml",
+      "knobs": [
+        "ENABLE_THINKING"
+      ]
+    },
+    {
+      "compose": "models/gemma-4-26b-a4b/vllm/compose/single/awq/int8.yml",
+      "knobs": [
+        "ENABLE_THINKING"
+      ]
+    },
+    {
+      "compose": "models/gemma-4-31b/vllm/compose/dual/qat-awq-int4/base.yml",
+      "knobs": [
+        "ENABLE_THINKING"
+      ]
+    },
+    {
+      "compose": "models/gemma-4-31b/vllm/compose/multi4/google-qat-w4a16/base.yml",
+      "knobs": [
+        "ENABLE_THINKING"
+      ]
+    },
+    {
+      "compose": "models/qwen-agentworld-35b-a3b/vllm/compose/dual/cyankiwi-awq-int4/fp8.yml",
+      "knobs": [
+        "ENABLE_THINKING"
+      ]
+    },
+    {
+      "compose": "models/qwen3.6-27b/vllm-lmcache/compose/dual/fp8/lmcache.yml",
+      "knobs": [
+        "ENABLE_THINKING"
+      ]
+    },
+    {
+      "compose": "models/qwen3.6-27b/vllm/compose/dual/autoround-int4/fp8-mtp.yml",
+      "knobs": [
+        "ENABLE_THINKING"
+      ]
+    },
+    {
+      "compose": "models/qwen3.6-27b/vllm/compose/dual/fp8/mtp.yml",
+      "knobs": [
+        "ENABLE_THINKING"
+      ]
+    },
+    {
+      "compose": "models/qwen3.6-27b/vllm/compose/dual/nvfp4/mtp.yml",
+      "knobs": [
+        "ENABLE_THINKING"
+      ]
+    },
+    {
+      "compose": "models/qwen3.6-27b/vllm/compose/multi4/autoround-int4/mtp.yml",
+      "knobs": [
+        "ENABLE_THINKING"
+      ]
+    },
+    {
+      "compose": "models/qwen3.6-27b/vllm/compose/multi4/fp8/mtp.yml",
+      "knobs": [
+        "ENABLE_THINKING"
+      ]
+    },
+    {
+      "compose": "models/qwen3.6-27b/vllm/compose/single/autoround-int4/minimal.yml",
+      "knobs": [
+        "ENABLE_THINKING"
+      ]
+    },
+    {
+      "compose": "models/qwen3.6-27b/vllm/compose/single/nvfp4/mtp.yml",
+      "knobs": [
+        "ENABLE_THINKING"
+      ]
+    },
+    {
+      "compose": "models/qwen3.6-35b-a3b/vllm/compose/dual/autoround-int4/fp8.yml",
+      "knobs": [
+        "ENABLE_THINKING"
+      ]
+    },
+    {
+      "compose": "models/qwen3.6-35b-a3b/vllm/compose/dual/nvfp4-fast/fp8.yml",
+      "knobs": [
+        "ENABLE_THINKING"
+      ]
+    },
+    {
+      "compose": "models/qwen3.6-35b-a3b/vllm/compose/dual/nvfp4/fp8.yml",
+      "knobs": [
+        "ENABLE_THINKING"
+      ]
+    },
+    {
+      "compose": "models/qwen3.6-35b-a3b/vllm/compose/single/autoround-int4/preview.yml",
+      "knobs": [
+        "ENABLE_THINKING"
+      ]
+    },
+    {
+      "compose": "models/qwen3.6-35b-a3b/vllm/compose/single/nvfp4/fp8.yml",
+      "knobs": [
+        "ENABLE_THINKING"
+      ]
+    },
+    {
+      "compose": "models/qwen3.8-27b/llama-cpp-prism/compose/single/prism-ternary-mtp/mtp.yml",
+      "knobs": [
+        "THINKING_BUDGETS",
+        "THINKING_BUDGET_LOW",
+        "THINKING_BUDGET_MEDIUM",
+        "THINKING_BUDGET_XHIGH"
+      ],
+      "reads_instead": {
+        "THINKING_BUDGETS": "REASONING_BUDGET",
+        "THINKING_BUDGET_LOW": "REASONING_BUDGET",
+        "THINKING_BUDGET_MEDIUM": "REASONING_BUDGET",
+        "THINKING_BUDGET_XHIGH": "REASONING_BUDGET"
+      }
+    },
+    {
+      "compose": "models/qwen3.8-27b/llama-cpp-prism/compose/single/prism-ternary-pq2/ternary.yml",
+      "knobs": [
+        "THINKING_BUDGETS",
+        "THINKING_BUDGET_LOW",
+        "THINKING_BUDGET_MEDIUM",
+        "THINKING_BUDGET_XHIGH"
+      ],
+      "reads_instead": {
+        "THINKING_BUDGETS": "REASONING_BUDGET",
+        "THINKING_BUDGET_LOW": "REASONING_BUDGET",
+        "THINKING_BUDGET_MEDIUM": "REASONING_BUDGET",
+        "THINKING_BUDGET_XHIGH": "REASONING_BUDGET"
+      }
+    },
+    {
+      "compose": "models/qwen3.8-27b/llama-cpp/compose/dual/unsloth-q8kxl/q8kv.yml",
+      "knobs": [
+        "THINKING_BUDGETS",
+        "THINKING_BUDGET_LOW",
+        "THINKING_BUDGET_MEDIUM",
+        "THINKING_BUDGET_XHIGH"
+      ],
+      "reads_instead": {
+        "THINKING_BUDGETS": "REASONING_BUDGET",
+        "THINKING_BUDGET_LOW": "REASONING_BUDGET",
+        "THINKING_BUDGET_MEDIUM": "REASONING_BUDGET",
+        "THINKING_BUDGET_XHIGH": "REASONING_BUDGET"
+      }
+    },
+    {
+      "compose": "models/qwen3.8-27b/llama-cpp/compose/single/unsloth-iq4xs/q4kv-vision.yml",
+      "knobs": [
+        "THINKING_BUDGETS",
+        "THINKING_BUDGET_LOW",
+        "THINKING_BUDGET_MEDIUM",
+        "THINKING_BUDGET_XHIGH"
+      ],
+      "reads_instead": {
+        "THINKING_BUDGETS": "REASONING_BUDGET",
+        "THINKING_BUDGET_LOW": "REASONING_BUDGET",
+        "THINKING_BUDGET_MEDIUM": "REASONING_BUDGET",
+        "THINKING_BUDGET_XHIGH": "REASONING_BUDGET"
+      }
+    },
+    {
+      "compose": "models/qwen3.8-27b/vllm-hyperqwen/compose/single/hyperqwen-w4a16/dflash2.yml",
+      "knobs": [
+        "ENABLE_THINKING",
+        "THINKING_BUDGETS",
+        "THINKING_BUDGET_LOW",
+        "THINKING_BUDGET_MEDIUM",
+        "THINKING_BUDGET_XHIGH"
+      ]
+    },
+    {
+      "compose": "models/qwen3.8-flash-next/bucko-vllm/compose/dual/albucino-autoround-int4-fp8ple/base.yml",
+      "knobs": [
+        "ENABLE_THINKING",
+        "REASONING_EFFORT",
+        "THINKING_BUDGETS",
+        "THINKING_BUDGET_LOW",
+        "THINKING_BUDGET_MEDIUM",
+        "THINKING_BUDGET_XHIGH"
+      ],
+      "reads_instead": {
+        "THINKING_BUDGETS": "THINKING_TOKEN_BUDGET",
+        "THINKING_BUDGET_LOW": "THINKING_TOKEN_BUDGET",
+        "THINKING_BUDGET_MEDIUM": "THINKING_TOKEN_BUDGET",
+        "THINKING_BUDGET_XHIGH": "THINKING_TOKEN_BUDGET"
+      }
+    },
+    {
+      "compose": "models/qwen3.8-flash-next/bucko-vllm/compose/dual/ukisai-swift15-autoround-int4/base.yml",
+      "knobs": [
+        "ENABLE_THINKING",
+        "REASONING_EFFORT",
+        "THINKING_BUDGETS",
+        "THINKING_BUDGET_LOW",
+        "THINKING_BUDGET_MEDIUM",
+        "THINKING_BUDGET_XHIGH"
+      ],
+      "reads_instead": {
+        "THINKING_BUDGETS": "THINKING_TOKEN_BUDGET",
+        "THINKING_BUDGET_LOW": "THINKING_TOKEN_BUDGET",
+        "THINKING_BUDGET_MEDIUM": "THINKING_TOKEN_BUDGET",
+        "THINKING_BUDGET_XHIGH": "THINKING_TOKEN_BUDGET"
+      }
+    },
+    {
+      "compose": "models/qwen3.8-flash-next/exllamav3/compose/dual/exl3-3.05bpw/cpumoe.yml",
+      "knobs": [
+        "ENABLE_THINKING",
+        "REASONING_EFFORT",
+        "THINKING_BUDGETS",
+        "THINKING_BUDGET_LOW",
+        "THINKING_BUDGET_MEDIUM",
+        "THINKING_BUDGET_XHIGH"
+      ],
+      "reads_instead": {
+        "ENABLE_THINKING": "REASONING"
+      }
+    },
+    {
+      "compose": "models/qwen3.8-flash-next/exllamav3/compose/dual/exl3-4.05bpw/cpumoe.yml",
+      "knobs": [
+        "ENABLE_THINKING",
+        "REASONING_EFFORT",
+        "THINKING_BUDGETS",
+        "THINKING_BUDGET_LOW",
+        "THINKING_BUDGET_MEDIUM",
+        "THINKING_BUDGET_XHIGH"
+      ],
+      "reads_instead": {
+        "ENABLE_THINKING": "REASONING"
+      }
+    },
+    {
+      "compose": "models/qwen3.8-flash-next/llamacpp-club3090/compose/dual/unsloth-ud-q4kxl/moecache.yml",
+      "knobs": [
+        "REASONING_EFFORT",
+        "THINKING_BUDGETS",
+        "THINKING_BUDGET_LOW",
+        "THINKING_BUDGET_MEDIUM",
+        "THINKING_BUDGET_XHIGH"
+      ]
+    },
+    {
+      "compose": "models/qwen3.8-flash-next/llamacpp-club3090/compose/multi4/unsloth-ud-q4kxl/moecache.yml",
+      "knobs": [
+        "REASONING_EFFORT",
+        "THINKING_BUDGETS",
+        "THINKING_BUDGET_LOW",
+        "THINKING_BUDGET_MEDIUM",
+        "THINKING_BUDGET_XHIGH"
+      ]
+    },
+    {
+      "compose": "models/qwen3.8-flash-next/llamacpp-club3090/compose/multi8/unsloth-ud-q4kxl/moecache.yml",
+      "knobs": [
+        "REASONING_EFFORT",
+        "THINKING_BUDGETS",
+        "THINKING_BUDGET_LOW",
+        "THINKING_BUDGET_MEDIUM",
+        "THINKING_BUDGET_XHIGH"
+      ]
+    }
+  ],
+  "not_wired_ceiling": 96
 }

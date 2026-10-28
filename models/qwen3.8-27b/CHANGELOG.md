@@ -2,6 +2,18 @@
 
 Dated history for Qwen3.8-27B configs in this repo. Append-only — add a new entry, don't rewrite past ones.
 
+## 2026-10-27 — QEngine: a new engine and one dual slug (🐣)
+
+New engine `qengine`: bpx03's [QEngine](https://github.com/bpx03/QEngine), an independent
+C++/CUDA engine for this model's RedHatAI INT4 checkpoint (`libqengine.so`), run from the
+author's own image (`ghcr.io/bpx03/qengine`, 1.3-rc4, pinned by digest; ⚠️ PolyForm
+Noncommercial licence). Its slug, **`qengine/qwen38-27b-dual`** (port 8089), is TP=2 over
+PCIe on two 3090s with P2P granted: KV pool 375,808 tokens / 32 slots, verify-full 9/9
+(MTP accept-len 6.39), canonical bench thinking-off **177.5 / 257.2 wall TPS**
+(narrative / code; decode 178.7 / 261.2, prefill 2168 @10K). Upstream tunes for 3 cards;
+2 is the author's measured fallback (72–85% of TP=3). 🐣 Incubating — stress / soak /
+8-pack pending. Engine doc: `docs/engines/QENGINE.md`; pin row: `docs/UPSTREAM.md`.
+
 ## 2026-10-19 — SGLang slugs move to v0.5.22
 
 The `sgl/` slugs now run `lmsysorg/sglang:v0.5.22` (was v0.5.21). Both SGLang patches carry
