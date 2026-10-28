@@ -1116,7 +1116,7 @@ class HelpScreen(ModalScreen):
             "  [cyan]Shift+←/→[/cyan] page-scroll a wide table sideways (faster than the ←/→ column cursor)",
             "",
             "[bold]Run & Operate · Catalog[/bold]",
-            "  [cyan]⏎[/cyan] serve selected slug (reconcile-gated confirm; F to Force the teardown)",
+            "  [cyan]⏎[/cyan] serve selected slug (reconcile-gated confirm; F to Force the teardown) — the card shows where its weights are; x removes them",
             "  [cyan]e[/cyan] explain   [cyan]i[/cyan] model info (metadata popup for the selected slug)",
             "  [cyan]E[/cyan] launch settings — what the slug's next launch uses, per-slug edits, a running container's drift",
             "  [cyan]W[/cyan] weights folders — where the slug's weights are, who shares them; x removes them (dry run first)",
@@ -2831,7 +2831,8 @@ class WeightsScreen(_CopyableModal, ModalScreen):
     plan, pinned by its digest, to the standard confirm gate.  Every rule —
     shared files, running containers, paths outside the model dir — is enforced
     by scripts/weights.sh, which re-checks all of it when the removal runs; this
-    screen only displays its answers.
+    screen only displays its answers.  The serve card's [x] opens it with
+    ``plan_first``: straight into the dry run once the folders have loaded.
     """
 
     DEFAULT_CSS = """
@@ -2871,10 +2872,11 @@ class WeightsScreen(_CopyableModal, ModalScreen):
         Binding("Y", "app.copy_context", "Copy", show=True),
     ]
 
-    def __init__(self, slug: str, *, status: str = "", **kwargs):
+    def __init__(self, slug: str, *, status: str = "", plan_first: bool = False, **kwargs):
         super().__init__(**kwargs)
         self._slug = slug
         self._status = status
+        self._plan_first = plan_first        # the serve card's [x]: dry run on arrival
         self._view = "show"                  # show | plan
         self._show: Optional[dict] = None
         self._show_err: Optional[str] = None
@@ -2918,6 +2920,9 @@ class WeightsScreen(_CopyableModal, ModalScreen):
         self._show, self._show_err = data, error
         self._view = "show"
         self._render_body()
+        if self._plan_first and data is not None:   # (a failed show stays on its error)
+            self._plan_first = False
+            self.action_plan()
 
     def set_plan(self, data: Optional[dict], error: Optional[str]) -> None:
         self._busy = False
@@ -3630,6 +3635,9 @@ class ConfirmActionScreen(ModalScreen):
         # for a download in flight.  Disjoint with start/stop via check_action
         # (mode-gated), same proven pattern as the dual confirm/start enter.
         Binding("enter", "download", "Download", show=True, priority=True),
+        # #1814 follow-up: [x] this slug's weights → WeightsScreen's dry run (only
+        # while they're on disk and not serving; see _weights_removable).
+        Binding("x", "remove_weights", "Remove weights", show=True),
         Binding("k", "stop", "Stop", show=True, priority=True),
         Binding("k", "cancel_download", "Cancel download", show=True, priority=True),
         Binding("f", "force", "Force", show=True, priority=True),
@@ -4159,16 +4167,81 @@ class ConfirmActionScreen(ModalScreen):
         )
         warn = ""
         if (getattr(entry, "weights_state", "") or "") == WEIGHTS_PARTIAL:
-            warn = "  [yellow]⚠ partial download on disk — Download resumes it[/yellow]\n"
+            warn = ("  [yellow]⚠ partial download on disk — Download resumes it[/yellow]"
+                    "  [dim]· \\[x] removes it instead[/dim]\n")
+        dest = self._weights_location(w)
         return (
             f"  [bold]{slug}[/bold]   [dim]weights not on disk[/dim]\n"
             f"{_hw_warn}"
             f"  repo   [dim]{w.hf_repo}[/dim]   ({size})\n"
-            f"{disk}\n"
+            + (f"  to     [dim]{dest}[/dim]\n" if dest else "")
+            + f"{disk}\n"
             f"{warn}\n"
             "  [dim]⏎ Download (streams in the background, progress in the list) · "
             "Esc Cancel[/dim]"
         )
+
+    # ── the slug's weights on this disk (#1814 follow-up) ─────────────────────────
+
+    def _weights_location(self, meta: Any) -> str:
+        """The folder the catalog's on-disk check reads for ``meta``: the model dir
+        + the recipe's subdir (+ the glob's own folder when it names one, the
+        shared-parent layout weights_state_for probes).  Escaped for markup; ""
+        when there's no recipe or no model dir to join."""
+        from pathlib import Path as _Path, PurePosixPath as _PPath
+        if meta is None or not getattr(meta, "subdir", ""):
+            return ""
+        try:
+            p = _Path(self.app._data.weights_model_dir()) / meta.subdir  # type: ignore[attr-defined]
+        except Exception:
+            return ""
+        sub = str(_PPath(getattr(meta, "verify_glob", "") or "").parent)
+        if sub not in ("", "."):
+            p = p / sub
+        return _markup_escape(str(p))
+
+    def _weights_removable(self) -> bool:
+        """[x] Remove weights — offered while the slug's weights (or part of them)
+        are on disk and the card isn't for the slug that's serving them: Start mode
+        with them present, or Download mode over a partial download.  Not while
+        serving (stop mode) or downloading; weights.sh refuses those anyway."""
+        ctx = self._serve_ctx
+        if ctx is None or ctx.entry is None:
+            return False
+        ws = getattr(ctx.entry, "weights_state", "") or ""
+        return ((ctx.mode == "start" and ws == WEIGHTS_PRESENT)
+                or (ctx.mode == "download" and ws == WEIGHTS_PARTIAL))
+
+    def _weights_card_lines(self, entry: Any) -> list[str]:
+        """Where this slug's weights live on this disk, from cached fields: the
+        recipe's folder with its state and size, and each companion the registry
+        lists (a drafter, a vision projector).  [x] opens the full view
+        (weights.sh show), which is the authority on what a removal touches."""
+        w = getattr(entry, "weights", None)
+        ws = getattr(entry, "weights_state", "") or ""
+        loc = self._weights_location(w)
+        if not loc:
+            return ["  [bold]weights[/bold] [dim]not in the weights catalog — "
+                    "the compose names its own files[/dim]"]
+        state = {
+            WEIGHTS_PRESENT: "[green]● on disk[/green]",
+            WEIGHTS_PARTIAL: "[yellow]⚠ partial[/yellow]",
+            WEIGHTS_ABSENT: "[dim]not on disk[/dim]",
+        }.get(ws, "")
+        size = f"  [dim]~{w.size_gb:.0f} GB[/dim]" if getattr(w, "size_gb", None) else ""
+        lines = [f"  [bold]weights[/bold] {loc}  {state}{size}".rstrip()]
+        index = getattr(self.app._data, "_weights_index_cache", None) or {}  # type: ignore[attr-defined]
+        for ck in getattr(entry, "weights_companions", None) or []:
+            cvar = ck.split(":", 1)[1] if ":" in ck else ck
+            cloc = self._weights_location(index.get((entry.model, cvar)))
+            if cloc:
+                lines.append(f"          + {cloc}  [dim]({_markup_escape(cvar)})[/dim]")
+        if self._weights_removable():
+            lines.append("          [dim]\\[x] remove weights — a dry run first lists "
+                         "exactly what goes[/dim]")
+        elif self._serve_mode == "stop" and ws == WEIGHTS_PRESENT:
+            lines.append("          [dim]serving now — stop it before removing its weights[/dim]")
+        return lines
 
     # ── SERVE card (immediate, then reconcile-enriched) ───────────────────────────
 
@@ -4219,6 +4292,8 @@ class ConfirmActionScreen(ModalScreen):
                     f"{fv.hw_requirement()}{got_s}. "
                     "[yellow]Serving here will NOT boot.[/yellow]"
                 )
+            # Where the weights live on this disk, and [x] to remove them (#1814).
+            lines.extend(self._weights_card_lines(entry))
             # int8-activation knob (#609/#1010) — three shapes by slug class:
             # "optin" (16bit + capable, the classic enable), "inverted" (ships
             # int8 + W4A8 gate → ON default, [a] disables via W4A8=0), "fixed"
@@ -4498,6 +4573,9 @@ class ConfirmActionScreen(ModalScreen):
                 return mode == "download"
             if action == "cancel_download":
                 return mode == "downloading"
+            # A DISK read first (the dry run), never a GPU write — no reconcile gate.
+            if action == "remove_weights":
+                return self._weights_removable()
             # Start/Stop need the fresh detect to have resolved (GPU writes).
             if action == "stop":
                 return bool(resolved and mode == "stop")
@@ -4530,8 +4608,8 @@ class ConfirmActionScreen(ModalScreen):
             return bool(resolved and rec.safe)
         if action == "force":
             return bool(resolved and not rec.safe)
-        # stop/start/download/cancel_download never apply in the legacy modal.
-        if action in ("stop", "start", "download", "cancel_download"):
+        # stop/start/download/cancel_download/remove_weights never apply in the legacy modal.
+        if action in ("stop", "start", "download", "cancel_download", "remove_weights"):
             return False
         return True
 
@@ -4588,6 +4666,17 @@ class ConfirmActionScreen(ModalScreen):
             return
         self.app.pop_screen()
         self.app.cancel_download(ctx.entry.slug)  # type: ignore[attr-defined]
+
+    def action_remove_weights(self) -> None:
+        """[x] → this slug's weights view, straight into its dry run (#1814): what
+        a removal would delete, what it frees, every refusal; ⏎ there hands the
+        plan to the confirm gate.  The card closes first, so the confirm doesn't
+        open over a card that still says the weights are on disk."""
+        if not self._weights_removable():
+            return
+        entry = self._serve_ctx.entry  # type: ignore[union-attr]
+        self.app.pop_screen()
+        self.app.push_screen(WeightsScreen(entry.slug, status=entry.status, plan_first=True))
 
     def action_toggle_act8(self) -> None:
         """[a] → flip the int8-activation toggle (#609/#1010). No-op where the

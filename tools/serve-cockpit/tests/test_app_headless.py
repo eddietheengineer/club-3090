@@ -15304,6 +15304,89 @@ class TestCatalogWeights:
             assert "weights.sh show failed" in body and "boom" in body
             assert app.screen.check_action("plan", ()) is False
 
+    # ── the ⏎ serve card: where the weights are, and [x] (#1814 follow-up) ────────
+
+    @staticmethod
+    async def _card(app, pilot, state):
+        """⏎ on catalog row 0 (vllm/dual) with its weights set to ``state`` under a
+        known model dir → the serve card and its rendered body."""
+        from club3090_cockpit.data import WeightsMeta
+        await _settle(pilot)
+        app._data._model_dir = "/models-fx"
+        pane = app.query_one("#catalog-pane", CatalogPane)
+        pane._downloaded_only = False     # [w]'s default would hide the row once it's absent
+        app.query_one("#catalog-table", DataTable).move_cursor(row=0)
+        entry = pane.selected_entry()
+        entry.weights_state = state
+        entry.weights = WeightsMeta(model=entry.model, variant="awq", subdir="qwen-awq",
+                                    hf_repo="Some/Repo", size_gb=20.0, verify_glob="*.safetensors")
+        await pilot.press("enter")
+        await _settle(pilot)
+        sc = app.screen
+        assert isinstance(sc, ConfirmActionScreen)
+        return sc, _serve_card_text(sc)
+
+    @pytest.mark.asyncio
+    async def test_serve_card_shows_the_folder_and_x_opens_the_dry_run(self):
+        from club3090_cockpit.data import WEIGHTS_PRESENT
+        app, runner, wr = make_app(responses=self._responses(_weights_plan(0)),
+                                   gpus=_FREE_GPUS, target=ServingTarget(gpus=_FREE_GPUS))
+        async with app.run_test(size=(140, 50)) as pilot:
+            sc, card = await self._card(app, pilot, WEIGHTS_PRESENT)
+            assert sc._serve_mode == "start"
+            assert "/models-fx/qwen-awq" in card and "on disk" in card and "~20 GB" in card
+            assert "[x] remove weights" in card
+            assert "x" in _serve_footer_keys(sc) and sc.check_action("remove_weights", ()) is True
+            await pilot.press("x")
+            await _settle(pilot)
+            ws = app.screen
+            assert isinstance(ws, WeightsScreen)          # the card closed first
+            assert not any(isinstance(s, ConfirmActionScreen) for s in app.screen_stack)
+            assert "dry run" in str(ws.query_one("#weights-title", Label).render())
+            assert any("remove vllm/dual --dry-run" in " ".join(c) for c in runner.calls)
+            assert wr.started == []                       # a dry run — nothing deleted
+
+    @pytest.mark.asyncio
+    async def test_partial_download_card_offers_x(self):
+        from club3090_cockpit.data import WEIGHTS_PARTIAL
+        app, _, _ = make_app(responses=self._responses(_weights_plan(0)))
+        async with app.run_test(size=(140, 50)) as pilot:
+            sc, card = await self._card(app, pilot, WEIGHTS_PARTIAL)
+            assert sc._serve_mode == "download"
+            assert "to     /models-fx/qwen-awq" in card
+            assert "partial download on disk" in card and "[x] removes it instead" in card
+            assert sc.check_action("remove_weights", ()) is True
+
+    @pytest.mark.asyncio
+    async def test_absent_weights_show_where_they_go_and_offer_no_x(self):
+        from club3090_cockpit.data import WEIGHTS_ABSENT
+        app, runner, _ = make_app(responses=self._responses(_weights_plan(0)))
+        async with app.run_test(size=(140, 50)) as pilot:
+            sc, card = await self._card(app, pilot, WEIGHTS_ABSENT)
+            assert sc._serve_mode == "download"
+            assert "to     /models-fx/qwen-awq" in card and "[x]" not in card
+            assert sc.check_action("remove_weights", ()) is False
+            assert "x" not in _serve_footer_keys(sc)
+            await pilot.press("x")
+            await _settle(pilot)
+            assert app.screen is sc                        # nothing to remove: inert
+            assert not any("weights.sh" in " ".join(c) for c in runner.calls)
+
+    @pytest.mark.asyncio
+    async def test_serving_slug_card_says_stop_first(self):
+        from club3090_cockpit.data import WEIGHTS_PRESENT
+        target = ServingTarget(container="vllm_qwen36_27b", host_port=8010, gpus=_FREE_GPUS)
+        app, _, _ = make_app(responses=fake_responses(**{"docker ps": ok(DOCKER_PS_ENGINE)}),
+                             gpus=_FREE_GPUS, target=target)
+        async with app.run_test(size=(140, 50)) as pilot:
+            await _enter_operate(pilot)
+            app.query_one("#operate-tabs", TabbedContent).active = "tab-catalog"
+            await pilot.pause()
+            sc, card = await self._card(app, pilot, WEIGHTS_PRESENT)
+            assert sc._serve_mode == "stop"
+            assert "/models-fx/qwen-awq" in card and "stop it before removing" in card
+            assert sc.check_action("remove_weights", ()) is False
+
     def test_weights_remove_plan_needs_a_digest(self, tmp_path):
         data = CockpitData(tmp_path, runner=FakeRunner(), write_runner=FakeWriteRunner())
         with pytest.raises(ValueError):
