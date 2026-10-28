@@ -2,6 +2,20 @@
 
 Dated history for Qwen3.8-27B configs in this repo. Append-only — add a new entry, don't rewrite past ones.
 
+## 2026-10-28 — GPU Unlock comparison on `dual-max`
+
+The [Qwen3.8 dual-card vLLM benchmark row](../../BENCHMARKS.md#qwen38-27b) records
+@eddietheengineer's mixed RTX 3090 + RTX 3090 Ti comparison with GPU Unlock OFF
+versus ON ([#1755](https://github.com/noonghunna/club-3090/issues/1755)).
+[GPU Unlock](https://github.com/Zagitta/gpu-unlock) lifts GeForce cards' half-rate cap
+on FP16 / BF16 / TF32 tensor-core math with FP32 accumulation, at boot. On the
+reported PCIe P2P, no-NVLink rig, fp8 KV and MTP decode stayed within the stated
+noise band, while prefill improved **14.5% at 10K / 18.4% at 90K**. Peak VRAM
+was unchanged at 46,404 MiB; the 1,496 MiB first-run increase was warmup
+allocation, not a monotonic leak. The baseline is one fresh boot, while the ON
+arm has two repetitions on one boot, so treat this as a prefill-heavy-workload
+comparison rather than a general decode-speed claim.
+
 ## 2026-10-28 — HyperQwen moves to commit ce9615c4; CTX=long changes backend
 
 `vllm-hyperqwen/qwen38-27b-single-ultrafast` now runs syv-ai's `:sha-ce9615c` (commit
