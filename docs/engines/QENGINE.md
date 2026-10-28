@@ -43,6 +43,8 @@ Its own environment variables (the image's entrypoint passes `QE_EXTRA_ARGS` to 
 
 ⚠️ The loop guard is on by default, and it writes into the conversation: on a guarded turn, an agent finds the server's note in its latest tool result. A request with `"loop_guard": false` turns it off for that request.
 
+⚠️ **Flash-Next long-prefill NaN (measured 2026-10-28, 2× 3090 PCIe).** With `FLASH_COMM=auto` (the default) the interconnect probe picks the P2P SM load/store path, and a ~76K-token prefill then produces non-finite `lm_head` inputs: the guard fails the request (HTTP 500) and, after 5 faults in 5 minutes, exits ("shared state is likely corrupt"). Measured **identical on 1.3 and 1.3-rc4** — same position, same block count — so it is the SM path, not a release regression. `FLASH_COMM=ce` (copy-engine transfers) measured clean (4×76K prefills, no faults); the flash-next compose ships it as the default.
+
 ## What's wired
 
 - the engine profile (`scripts/lib/profiles/engines/qengine.yml`);

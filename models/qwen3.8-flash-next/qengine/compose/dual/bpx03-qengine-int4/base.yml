@@ -11,7 +11,11 @@
 #   Max ctx:   131072
 #   Genesis:   N/A — Genesis is Qwen3-Next-specific
 #   Status:    🐣 Incubating
-#   Caveats:   Not gate-passing yet. ⚠️ The SAME artifact produced garbled
+#   Caveats:   Not gate-passing yet. ⚠️ Long-prefill NaN: the engine's FLASH_COMM=auto
+#              path (P2P SM loads/stores on this PCIe rig) produces non-finite lm_head
+#              inputs at ~76K-token prefills — identical on 1.3 and 1.3-rc4, so the
+#              shipped default pins FLASH_COMM=ce (copy-engine), which measured clean.
+#              ⚠️ The SAME artifact produced garbled
 #              multilingual output on the 1.3-rc1/rc2 images (2026-10-26); this slug
 #              runs the 1.3 pin and MUST be output-checked on every boot (the clean
 #              en/ja/fr result was measured on the 1.3-rc4 image — re-boot on 1.3).
@@ -76,6 +80,13 @@ services:
       FLASH_MAX_PREFILLS: "${FLASH_MAX_PREFILLS:-2}"
       FLASH_KV_ARCHIVE_GB: "${FLASH_KV_ARCHIVE_GB:-16}"  # upstream default 48 — too big for 92 GB
       FLASH_NGRAM_PIN: "${FLASH_NGRAM_PIN:-1}"     # 0 = disk mode (low-RAM hosts)
+      # ⚠️ Copy-engine interconnect, NOT the auto P2P SM path. On 2x3090 PCIe (P2P
+      # granted) FLASH_COMM=auto picks P2P SM loads/stores, and a ~76K-token prefill
+      # then produces non-finite lm_head inputs — the engine's guard fails the request
+      # (HTTP 500) and, under load, exits ("shared state is likely corrupt"). Measured
+      # identical on 1.3 and 1.3-rc4, so it is the SM path, not a pin regression;
+      # FLASH_COMM=ce avoids it (4x76K prefills clean). Override to auto to re-test.
+      FLASH_COMM: "${FLASH_COMM:-ce}"
       # the Flash-Next engine drafts adaptively with k=3 (upstream's measured best 2..4)
       QE_MTP_K_MAX: "4"
       # club-3090 standard knobs, read by the entrypoint below. Null value on

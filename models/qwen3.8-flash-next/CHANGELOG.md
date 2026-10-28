@@ -2,6 +2,20 @@
 
 Dated history for Qwen3.8-Flash-Next configs in this repo. Append-only — add a new entry, don't rewrite past ones.
 
+## 2026-10-28 — long-prefill NaN found; the slug ships FLASH_COMM=ce
+
+Re-validating this slug on the 1.3 pin, `bench.sh`'s 90K-prefill step killed the engine:
+`[flash] GUARD: non-finite lm_head input in prefill at position 76418`, then
+`FATAL: 5 non-finite faults within 5 minutes … shared state is likely corrupt; exiting`.
+Reproduced deterministically with a single ~76K-token prefill on a fresh boot (no archive
+history involved). **The A/B exonerates the pin bump:** 1.3-rc4 faults at the same position
+with the same block count — and dies *faster* (rc4 exits on the first fault; 1.3 tolerates 4
+per 5 min). The trigger is the engine's `FLASH_COMM=auto` probe picking the **P2P SM
+load/store** path on this PCIe rig; `FLASH_COMM=ce` (copy-engine transfers) measured clean
+across 4×76K prefills, so the compose now ships `ce` as the default (overridable). The
+earlier rc4-era "verify-full 9/9" stays consistent — that suite has no 76K prefill.
+Upstream: no known issue as of 2026-10-28.
+
 ## 2026-10-28 — QEngine pin bump: 1.3-rc4 → 1.3 (shared image)
 
 The QEngine image pin moved to the final `1.3` (`sha256:b9d1b0af…`, source `d15a4d3a` = git tag
