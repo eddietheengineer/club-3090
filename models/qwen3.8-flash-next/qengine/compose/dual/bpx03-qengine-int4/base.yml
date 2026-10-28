@@ -11,7 +11,7 @@
 #   Max ctx:   131072
 #   Genesis:   N/A — Genesis is Qwen3-Next-specific
 #   Status:    🐣 Incubating
-#   Quality:   toolcall-15 15/15 (100%) · instructfollow-15 12/15 (80%) · structoutput-15 11/15 (73%) · dataextract-15 10/15 (67%) · reasonmath-15 14/15 (93%) · bugfind-15 14/15 (93%) · hermesagent-20 13/20 (65%) · cli-40 28/40 (70%) (--full, thinking OFF, sampling=server, validity=valid, packs tc1.0.1·if2.0.0·so2.1.0·de1.2.0·rm1.1.0·bf1.0.1·hm1.0.0·cli1.0.2, 2026-10-28); thinking-ON leg NOT publishable on 2x24 GB — hermesagent-20 VRAM cliff (see Caveats)
+#   Quality:   toolcall-15 15/15 (100%) · instructfollow-15 12/15 (80%) · structoutput-15 11/15 (73%) · dataextract-15 10/15 (67%) · reasonmath-15 14/15 (93%) · bugfind-15 14/15 (93%) · hermesagent-20 13/20 (65%) · cli-40 28/40 (70%) (--full, thinking OFF, sampling=server, validity=valid, packs tc1.0.1·if2.0.0·so2.1.0·de1.2.0·rm1.1.0·bf1.0.1·hm1.0.0·cli1.0.2, 2026-10-28); thinking ON 125/150 (83%) at 1 slot — hermesagent-20 14/20, restarts=0
 #   Caveats:   Not gate-passing yet. ⚠️ Two flash-half defects found validating on 1.3,
 #              both fixed in this compose (both reproduce identically on 1.3-rc4, so neither
 #              is a bump regression): (1) Prefill NaN — the engine's FLASH_COMM=auto
