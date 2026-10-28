@@ -12,6 +12,9 @@ rc=0
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/scripts" "$TMP/tools"
 cp -r scripts/lib "$TMP/scripts/"; cp -r tools/tui-core "$TMP/tools/"
+# Not the developer's own local layer (gitignored, under scripts/lib): its entries are not this
+# test's fixture, and a locally promoted slug failed the invariant check below.
+rm -rf "$TMP/scripts/lib/profiles-local"
 
 printf '{"hidden_size":64,"num_hidden_layers":2,"num_attention_heads":4,"num_key_value_heads":2,"max_position_embeddings":65536}\n' > "$TMP/cfg.json"
 cat > "$TMP/c.yml" <<'YML'
