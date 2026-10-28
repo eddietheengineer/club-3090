@@ -6989,7 +6989,7 @@ entries:
     weights_variant: ukisai-swift15-gsq-rco-iq3s-mtp
     workload: vision-coding
     engine: llama-cpp-local
-    drafter: null
+    drafter: qwen-mtp-builtin
     spec_method: null
     kv_format: q4_0
     act_format: 16bit
@@ -7009,8 +7009,8 @@ entries:
     required_engine_features: []
     default_port: 8023
     kvcalc_key: SKIP
-    status: production
-    status_note: null
+    status: experimental
+    status_note: "UkisAI Swift-1.5 (an RL+OPD post-trained Qwen3.8-27B) as a GSQ-RCO IQ3_S-mtp GGUF with its MTP head embedded, plus its F16 projector: one card, MTP n=2, q4_0 KV at 262K, vision. Validated by the contributor on a waterblocked RTX 4090 at 450 W (verify-full 8/8, verify-stress, soak, bench 102.9 / 120.7 tok/s, quality --medium), on the stock template; not booted on the 3090 reference rig, so it ships at its sibling's status. Serves Swift's own GGUF template with an effort mapping (high and max -> xhigh, minimal -> low), which the stock one rejects with HTTP 500. ⚠️ Swift Open License 1.0: commercial use only below US$1M annual revenue."
     weights_companions:
       - ukisai-swift15-mmproj-f16
     gateway: false

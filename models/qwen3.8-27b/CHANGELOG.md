@@ -22,14 +22,18 @@ New curated slug `llamacpp/qwen38-27b-swift15-iq3s-mtp`: UkisAI's Swift-1.5
 post-trained (RL+OPD) Qwen3.8-27B as a GSQ-RCO IQ3_S-mtp GGUF (12.12 GB, MTP
 head embedded — 866 tensors) plus ukisai's F16 projector, single card,
 `llama-cpp-local`. Compose default: q4_0 KV @262144, projector on GPU, MTP
-n=2, `--jinja` native template. Validated on a waterblocked 4090 (450 W —
-not the 3090 reference rig): verify-full 8/8, verify-stress all pass
+n=2, and Swift's own GGUF template with an effort mapping (high and max ->
+xhigh, minimal -> low; the stock one answers those with HTTP 500). 🧪
+experimental, the status of the sibling it was cloned from. Validated on a
+waterblocked 4090 (450 W — not the 3090 reference rig, and on the stock
+template): verify-full 8/8, verify-stress all pass
 (2,996 MB flat at 91% fill), bench 102.86 / 120.74 decode TPS, prefill
 2,691 @10K, 0 MiB leak; quality --medium 66/75 pass@1; soak PASS. Same-card
 A/B against the base IQ4_XS at the same standard config: +11% / +8% decode,
 −5% prefill, 1.7 GiB less VRAM. The thinking-reduction claim (58.5% fewer
 thinking tokens, [ukisai.com/swift-1-5-27b](https://www.ukisai.com/swift-1-5-27b))
-is UkisAI's, not independently reproduced here.
+is UkisAI's, not independently reproduced here. ⚠️ Swift Open License 1.0:
+commercial use only below US$1M annual revenue.
 
 ## 2026-10-19 — SGLang slugs move to v0.5.22
 

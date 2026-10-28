@@ -9,16 +9,16 @@
 #              Toggle: SPEC_N=<n> sets depth; SPEC_N=0 (or SPEC=off) disables
 #   KV:        q4_0 K + q4_0 V @262144 (compose default) — measured on this
 #              rig: 2,996 MB free flat across the 91%-fill stress ladder
-#              (block below). This rig's daily serve: KV_TYPE=q8_0
-#              CTX_SIZE=239000 (launch-task prefix — per-slug settings don't
-#              carry CTX_SIZE) + LLAMA_ARG_MMPROJ_OFFLOAD=false (global
-#              club3090.env) — measured 1,238 MB free (series below).
+#              (block below). A q8_0 option: KV_TYPE=q8_0 CTX_SIZE=239000
+#              with LLAMA_ARG_MMPROJ_OFFLOAD=false (set CTX_SIZE for the launch:
+#              per-slug settings don't carry it) — measured 1,238 MB free on
+#              the 4090 (series below).
 #   Vision:    YES — mmproj-Swift-1.5-Qwen3.8-27B-F16 (0.93 GB, ukisai's own tower)
 #   Template:  Swift-1.5's GGUF template plus an effort mapping (high/max -> xhigh, minimal -> low),
 #              via --jinja --chat-template-file (patches/swift15-gguf-reasoning-effort-template)
 #   Max ctx:   262144
 #   Genesis:   N/A — llama.cpp engine; Genesis is vLLM/Qwen3-Next-specific
-#   Status:    ✅ Production
+#   Status:    🧪 Experimental
 #   Quality:   toolcall-15 13/15 (87%) · instructfollow-15 15/15 (100%) · structoutput-15 12/15 (80%) · dataextract-15 11/15 (73%) · reasonmath-15 15/15 (100%) (--medium, sampling=server, budget=server 32768, validity=valid, packs tc1.0.1·if2.0.0·so2.1.0·de1.2.0·rm1.1.0, 2026-10-21)
 #   Engine-profile: llama-cpp-local
 #   Best for:  Swift 1.5's shorter thinking on one card with room to spare

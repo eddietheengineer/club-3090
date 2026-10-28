@@ -295,7 +295,7 @@ weights:
     local_subdir: swift-1.5-qwen3.8-27b-gsq-rco
     size_gb: 11.3
     format: gguf
-    status: production
+    status: experimental
     kind: main
     verify_glob: '*.gguf'
     hf_repo: ukisai/Swift-1.5-Qwen3.8-27B-GSQ-RCO-GGUF
@@ -307,7 +307,7 @@ weights:
     local_subdir: swift-1.5-qwen3.8-27b-gguf
     size_gb: 0.9
     format: gguf
-    status: production
+    status: experimental
     kind: mmproj
     verify_glob: '*.gguf'
     hf_repo: ukisai/Swift-1.5-Qwen3.8-27B-GGUF
