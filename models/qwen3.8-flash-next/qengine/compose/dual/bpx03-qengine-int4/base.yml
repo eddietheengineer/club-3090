@@ -101,6 +101,7 @@ services:
       # non-finite lm_head inputs (observed at positions 10K-86K tokens; deterministic per
       # prompt; identical on 1.3 and 1.3-rc4, so the SM path, not a pin regression).
       # FLASH_COMM=ce measured clean on every boot. Override to auto to re-test.
+      # Upstream: docs/UPSTREAM.md — bpx03/QEngine#2.
       FLASH_COMM: "${FLASH_COMM:-ce}"
       # the Flash-Next engine drafts adaptively with k=3 (upstream's measured best 2..4)
       QE_MTP_K_MAX: "4"

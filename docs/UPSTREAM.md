@@ -350,6 +350,14 @@ Upstream publishes no image, so we build `ghcr.io/noonghunna/strata-maya-club309
 
 ---
 
+## QEngine (`bpx03/QEngine`)
+
+| Issue | Status | Why it matters | Our workaround |
+|---|---|---|---|
+| **[#2](https://github.com/bpx03/QEngine/issues/2)** — Flash-Next: non-finite `lm_head` inputs in prefill on the `FLASH_COMM=auto` P2P SM path (2× RTX 3090 PCIe) | 🔴 **Open, filed 2026-10-28** — reproduces on 1.3 and 1.3-rc4 (not a release regression) | The `auto` probe picks P2P SM loads/stores on GeForce PCIe P2P; long prefills then NaN at the LM head, failing requests (HTTP 500) and fail-stopping the server under load ("shared state is likely corrupt"). Deterministic per prompt; faults at positions 10K–86K tokens. | `FLASH_COMM=ce` (copy-engine) in the flash-next compose — zero faults on every `ce` boot (bench 90K, stress 91K). Drop it if upstream fixes `auto` on GeForce P2P or ships a corrected pin. |
+
+Related (not filed upstream): the flash-half CUDA-graph VRAM OOM under concurrency is a rig ceiling on 2×24 GB — the boot leaves only `FLASH_EC_MARGIN_MB`'s 256 MB default free per card; we ship `FLASH_MAX_SEQS=1` (one long-context stream). If upstream raises the graph-pool headroom or documents the margin trade, revisit the slot default.
+
 ## transformers (`huggingface/transformers`)
 
 | Issue / PR | Status | Why it matters | Workaround |
