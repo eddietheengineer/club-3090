@@ -197,6 +197,24 @@
     "file": "docs/engines/STRATA_MAYA.md",
     "contains": "Maya's `--spec` is documented for its DFlash2 drafter"
    }
+  },
+  {
+   "knobs": [
+    "THINKING_BUDGET_LOW",
+    "THINKING_BUDGET_MEDIUM",
+    "THINKING_BUDGET_XHIGH",
+    "THINKING_BUDGETS"
+   ],
+   "match": {
+    "engine": [
+     "qengine"
+    ]
+   },
+   "why": "QEngine has no reasoning budget of any kind: its server takes enable_thinking and reasoning_effort for the template, and no flag, variable or request field caps the thinking",
+   "source": {
+    "file": "docs/engines/QENGINE.md",
+    "contains": "QEngine has no thinking budget"
+   }
   }
  ],
  "not_wired": [

@@ -117,7 +117,7 @@ for d in ("qwen3.8-27b", "thinkingcap-qwen3.8-27b"):
     for f in glob.glob(f"{root}/models/{d}/*/compose/*/*/*.yml"):
         lines = [l for l in io.open(f, encoding="utf-8").read().splitlines() if not l.lstrip().startswith("#")]
         for i, l in enumerate(lines):
-            m = re.search(r"--(?:served-model-name|alias)\b(.*)$", l)
+            m = re.search(r"--(?:served-model-name|served-name|alias)\b(.*)$", l)   # served-name: QEngine's
             if not m: continue
             rest = m.group(1).strip().rstrip("\\").strip().strip('"')
             if rest and not rest.startswith("-"):                    # one-line form
@@ -167,7 +167,7 @@ def compose_ids(f):
     for i, l in enumerate(lines):
         m = re.search(r"SERVED_MODEL_NAME:\s*\"?(\$\{SERVED_MODEL_NAME:-[^}]+\})", l)
         if m: add(m.group(1))
-        m = re.search(r"--(?:served-model-name|alias|model-name)\b['\"]?(.*)$", l)
+        m = re.search(r"--(?:served-model-name|served-name|alias|model-name)\b['\"]?(.*)$", l)   # served-name: QEngine's
         if not m: continue
         rest = m.group(1).strip().rstrip("\\").strip().strip("\"'")
         if rest and not rest.startswith("-"):

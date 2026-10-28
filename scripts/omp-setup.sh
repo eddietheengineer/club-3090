@@ -103,7 +103,7 @@ def qwen38_override(mid: str, no_summary: bool = False) -> str:
 # profile for the gateway to report, so it sent NO effort at all and every request
 # ran at the server's default, the slowest rung (club-3090 Discussion #1690).
 # These are the ids the engines REPORT, which is what the gateway names each route:
-# a compose's --served-model-name / --alias / --model-name / SERVED_MODEL_NAME,
+# a compose's --served-model-name / --alias / --model-name / SERVED_MODEL_NAME / --served-name (QEngine),
 # Strata's "<family name>-<quant>" (qwen3.8-flash-next-iq3_s, swift-1.5-iq3_s) and
 # Project Maya's model_name (glm-5.3-flash). test-omp-setup checks both lists
 # against the composes.

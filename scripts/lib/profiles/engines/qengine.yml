@@ -1,6 +1,6 @@
 schema_version: 1
 id: qengine
-display_name: QEngine (bpx03's engine for Qwen3.8-27B INT4 on RTX 3090s; the author's own image)
+display_name: QEngine (bpx03's engines for Qwen3.8-27B and Qwen3.8-Flash-Next INT4 on RTX 3090s; the author's own image)
 type: qengine
 stability: experimental
 min_sm: 8.6
@@ -18,15 +18,18 @@ install:
   # The author's own image, ghcr.io/bpx03/qengine:<release> (text only; the :vision tags add the vision encoder and
   # PyTorch, ~3 GB). Its org.opencontainers.image.revision label is the source commit: 1.3 is git tag v1.3, a single
   # squashed release commit on main (the rc tags were a branch of their own, so diff rc4 → 1.3 by tree).
-  # pin-current: 1.3 · source d15a4d3a · pinned 2026-10-28 · not booted (no slug yet)
+  # pin-current: 1.3 · source d15a4d3a · pinned 2026-10-28 · booted 2026-10-28 on qengine/qwen38-27b-dual (verify-full 8 + 2 n/a, bench.sh); qengine/qwen38-flash-next-dual not booted yet
   # pin-earlier: 1.3-rc4 `18b3c4bb…` (source 116bd8d9, 2026-10-27)
   spec: ghcr.io/bpx03/qengine@sha256:b9d1b0afe8f96547b3a05de73aff437077effcb1117c82ab2e0fe62bf000b3da
 supported_model_families:
-  - qwen35-dense          # Qwen3.8-27B, RedHatAI's INT4 only. Its second engine, for Qwen3.8-Flash-Next (libqflash.so,
-                          # the author's own INT4), is an experimental preview and not listed yet
+  - qwen35-dense          # Qwen3.8-27B, RedHatAI's INT4 only (libqengine.so)
+  - qwen4exp              # Qwen3.8-Flash-Next, the author's own INT4 layout (libqflash.so, from 1.3; upstream calls it a
+                          # preview: tested on one machine, no quality benchmark yet)
 supported_weight_formats:
   - compressed-tensors    # RedHatAI/Qwen3.8-27B-INT4 (pack-quantized W4A16, group 128, symmetric). It reads only
                           # weight_packed / weight_scale, so other INT4 formats (AutoRound's auto_gptq packing) don't load
+  - qengine-int4          # bpx03/Qwen3.8-Flash-Next-QEngine: Intel's AutoRound INT4 regrouped per layer for libqflash.so,
+                          # with an INT8 n-gram table; only QEngine reads it
 supported_kv_formats:
   - fp8_e4m3              # its one K / V format: FP8 e4m3 in a shared pool per GPU
 supported_drafters:
@@ -48,4 +51,8 @@ notes: >
   presence penalty on the repeated reply and a server note appended to the latest tool result
   (QE_LOOP_GUARD_TURNS=0 turns it off, QE_LOOP_GUARD_NOTE=0 drops only the note, "loop_guard": false in a
   request turns it off for that request). Engine kind `qengine`.
-  Registered with no slug yet (2026-10-27): its log lines, metrics and knobs are wired with the first.
+  Registered 2026-10-27 with no slug; the first two (2026-10-28) are two-card ones, qengine/qwen38-27b-dual
+  and qengine/qwen38-flash-next-dual. They map ENABLE_THINKING to --think, SPEC_N to --mtp-k and
+  REASONING_EFFORT to the default of a copy of QEngine's own template (its default is xhigh); QEngine has no
+  thinking budget. bench.sh and verify-full read its [stats] lines (llama.cpp's timing format, vLLM's SpecDecoding
+  metrics format); its P2P line and its metrics port (9393) aren't read yet.

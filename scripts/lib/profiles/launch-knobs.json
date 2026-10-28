@@ -385,9 +385,10 @@
    "status": "first-batch",
    "description": "Server-default thinking mode for requests that don't set their own.",
    "type": "bool",
-   "unset": "the compose default: true on the Qwen3.8 family and Nemotron, false on vllm/thinkingcap-dual-w4a8; Strata: thinking on (the template's default); Project Maya: thinking on (effort max on GLM-5.3-Flash, high on DeepSeek-V4.1-Flash; auto on MiniMax-M3.1-Flash, where the model decides); llama.cpp: the compose's own default row (thinking on Qwen3.8-27B, MiMo and Qwen3.6-35B-A3B; instruct on Qwen3.8-Flash-Next and Gemma-4-12B)",
+   "unset": "the compose default: true on the Qwen3.8 family and Nemotron, false on vllm/thinkingcap-dual-w4a8; Strata: thinking on (the template's default); QEngine: true (--think 1); Project Maya: thinking on (effort max on GLM-5.3-Flash, high on DeepSeek-V4.1-Flash; auto on MiniMax-M3.1-Flash, where the model decides); llama.cpp: the compose's own default row (thinking on Qwen3.8-27B, MiMo and Qwen3.6-35B-A3B; instruct on Qwen3.8-Flash-Next and Gemma-4-12B)",
    "engines": [
     "llamacpp",
+    "qengine",
     "sglang",
     "strata",
     "vllm"
@@ -966,6 +967,70 @@
        ]
       }
      ]
+    },
+    {
+     "match": {
+      "engine": [
+       "qengine"
+      ],
+      "model": [
+       "qwen3.8-27b",
+       "qwen3.8-flash-next"
+      ]
+     },
+     "enforced": "boot",
+     "values": [
+      "true",
+      "false"
+     ],
+     "spelling": {
+      "on": "true",
+      "off": "false"
+     },
+     "default": "true",
+     "every_consumer_contains": [
+      "_think=\"$${ENABLE_THINKING:-true}\""
+     ],
+     "source": {
+      "file": "models/qwen3.8-27b/qengine/compose/dual/redhat-int4/mtp.yml",
+      "what": "`case \"$$_think\" in true) _args+=(--think 1) ;; false) _args+=(--think 0) ;; *) exit 1`, passed through QE_EXTRA_ARGS to QEngine's server/app.py, whose --think is the enable_thinking default for requests that set none (a request's chat_template_kwargs or Anthropic thinking.type wins); the Flash-Next compose carries the same lines"
+     },
+     "checks": [
+      {
+       "kind": "shell",
+       "compose": "models/qwen3.8-27b/qengine/compose/dual/redhat-int4/mtp.yml",
+       "from": "^\\s*_think=\"\\$\\$\\{ENABLE_THINKING",
+       "to": "^\\s*echo \"\\[thinking\\] default enable_thinking=",
+       "accept": [
+        "true",
+        "false"
+       ],
+       "reject": [
+        "on",
+        "True",
+        "1",
+        "yes",
+        "off"
+       ]
+      },
+      {
+       "kind": "shell",
+       "compose": "models/qwen3.8-flash-next/qengine/compose/dual/qengine-int4/mtp.yml",
+       "from": "^\\s*_think=\"\\$\\$\\{ENABLE_THINKING",
+       "to": "^\\s*echo \"\\[thinking\\] default enable_thinking=",
+       "accept": [
+        "true",
+        "false"
+       ],
+       "reject": [
+        "on",
+        "True",
+        "1",
+        "yes",
+        "off"
+       ]
+      }
+     ]
     }
    ],
    "interacts": [
@@ -1023,9 +1088,10 @@
    "status": "first-batch",
    "description": "Server-default reasoning effort for requests that don't send their own.",
    "type": "enum",
-   "unset": "the compose default: low (Qwen3.8 vLLM/SGLang, Inkling-Small), medium (Qwen3.8 llama.cpp), max (GLM-5.3-Flash); Strata: the template's own default (xhigh); Project Maya: max for GLM-5.3-Flash (the launcher's default, as the other GLM-5.3-Flash slugs), high for DeepSeek-V4.1-Flash (Maya's own), auto for MiniMax-M3.1-Flash (Maya's own: its adaptive thinking)",
+   "unset": "the compose default: low (Qwen3.8 vLLM/SGLang/QEngine, Inkling-Small), medium (Qwen3.8 llama.cpp), max (GLM-5.3-Flash); Strata: the template's own default (xhigh); Project Maya: max for GLM-5.3-Flash (the launcher's default, as the other GLM-5.3-Flash slugs), high for DeepSeek-V4.1-Flash (Maya's own), auto for MiniMax-M3.1-Flash (Maya's own: its adaptive thinking)",
    "engines": [
     "llamacpp",
+    "qengine",
     "sglang",
     "strata",
     "vllm"
@@ -1562,6 +1628,71 @@
        ]
       }
      ]
+    },
+    {
+     "match": {
+      "engine": [
+       "qengine"
+      ],
+      "model": [
+       "qwen3.8-27b",
+       "qwen3.8-flash-next"
+      ]
+     },
+     "enforced": "boot",
+     "values": [
+      "low",
+      "medium",
+      "xhigh"
+     ],
+     "default": "low",
+     "every_consumer_contains": [
+      "case \"$$_reff\" in low|medium|xhigh) : ;;",
+      "_lit=\"reasoning_effort|default('xhigh')\"",
+      "_args+=(--template \"$$_tmpl\")"
+     ],
+     "source": {
+      "file": "models/qwen3.8-27b/qengine/compose/dual/redhat-int4/mtp.yml",
+      "what": "`case \"$$_reff\" in low|medium|xhigh) : ;; *) exit 1`; QEngine's server has no default-effort flag, so the entrypoint copies the image's server/templates/qwen38_syssafe.jinja with its one reasoning_effort|default('xhigh') replaced by the value (exit 1 when that literal isn't there exactly once) and serves the copy with --template. Stricter than the template on purpose, as on HyperQwen: the boot takes the three efforts it acts on. A request's own effort goes to QEngine's template, which maps high -> xhigh and anything else outside the three (minimal, max) -> medium; the Flash-Next compose carries the same lines"
+     },
+     "checks": [
+      {
+       "kind": "shell",
+       "compose": "models/qwen3.8-27b/qengine/compose/dual/redhat-int4/mtp.yml",
+       "from": "^\\s*_reff=\"\\$\\$\\{REASONING_EFFORT",
+       "to": "^\\s*case \"\\$\\$_reff\" in",
+       "accept": [
+        "low",
+        "medium",
+        "xhigh"
+       ],
+       "reject": [
+        "high",
+        "max",
+        "minimal",
+        "none",
+        "LOW"
+       ]
+      },
+      {
+       "kind": "shell",
+       "compose": "models/qwen3.8-flash-next/qengine/compose/dual/qengine-int4/mtp.yml",
+       "from": "^\\s*_reff=\"\\$\\$\\{REASONING_EFFORT",
+       "to": "^\\s*case \"\\$\\$_reff\" in",
+       "accept": [
+        "low",
+        "medium",
+        "xhigh"
+       ],
+       "reject": [
+        "high",
+        "max",
+        "minimal",
+        "none",
+        "LOW"
+       ]
+      }
+     ]
     }
    ],
    "interacts": [
@@ -1628,6 +1759,7 @@
    "engines": [
     "exllamav3",
     "llamacpp",
+    "qengine",
     "sglang",
     "strata",
     "vllm"
@@ -1764,6 +1896,65 @@
        ]
       }
      ]
+    },
+    {
+     "match": {
+      "engine": [
+       "qengine"
+      ],
+      "model": [
+       "qwen3.8-27b",
+       "qwen3.8-flash-next"
+      ]
+     },
+     "enforced": "boot",
+     "min": 0,
+     "default": "",
+     "every_consumer_contains": [
+      "_args+=(--mtp-k \"$$SPEC_N\")"
+     ],
+     "source": {
+      "file": "models/qwen3.8-27b/qengine/compose/dual/redhat-int4/mtp.yml",
+      "what": "`case \"$$SPEC_N\" in *[!0-9]*) exit 1`, then --mtp-k <n> through QE_EXTRA_ARGS: QEngine's server/app.py --mtp-k, the most MTP drafts a step (the engine adapts below it; unset = the model's default, 7 on the 27B and 3 on Flash-Next, server/model_profile.py); 0 = no MTP (server/qe_capi.h: `k: max MTP drafts per step (0 = no MTP; the server passes --mtp-k)`); the Flash-Next compose carries the same lines"
+     },
+     "checks": [
+      {
+       "kind": "shell",
+       "compose": "models/qwen3.8-27b/qengine/compose/dual/redhat-int4/mtp.yml",
+       "from": "^\\s*if \\[ -n \"\\$\\$\\{SPEC_N:-\\}\" \\]; then",
+       "to": "^\\s*fi\\s*$",
+       "accept": [
+        "0",
+        "3",
+        "7"
+       ],
+       "reject": [
+        "x",
+        "-1",
+        "2.5",
+        "3x"
+       ],
+       "to_plus": 1
+      },
+      {
+       "kind": "shell",
+       "compose": "models/qwen3.8-flash-next/qengine/compose/dual/qengine-int4/mtp.yml",
+       "from": "^\\s*if \\[ -n \"\\$\\$\\{SPEC_N:-\\}\" \\]; then",
+       "to": "^\\s*fi\\s*$",
+       "accept": [
+        "0",
+        "3",
+        "7"
+       ],
+       "reject": [
+        "x",
+        "-1",
+        "2.5",
+        "3x"
+       ],
+       "to_plus": 1
+      }
+     ]
     }
    ],
    "interacts": [
@@ -1828,6 +2019,13 @@
      "source": {
       "file": "models/qwen3.8-flash-next/bucko-vllm/compose/dual/albucino-autoround-int4-fp8ple/base.yml",
       "what": "MTP_DEPTH: \"${MTP_DEPTH:-${SPEC_N:-3}}\" and the entrypoint's MTP depth 0 refusal"
+     }
+    },
+    {
+     "text": "QEngine: SPEC_N is the most MTP drafts a step, not a fixed depth (the engine picks the depth from the measured acceptance below it). SPEC_N=0 turns MTP off, but QEngine's lookup drafts from the token history stay on (QE_LOOKUP=0 on the 27B, FLASH_LOOKUP=0 on Flash-Next).",
+     "source": {
+      "file": "models/qwen3.8-27b/qengine/compose/dual/redhat-int4/mtp.yml",
+      "what": "the [spec] block of the entrypoint and the SPEC_N line of the header's knob list"
      }
     }
    ]
