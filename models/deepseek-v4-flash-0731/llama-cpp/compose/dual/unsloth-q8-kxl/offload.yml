@@ -109,7 +109,7 @@
 
 services:
   llama-cpp-deepseek-flash:
-    image: ${LLAMACPP_IMAGE:-ghcr.io/ggml-org/llama.cpp@sha256:e4cfff28678327b0ae7eda129e700e56a0fa55aa23db2f016256ea155c15c2b5}
+    image: ${LLAMACPP_IMAGE:-ghcr.io/ggml-org/llama.cpp@sha256:4ccae195bf542f7844301ae06891baa32a7551cb16de8428af6e929403d4292c}
     container_name: "${ESTATE_CONTAINER:-llama-cpp-deepseek-flash-q8}"
     restart: ${CLUB3090_RESTART:-unless-stopped}
     ports:
