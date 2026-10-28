@@ -75,6 +75,11 @@
 #                          8192 reasoning tokens at ~12 tok/s needs ~700s+,
 #                          so the default times out a HEALTHY server there.
 #                          Same pattern as verify-full's VERIFY_LONG_TIMEOUT.
+#   N_CTX                  The server's context length in tokens, for the
+#                          ceiling ladder. Wins over detection; needed when
+#                          the server reports it nowhere (no /props n_ctx, no
+#                          max_model_len in /v1/models, no docker inspect
+#                          flag), or the ladder is skipped (#1826).
 #   CEILING_FRACTION       Fraction of n_ctx to target for the top ceiling
 #                          rung (default: 0.92). Lower to test a safer fill.
 #   CEILING_STEP_TOKENS    Token increment between ceiling ladder rungs
@@ -333,6 +338,8 @@ ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # the rules live in ONE place and every consumer delegates to them.
 # shellcheck source=lib/engine-kind.sh
 source "${ROOT_DIR}/scripts/lib/engine-kind.sh"
+# strata_maya_log_path: Project Maya's engine log, which is not where Strata's is (#1706, #1752)
+source "${ROOT_DIR}/scripts/lib/strata-log.sh"
 
 # --- per-rig #249 record: self-tee stdout so the ceiling-ladder line (the ctx
 # ceiling this stress run validates) can be parsed at the end for the corpus
@@ -461,7 +468,15 @@ else:
     print(len(text) // 4, "estimated" if text else "usage")' 2>/dev/null || echo "0 unparseable"
 }
 _SKIPPED=0
-skip() { printf "  \033[33m⊘\033[0m %s (skipped)\n" "$1"; _SKIPPED=1; }
+_SKIP_REASON=""
+# Checks that did not run, as "label: reason", for the summary (#1826): a run that
+# skipped one must not end on "paths are sound". `skip <msg> covered` marks a skip
+# whose ground another check already covers (a small n_ctx that probe 7 spans).
+SKIPPED_CHECKS=()
+skip() {
+  printf "  \033[33m⊘\033[0m %s (skipped)\n" "$1"; _SKIPPED=1
+  [[ "${2:-}" == covered ]] || _SKIP_REASON="$1"
+}
 
 FAILED=0
 # The summary is split into two verdicts because this script answers two
@@ -479,9 +494,12 @@ BOUND_RUN=0;    BOUND_FAIL=0
 run_check() {
   local label="$1"; shift
   local rc=0
-  _SKIPPED=0
+  _SKIPPED=0; _SKIP_REASON=""
   if "$@"; then :; else rc=1; FAILED=$((FAILED + 1)); fi
-  if [[ "$_SKIPPED" == "1" ]]; then return 0; fi   # skipped checks count in neither bucket
+  if [[ "$_SKIPPED" == "1" ]]; then                # skipped checks count in neither bucket
+    [[ -z "$_SKIP_REASON" ]] || SKIPPED_CHECKS+=("${label}: ${_SKIP_REASON}")
+    return 0
+  fi
   if [[ "$_RECALL_CHECKS" == *" $label "* ]]; then
     RECALL_RUN=$((RECALL_RUN + 1)); [[ "$rc" == "1" ]] && RECALL_FAIL=$((RECALL_FAIL + 1))
   else
@@ -532,7 +550,13 @@ case "$ENGINE_KIND" in
       LOG_CMD="docker logs ${CONTAINER} 2>&1 | tail -50"
     fi ;;
   # Strata's engine writes to a log file inside the container; docker logs has only setup
-  strata) LOG_CMD="docker exec ${CONTAINER} sh -c 'tail -50 /data/state/strata/launch/*.engine.log /opt/strata/strata-*.log 2>/dev/null'" ;;   # Strata 0.2+, then 0.1.x
+  strata)
+    _maya_log="$(strata_maya_log_path "$CONTAINER")"
+    if [[ -n "$_maya_log" ]]; then
+      LOG_CMD="docker exec ${CONTAINER} tail -50 ${_maya_log}"   # Project Maya
+    else
+      LOG_CMD="docker exec ${CONTAINER} sh -c 'tail -50 /data/state/strata/launch/*.engine.log /opt/strata/strata-*.log 2>/dev/null'"   # Strata 0.2+, then 0.1.x
+    fi ;;
   *) LOG_CMD="check your engine's stdout/stderr or container logs" ;;
 esac
 
@@ -1353,6 +1377,13 @@ ensure_engine_alive "probe 7 (large rungs)" || true
 get_n_ctx() {
   local n_ctx=0
 
+  # An explicit N_CTX wins: the one way to run the ladder on a server that reports
+  # its context length nowhere (#1826). check_ceiling_ladder refuses a malformed one.
+  if [[ "${N_CTX:-}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "$N_CTX"
+    return 0
+  fi
+
   # llama.cpp: GET /props → default_generation_settings.n_ctx
   # Real llama.cpp nests n_ctx inside default_generation_settings, NOT at
   # top-level. Top-level d.get('n_ctx') returns None → 0.
@@ -1515,20 +1546,26 @@ check_ceiling_ladder() {
   local ceiling_start="${CEILING_START_TOKENS:-95000}"
   local vram_margin_mb="${VRAM_MARGIN_MB:-1024}"
 
-  # Step 1: detect context window
+  # Step 1: detect context window (N_CTX, when set, wins)
+  if [[ -n "${N_CTX:-}" && ! "${N_CTX}" =~ ^[1-9][0-9]*$ ]]; then
+    fail "ceiling ladder: N_CTX='${N_CTX}' is not a positive whole number of tokens" \
+         "Set N_CTX to the server's context length (e.g. N_CTX=262144), or unset it to detect it."
+    return 1
+  fi
   local n_ctx
   n_ctx="$(get_n_ctx)"
   if [[ "${n_ctx:-0}" -le 0 ]]; then
-    skip "could not detect n_ctx from endpoint (no /props, no /v1/models max_model_len, no docker inspect)"
+    skip "could not detect n_ctx from endpoint (no /props, no /v1/models max_model_len, no docker inspect); set N_CTX=<the server's context length> to run it"
     return 0
   fi
+  [[ -z "${N_CTX:-}" ]] || echo "    n_ctx from N_CTX=${N_CTX} (not detected from the server)"
 
   # Step 2: build the ladder — from ceiling_start to ceiling_fraction*n_ctx
   local ceiling_top
   ceiling_top="$(python3 -c "print(int(${n_ctx} * ${ceiling_fraction}))")"
   # If the compose is small enough that probe 7 already covers it, skip
   if [[ "$ceiling_top" -le "$ceiling_start" ]]; then
-    skip "n_ctx=${n_ctx} → ceiling target ${ceiling_top} ≤ start ${ceiling_start} (probe 7 already covers this range)"
+    skip "n_ctx=${n_ctx} → ceiling target ${ceiling_top} ≤ start ${ceiling_start} (probe 7 already covers this range)" covered
     return 0
   fi
 
@@ -1903,11 +1940,20 @@ if [[ -n "${CACHE_CONTAMINATED_LIST}" ]]; then
   printf "    %s→ vllm:prefix_cache_hits_total rose during those rungs — their prefill numbers are inflated; treat as upper bounds (#1017)%s\n" "$_c_dim" "$_c_off"
 fi
 echo ""
-if [[ "$FAILED" == "0" ]]; then
+if [[ "$FAILED" == "0" && ${#SKIPPED_CHECKS[@]} -eq 0 ]]; then
   printf "\033[32mAll stress / boundary checks passed.\033[0m KV-cache and prefill paths are sound for the deployed config.\n"
+elif [[ "$FAILED" == "0" ]]; then
+  # Not the line above: a check that never ran proves nothing (#1826). It still
+  # starts "All stress" for the c3 parser, and differs from the line above so
+  # catalog-baseline doesn't read it as a full pass.
+  printf "\033[33mAll stress / boundary checks that ran passed, but %d did not run\033[0m — not a full stress pass:\n" \
+    "${#SKIPPED_CHECKS[@]}"
 else
   printf "\033[31m%d stress check(s) failed.\033[0m See hints above.\n" "$FAILED"
 fi
+for _sk in ${SKIPPED_CHECKS[@]+"${SKIPPED_CHECKS[@]}"}; do
+  printf "  \033[33m⊘\033[0m skipped (not run): %s\n" "$_sk"
+done
 
 # --- per-rig #249 record: stress pass/fail + the validated ctx ceiling --------
 # The ceiling-ladder pass/fail line carries the deepest fillable tokens + n_ctx;

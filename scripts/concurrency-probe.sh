@@ -561,7 +561,10 @@ PY
     # finished reads running=0 and used to fail the rung AND early-stop the
     # ladder — silently truncating the very measurement the sweep exists to
     # produce. (From @voiceagentscc's #1212.)
-    if [[ "$running_max" =~ ^[0-9]+$ && "$running_max" -lt "$n" ]]; then
+    # And only when something WAITED: a peak below n with Waiting at 0 is a stream
+    # that had already finished, not one the engine refused (#1782; admission_ok()).
+    if [[ "$running_max" =~ ^[0-9]+$ && "$running_max" -lt "$n" \
+          && "$waiting_max" =~ ^[0-9]+$ && "$waiting_max" -gt 0 ]]; then
       fail=1
       echo "[sweep] admitted peak ${running_max}/${n} (waiting ${waiting_max:-?}) — treating as fail for early-stop"
     fi

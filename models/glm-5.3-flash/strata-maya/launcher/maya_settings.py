@@ -16,6 +16,12 @@ serve/server.py (the strata-maya-club3090 image) reads:
   KV                     args: --kv            fp16 (the engine's default) | int8 (the latent cache in INT8). The
                                                engine also parses q4_0 / k8v4, but only its Qwen path uses them:
                                                with --glm-pack they run fp16, so they are refused here
+  SERVED_NAME            model_name            the name /v1/models reports and every answer carries (Maya answers a
+                                               request whatever model it names); unset = glm-5.3-flash. One name,
+                                               no spaces
+  LOOP_GUARD             loop_guard            true | false: the server's loop guard (serve/loop_guard.py, v1.1.30
+                                               on), which breaks an answer or a thinking block stuck repeating one
+                                               block of tokens; unset = Maya's own (on)
 
 SPEC_N is not one of them: Maya's --spec is documented for its DFlash2 drafter, not for GLM's MTP block.
 Nor is MAX_TOKENS: the server takes a default output cap only from the Chat settings its web page saves
@@ -96,6 +102,16 @@ def settings():
     top_k = _env("TOP_K")
     if top_k is not None:
         sampling["top_k"] = _int("TOP_K", top_k, 1, 64)
+    served = _env("SERVED_NAME")
+    if served is not None:
+        if any(c.isspace() for c in served):
+            raise Bad(f"SERVED_NAME={served!r}: expected one name, without spaces")
+        keys["model_name"] = served
+    guard = _env("LOOP_GUARD")
+    if guard is not None:
+        if guard not in ("true", "false"):
+            raise Bad(f"LOOP_GUARD={guard!r}: expected true or false")
+        keys["loop_guard"] = guard == "true"
     kv = _env("KV")
     if kv is not None:
         if kv not in KV_FORMATS:

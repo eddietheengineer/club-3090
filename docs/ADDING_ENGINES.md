@@ -132,7 +132,6 @@ Everything else that has to agree with the profile:
 | `registry.yaml` entries | `engine: <id>` (must exist), plus `required_engine_features` | cross-reference check at load; C15 |
 | `hardware/*.yml` | each new KV format in `supported_kv_formats` of every hardware profile its slugs must fit | C5 |
 | `tools/kv-calc.py` | for `type: vllm`: the KV format in `KV_FORMAT_BYTES`, plus the activation-coefficient tables for `qwen3-next-*` families | C12 |
-| `scripts/tests/test-profiles-compat.sh` | the hard-coded engine count (+1) | itself |
 | `scripts/lib/profiles/canonical_scenarios.py` | each slug must fit at least one canonical scenario, so a Hopper-only engine can't pass today | `test-profiles-compat` |
 | `arch_patches.yml` | `engine_pin` rows, only if the engine should be a base for the derived-compose generator and Pull-Gate (vLLM-type only). Most new engines don't | `generate_compose.validate_engine_pin` |
 
@@ -178,6 +177,7 @@ A container on any other internal port is invisible to `verify*.sh`, `bench.sh`,
 
 - **Prefer the family's standard internal port.** Most wrapper launchers take a `PORT` env var.
 - **If you genuinely need another port,** add it to every mirrored copy of the port set: `club-containers.sh`, `tools/tui-core/.../detect.py`, `scripts/catalog.sh`, and the port loops in `report.sh` and `soak-test.sh`. `test-engine-port-set-drift` checks they agree.
+- **A new family's container prefix** goes into every mirrored copy of the prefix set too: the fallback regex in `club-containers.sh`, `ENGINE_PREFIXES` in `tools/tui-core/.../detect.py` and `_DETECT_PREFIXES` in `scripts/catalog.sh` (plus the `engine_kind_from_container` arm, [Engine kind](#1-engine-kind--scriptslibengine-kindsh)). `test-catalog-detectability` checks that `catalog.sh` matches `detect.py`. QEngine's registration missed the `catalog.sh` copy, and that test was red on master until it was added.
 
 ### 3. Throughput and spec-decode parsing
 
@@ -293,7 +293,7 @@ The compose layout, header and registry contract are the same as in [ADDING_MODE
 1. ☐ Engine proposal issue answered; go-ahead from the maintainer
 2. ☐ Lineage class and fields; naming (id, filename, slug prefix, compose directory, container name, internal port)
 3. ☐ Image published by the engine's maintainer, digest-pinned, pullable without credentials (`catalog_rules.py --engine <id> --network`); `install.spec` and `image_env`; allowlist arm in **both** launchers
-4. ☐ `engines/<id>.yml`, plus hardware KV formats, kv-calc tables (vLLM-type) and the `test-profiles-compat` count
+4. ☐ `engines/<id>.yml`, plus hardware KV formats and kv-calc tables (vLLM-type). `test-profiles-compat` counts the profile files itself, so it needs no edit
 5. ☐ The engine resolves in `engine-kind.sh` from its id, container name and image (`test-engine-lineage` checks the id); arms and resolver probes for a new family
 6. ☐ Discovery: standard internal port, or every mirrored port set updated
 7. ☐ Throughput and acceptance parsing verified on a live boot (`bench.sh` and `health.sh` show acceptance)
@@ -308,7 +308,7 @@ The compose layout, header and registry contract are the same as in [ADDING_MODE
     - `docs/engines/README.md`
     - `docs/README.md`
     - the `AGENTS.md` engine-pinning table
-    - `docs/UPSTREAM.md` (pinned-images row plus an upstream section)
+    - `docs/UPSTREAM.md` (a pinned-images row: why it's pinned, which composes use it, when it can retire; plus an upstream section). The pin itself goes in the profile, as `install.spec` and a `# pin-current:` line beside it, not in that row
     - an engine-specific section in `docs/NIGHTLY_BUMP_RUNBOOK.md`
     - BENCHMARKS rows and the model CHANGELOG
 

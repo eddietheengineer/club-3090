@@ -78,6 +78,20 @@ class H(BaseHTTPRequestHandler):
             if EMIT_TC:
                 delta["tool_calls"] = TC
             ev({"choices": [{"delta": delta}], "usage": USAGE})
+        elif MODE == "role_first":
+            # STRATA / PROJECT MAYA SHAPE. An empty role chunk goes out the moment
+            # the request is accepted, THEN the prompt is read (0.6 s here), THEN
+            # reasoning and content stream. Timing TTFT on the role chunk read 2-24
+            # ms on #1752 and counted the prompt read as decode (3-27 tok/s).
+            ev({"choices": [{"delta": {"role": "assistant", "content": ""}}]})
+            time.sleep(0.6)
+            for _ in range(4):
+                ev({"choices": [{"delta": {"reasoning_content": "thinking... "}}]})
+                time.sleep(0.05)
+            ev({"choices": [{"delta": {"content": "Done."}}]})
+            if EMIT_TC:
+                ev({"choices": [{"delta": {"tool_calls": TC}}]})
+            ev({"choices": [{"delta": {}}], "usage": USAGE})
         elif MODE == "reasoning":
             # THINKING MODEL SHAPE. The server streams `reasoning` deltas for a
             # long time, THEN a short content tail. If TTFT is taken at the first
@@ -217,5 +231,23 @@ if grep -qE "^\s*[0-9]+\s+[0-9,]+\s+[0-9]+\s+n/a" <<<"$out"; then
 fi
 assert_no_absurd_decode "$out" "reasoning ramp"
 echo "  ✓ reasoning deltas start the decode window — a thinking model is measurable"
+
+echo "── empty role chunk before the prompt read: not the first token ──"
+run_bench 1 role_first QUIET=0
+printf '%s\n' "$out" > "$tmp/role_first.txt"
+python3 - "$tmp/role_first.txt" <<'PY' || { echo "$out"; exit 1; }
+import re, sys
+ttfts = []
+for ln in open(sys.argv[1], encoding="utf-8"):
+    m = re.match(r"\s*(\d+)\s+([\d,]+)\s+(\d+)\s+[\d.n/a]+\s", ln)   # turn, prompt tok, TTFT ms
+    if m:
+        ttfts.append(int(m.group(3)))
+if not ttfts:
+    sys.exit("role_first: no per-turn rows to read")
+if min(ttfts) < 550:
+    sys.exit(f"role_first: TTFT {ttfts} ms; the mock reads the prompt for 600 ms after its role chunk")
+PY
+assert_no_absurd_decode "$out" "role-first ramp"
+echo "  ✓ TTFT includes the prompt read after an early empty role chunk (#1752)"
 
 echo "test-bench-agentic-ramp: ok"

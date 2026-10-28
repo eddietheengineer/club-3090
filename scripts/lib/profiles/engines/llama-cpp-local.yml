@@ -33,6 +33,11 @@ lineage:
   delta: null
 install:
   method: docker_image
+  # The pin's record: pin-current is what spec pins now; pin-earlier lists earlier pins, newest first (the first
+  # is the rollback). docs/UPSTREAM.md's Pinned images table holds why it's pinned, not these.
+  # Each bump's validation is its dated row in docs/UPSTREAM.md (Active follow-ups).
+  # pin-current: v0.7.0 · server-cuda-b11669 · commit 620d2225c · pinned 2026-10-17
+  # pin-earlier: v0.6.0 = b11429 (2026-10-06, #1567); v0.5.0 = b11146 (#1397); b10920, the first pinned by digest (2026-09-12, #1273); b10236 (2026-08-06); b9967 (2026-07-11); b9246; before that the rolling `server-cuda` tag
   spec: ghcr.io/ggml-org/llama.cpp@sha256:e4cfff28678327b0ae7eda129e700e56a0fa55aa23db2f016256ea155c15c2b5
 min_sm: 6.0
 supported_model_families:

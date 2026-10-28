@@ -236,10 +236,13 @@ def _post(msgs, max_tokens):
 
 def measure(msgs, max_tokens=24):
     """One turn. Returns a dict:
-        ttft          first chunk carrying `choices` — NOT the first chunk with content.
-                      On a reasoning model the content field stays empty through the
-                      reasoning phase, and timing on it charges reasoning to prefill
-                      (the #1096 retraction). None if no choices chunk ever arrived.
+        ttft          first `choices` chunk whose delta carries anything besides `role`
+                      (reasoning, content, a tool call, any other kind) — NOT the first
+                      chunk with content. On a reasoning model the content field stays
+                      empty through the reasoning phase, and timing on it charges
+                      reasoning to prefill (the #1096 retraction); an empty `role`
+                      chunk comes before the prompt read on Strata / Project Maya
+                      (#1752). None if no such chunk ever arrived.
         dtps          decode tokens/s. Four bases are tried in descending fidelity and
                       the one used is reported in dtps_basis; None only when every one
                       is unmeasurable, and then dtps_why says what the stream carried.
@@ -289,8 +292,12 @@ def measure(msgs, max_tokens=24):
             ch = (d.get("choices") or [{}])[0]
             if ch:
                 nchunks += 1
-                if ttft is None: ttft = time.time() - t0
                 delta = ch.get("delta") or {}
+                # A chunk that carries something, of any kind: Strata and Project Maya
+                # send an empty `role` delta before reading the prompt (#1752). Same rule
+                # as bench-agentic.sh.
+                if ttft is None and any(v not in (None, "", [], {}) for k, v in delta.items() if k != "role"):
+                    ttft = time.time() - t0
                 piece = delta.get("content") or ""
                 # Reasoning tokens are decode work too, so they open the decode
                 # window — timing on `content` alone charges them to prefill (#1096).

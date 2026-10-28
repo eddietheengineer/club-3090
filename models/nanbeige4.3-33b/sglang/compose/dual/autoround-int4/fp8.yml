@@ -1,0 +1,138 @@
+# ===========================================================================
+# Profile (at-a-glance):
+#   Model:     Nanbeige4.3-33B (club-3090's own AutoRound INT4 — 4-bit, group 128, sym, packing
+#              auto_round:auto_gptq; 20.8 GB, lm_head and the embeddings bf16). A DENSE
+#              LlamaForCausalLM: 52 layers, GQA 56 query / 8 KV heads, head_dim 128, vocab 166,912,
+#              RoPE theta 1.2e8, 524,288 native context.
+#   Topology:  Dual 3090 PCIe (TP=2, no NVLink)
+#   Drafter:   none (the checkpoint has no MTP head; a community DFlash2 drafter,
+#              ProCreations/Nanbeige4.3-33B-DFlash2, exists but is untested here)
+#   KV:        fp8_e4m3 (KV_CACHE_DTYPE override): ~104 KiB a token across both cards
+#   Vision:    no (a text model)
+#   Max ctx:   204800 — inside the measured fp8 KV pool (206,433 tokens at MEM_FRACTION 0.88), so ONE
+#              full-length request at a time; the model supports 524288
+#   Genesis:   N/A — Genesis is Qwen3-Next-specific
+#   Status:    🐣 Incubating
+#   Caveats:   Not gate-passing yet: quality unmeasured (8-pack pending) and no clean throughput row —
+#              the first benches (2026-10-26) ran with the reference rig's GPU0 overheating (clock
+#              sagging to 555-790 MHz), so they measure its cooling as much as the engine.
+#   Best for:  long-context reasoning and agentic tool use (the model card's two scenarios)
+# ---------------------------------------------------------------------------
+# The SGLang counterpart of ../../../../vllm/compose/dual/autoround-int4/fp8.yml, derived from
+# models/qwen3.8-27b/sglang/compose/dual/autoround-int4/mtp.yml. Dropped as Qwen3.8-only: native MTP,
+# the Mamba/SSM slot knobs (every layer here is attention), the patched Qwen chat template, the
+# effort-budget patch (it caps reasoning by reasoning_effort, which this template doesn't read) and
+# --enable-strict-thinking that enforces it. Also left out for the first boot: W4A8 (our int8-
+# activation patch; the vLLM compose runs stock W4A16 too, so the two engines compare like for like)
+# and the HiCache KV-offload tier. What remains is stock SGLang.
+#
+# BOOTED 2026-10-26 (2x 3090, 230 W): ready in 328-348 s, 270 s of it capturing the prefill CUDA graphs,
+#   including the sgl_kernel JIT builds (gptq_marlin, its repack, fused_rope) — they land in the container's
+#   /root/.cache/sglang, so every fresh container builds them again. verify-full passes every applicable check.
+# CHECKED AGAINST THE PINNED IMAGE (lmsysorg/sglang:v0.5.22, transformers 5.19) before the boot:
+#   - config.json keeps RoPE theta only in rope_parameters; SGLang's llama.py reads
+#     config.rope_parameters["rope_theta"], so 1.2e8 is honoured.
+#   - quant_method "auto-round" is SGLang's AutoRoundConfig (packing auto_round:auto_gptq, a Marlin
+#     backend), the same path the Qwen3.8 AutoRound SGLang slugs serve on.
+#   - The card's own SGLang example runs --reasoning-parser qwen3 --tool-call-parser qwen3_coder;
+#     both are in the image. The template's default tool_call_format is "xml" (<function=...>);
+#     TOOL_CALL_PARSER=hermes for a client that switches it to "json".
+#
+# THINKING: enable_thinking defaults ON (ENABLE_THINKING=false for non-thinking), enforced through
+#   --default-chat-template-kwargs. preserve_thinking is left to the template, whose unset value
+#   preserves earlier reasoning (the card's choice for agents; chat clients send false per request).
+#
+# SAMPLER — ⚠️ a gap on this engine: the card's rows are agentic 1.0 / 0.95 and chat 0.6 / 0.95, but
+#   SGLang's chat endpoint takes server defaults only from the checkpoint's generation_config.json
+#   (--sampling-defaults model), and this one sets none. A request that sends no sampling therefore
+#   gets temperature 1.0 / top_p 1.0. --preferred-sampling-params carries the card's row for
+#   /get_model_info and the native /generate endpoint, where it applies; chat clients should send
+#   their own (bench.sh and verify-full do).
+# ===========================================================================
+services:
+  sglang-nanbeige43-33b-dual:
+    image: ${SGLANG_IMAGE:-lmsysorg/sglang:v0.5.22}
+    container_name: ${ESTATE_CONTAINER:-sglang-nanbeige43-33b-dual}
+    restart: ${CLUB3090_RESTART:-unless-stopped}
+    init: true
+    ports:
+      - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8049}}:30000"
+    volumes:
+      - ../../../../../../scripts/lib/cuda-ordinals.sh:/etc/club3090/cuda-ordinals.sh:ro
+      - "${MODEL_DIR:-../../../../../../models-cache}:/models:ro"
+    ipc: host
+    shm_size: "16gb"
+    environment:
+      # PCIe P2P off-switch — bare, so docker forwards it only when the host sets it (docs/PCIE_P2P.md §0c).
+      - NCCL_P2P_DISABLE
+      - CONTEXT_LENGTH
+      - MEM_FRACTION
+      - KV_CACHE_DTYPE
+      - ATTENTION_BACKEND
+      - MAX_RUNNING_REQUESTS
+      - CHUNKED_PREFILL_SIZE
+      - ENABLE_THINKING
+      - TEMP
+      - TOP_P
+      - TOP_K
+      - MIN_P
+      - REPEAT_PENALTY
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['${ESTATE_GPUS:-${CUDA_VISIBLE_DEVICES:-0,1}}']
+              capabilities: [gpu]
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -euo pipefail
+        # GPU UUIDs (estate pinning) -> this container's ordinals (club-3090#1462). No-op when unset or numeric.
+        if [ -f /etc/club3090/cuda-ordinals.sh ]; then . /etc/club3090/cuda-ordinals.sh; club3090_cuda_ordinals;
+        else echo "[gpus] cuda-ordinals.sh not mounted; CUDA_VISIBLE_DEVICES not remapped (club-3090#1462)" >&2; fi
+        M=/models/nanbeige4.3-33b-autoround-int4
+        _think="${ENABLE_THINKING:-true}"
+        case "$$_think" in true|false) : ;; *) echo "[sampler] ENABLE_THINKING='$$_think' must be true or false" >&2; exit 1 ;; esac
+        # The card's agentic row unless set (see the SAMPLER note: chat completions don't apply these).
+        _pref="\"temperature\": $${TEMP:-1.0}, \"top_p\": $${TOP_P:-0.95}"
+        if [ -n "$${TOP_K:-}" ]; then _pref="$$_pref, \"top_k\": $${TOP_K}"; fi
+        if [ -n "$${MIN_P:-}" ]; then _pref="$$_pref, \"min_p\": $${MIN_P}"; fi
+        if [ -n "$${REPEAT_PENALTY:-}" ]; then _pref="$$_pref, \"repetition_penalty\": $${REPEAT_PENALTY}"; fi
+        echo "[sampler] enable_thinking=$$_think; preferred {$$_pref} (generation_config.json sets none: chat requests that send no sampling get 1.0 / 1.0)" >&2
+        # --sleep-on-idle: without it every scheduler rank busy-polls its event loop at idle (~1 core per
+        # GPU on the Qwen3.8 dual-fast measurement); decode and TTFT within noise with it.
+        # --enable-cache-report: usage.prompt_tokens_details (club-3090#1297). ⚠️ SGLang OMITS
+        # cached_tokens when it is 0, so read absent as unknown, not 0.
+        # --chunked-prefill-size 2048 (the Qwen3.8 SGLang value): 8192 OOM'd on both cards while
+        # capturing the prefill CUDA graphs (2026-10-26, MEM_FRACTION 0.88: 2.65 GB left after a
+        # 206,433-token fp8 pool, then a 172 MiB SiLU buffer for an 8K chunk with 164 MiB free).
+        exec python3 -m sglang.launch_server \
+          --model-path "$$M" \
+          --tp-size 2 \
+          --disable-custom-all-reduce \
+          --quantization auto-round \
+          --kv-cache-dtype "${KV_CACHE_DTYPE:-fp8_e4m3}" \
+          --chunked-prefill-size "${CHUNKED_PREFILL_SIZE:-2048}" \
+          --attention-backend "${ATTENTION_BACKEND:-flashinfer}" \
+          --context-length "${CONTEXT_LENGTH:-204800}" \
+          --mem-fraction-static "${MEM_FRACTION:-0.88}" \
+          --max-running-requests "${MAX_RUNNING_REQUESTS:-8}" \
+          --enable-metrics \
+          --sleep-on-idle \
+          --enable-cache-report \
+          --default-chat-template-kwargs "{\"enable_thinking\": $$_think}" \
+          --sampling-defaults model \
+          --preferred-sampling-params "{$$_pref}" \
+          --reasoning-parser "${REASONING_PARSER:-qwen3}" \
+          --tool-call-parser "${TOOL_CALL_PARSER:-qwen3_coder}" \
+          --host 0.0.0.0 --port 30000 \
+          --served-model-name ${SERVED_NAME:-nanbeige4.3-33b}
+    healthcheck:
+      # club-3090#1295 — probe the container's ROUTABLE address, never loopback: a loopback probe stays
+      # green when the server binds 127.0.0.1 and every external client is refused.
+      test: ["CMD-SHELL", "curl -sf \"http://$${HOSTNAME:-$$(hostname)}:30000/health\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 60
+      start_period: 900s

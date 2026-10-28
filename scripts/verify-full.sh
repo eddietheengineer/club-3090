@@ -270,6 +270,7 @@ check_patches() {
     sglang)   skip "SGLang engine — Genesis is vLLM-only, not applicable";    return 0 ;;
     exllamav3) skip "exl3/TabbyAPI engine — Genesis is vLLM-only, not applicable"; return 0 ;;
     strata)   skip "Strata engine — Genesis is vLLM-only, not applicable";   return 0 ;;
+    qengine)  skip "QEngine — Genesis is vLLM-only, not applicable";        return 0 ;;
     unknown)  ;;  # fall through; might still be vLLM under a non-standard container name
   esac
   if ! command -v docker >/dev/null 2>&1; then
@@ -768,6 +769,11 @@ check_mtp_acceptance() {
       # block can't run, so there is nothing to check. Strata's document has no such field: no skip there.
       if [[ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["engine"].get("mtp", ""))' "${sm_dir}/before.json" 2>/dev/null)" == 0 ]]; then
         skip "the engine loaded no draft block (engine.mtp 0: Project Maya drafts only on two or more GPUs)"
+        rm -rf "${sm_dir}"; return 0
+      fi
+      # MiniMax's maya-mm3 reports its DSpark drafter as engine.dspark: 0 when DSPARK=off, Maya's own default for it
+      if [[ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["engine"].get("dspark", ""))' "${sm_dir}/before.json" 2>/dev/null)" == 0 ]]; then
+        skip "the engine runs no drafter (engine.dspark 0: DSPARK=off, Project Maya's default for MiniMax)"
         rm -rf "${sm_dir}"; return 0
       fi
       curl -sf -m 120 "${URL}/v1/chat/completions" \

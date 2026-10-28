@@ -137,7 +137,54 @@ def render_maya_prepare(entry: dict, settings: dict) -> dict:
         return json.loads(text)
 
 
-RENDERERS = {"strata_config": render_strata_config, "maya_prepare": render_maya_prepare}
+MAYA_DS4_RENDER = r"""
+import sys, types
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import ds4_prepare
+d = Path(sys.argv[2])
+ds4_prepare.config("ista-iq2-xxs", d, d / "pack", types.SimpleNamespace(gpus="0,1", tp=1, context=int(sys.argv[3])))
+"""
+
+
+def render_maya_ds4_prepare(entry: dict, settings: dict) -> dict:
+    """DeepSeek-V4.1-Flash on Maya's maya-ds4 (models/deepseek-v4.1-flash-1017/strata-maya/launcher/ds4_prepare.py):
+    the same shape as render_maya_prepare, its own config file (maya-ds4.json) and quant folder."""
+    launcher = ROOT / Path(entry["programs"][-1]).parent
+    settings = dict(settings)
+    context = settings.pop("CONTEXT", "65536")    # the entrypoint passes CONTEXT as ds4_prepare.py --context
+    with tempfile.TemporaryDirectory() as d:
+        _run([sys.executable, "-c", MAYA_DS4_RENDER, str(launcher), d, context], _env_for(entry, settings),
+             f"ds4_prepare.config() {settings or '(no settings)'}")
+        text = (Path(d) / "maya-ds4.json").read_text(encoding="utf-8").replace(json.dumps(d)[1:-1], "/data/ista-iq2-xxs")
+        return json.loads(text)
+
+
+MAYA_MM3_RENDER = r"""
+import sys, types
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import mm3_prepare
+d = Path(sys.argv[2])
+mm3_prepare.config("minimax-maya-s", d, d / "pack", types.SimpleNamespace(gpus="0,1", context=int(sys.argv[3])))
+"""
+
+
+def render_maya_mm3_prepare(entry: dict, settings: dict) -> dict:
+    """MiniMax-M3.1-Flash on Maya's maya-mm3 (models/minimax-m3.1-flash/strata-maya/launcher/mm3_prepare.py): the
+    same shape as render_maya_ds4_prepare, its own config file (maya-mm3.json) and quant folder."""
+    launcher = ROOT / Path(entry["programs"][-1]).parent
+    settings = dict(settings)
+    context = settings.pop("CONTEXT", "204800")   # the entrypoint passes CONTEXT as mm3_prepare.py --context
+    with tempfile.TemporaryDirectory() as d:
+        _run([sys.executable, "-c", MAYA_MM3_RENDER, str(launcher), d, context], _env_for(entry, settings),
+             f"mm3_prepare.config() {settings or '(no settings)'}")
+        text = (Path(d) / "maya-mm3.json").read_text(encoding="utf-8").replace(json.dumps(d)[1:-1], "/data/minimax-maya-s")
+        return json.loads(text)
+
+
+RENDERERS = {"strata_config": render_strata_config, "maya_prepare": render_maya_prepare,
+             "maya_ds4_prepare": render_maya_ds4_prepare, "maya_mm3_prepare": render_maya_mm3_prepare}
 
 
 def arg_pairs(args) -> dict:
@@ -260,7 +307,9 @@ def scan(src: str):
 
 
 def help_has(help_text: str, flag: str) -> bool:
-    return re.search(rf"^\s*{re.escape(flag)}(?=[\s=,]|$)", help_text, re.M) is not None
+    # one flag a line ("  --kv fp16|int8  ..."), or an option of a usage synopsis ("[--max-context N]": maya-ds4
+    # prints only that); a flag merely named in a description doesn't count
+    return re.search(rf"(?:^\s*|\[){re.escape(flag)}(?=[\s=,\]|]|$)", help_text, re.M) is not None
 
 
 def _where(reads, key, limit=6) -> str:
@@ -279,7 +328,7 @@ def verify_sources(entry: dict, src: str, help_text: str) -> list[str]:
         if key.startswith("args:"):
             flag = key[5:]
             if not help_has(help_text, flag):
-                near = sorted(set(re.findall(rf"^\s*({re.escape(flag)}[-\w]*)", help_text, re.M)))
+                near = sorted(set(re.findall(rf"(?:^\s*|\[)({re.escape(flag)}[-\w]*)", help_text, re.M)))
                 problems.append(f"{key}: the engine's --help doesn't list {flag}" + (f" (only {', '.join(near)})" if near else ""))
         elif key.startswith("sampling."):
             field = key.split(".", 1)[1]
@@ -356,6 +405,8 @@ def main():
 SELFTEST_HELP = """usage
   --kv fp16|int8       KV storage
   --spec-min-p P       not the verify window
+  --ngram N            drafts like --draft-depth does
+prog --pack DIR [--max-context N] [--threads-cap N] [--vision on|off]
 """
 
 
@@ -369,6 +420,10 @@ def selftest() -> int:
         ({"sampling.top_k": ""}, True, "a sampling field nothing compares fails"),
         ({"args:--kv": ""}, False, "a flag --help lists passes"),
         ({"args:--spec": ""}, True, "--spec fails when --help lists only --spec-min-p"),
+        ({"args:--max-context": ""}, False, "a usage synopsis's bracketed option ([--max-context N]) passes"),
+        ({"args:--vision": ""}, False, "a bracketed option with choices ([--vision on|off]) passes"),
+        ({"args:--threads": ""}, True, "--threads fails when the synopsis has only [--threads-cap N]"),
+        ({"args:--draft-depth": ""}, True, "a flag only named inside a description fails"),
     ]
     bad = 0
     for reads, must_fail, what in cases:
@@ -403,7 +458,10 @@ def main(argv: list[str]) -> int:
             print(f"  ✓ check: {', '.join(engines)}: {n} keys the settings write, each with evidence; pin matches the verified image")
         return 1 if problems else 0
     if cmd == ["verify"] and len(argv) >= 3 and argv[2] in manifest["engines"]:
-        return verify(manifest, argv[2], "--record" in argv[3:])
+        # an engine whose image carries a second launcher's engine (strata-maya: maya-ds4, entry "strata-maya:ds4")
+        # has one entry per launcher: verifying the engine verifies them all, so a pin bump re-records every one
+        names = [argv[2]] + [n for n in manifest["engines"] if ":" not in argv[2] and n.startswith(argv[2] + ":")]
+        return max(verify(manifest, n, "--record" in argv[3:]) for n in names)
     if cmd == ["selftest"]:
         return selftest()
     if cmd == ["format"]:

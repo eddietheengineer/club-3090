@@ -4348,6 +4348,42 @@ class TestBatch1PowerCapCard:
             assert "cap 230W" in bar  # capped card annotates the active cap
 
     @pytest.mark.asyncio
+    async def test_gpu_card_shows_sm_clock_and_throttle_tag(self):
+        """#1813 — each card shows its SM clock now / max on the line straight under
+        power:, and a busy card the driver is holding back says why; an unreported
+        field is "—"."""
+        gpus = [
+            GpuInfo(index=0, mem_used_mib=18 * 1024, mem_total_mib=24 * 1024,
+                    utilization=99, power_draw_w=230, power_limit_w=230, temp_c=83,
+                    clock_sm_mhz=1665, clock_max_sm_mhz=2115, clock_event_reasons=0x4),
+            GpuInfo(index=1, mem_used_mib=18 * 1024, mem_total_mib=24 * 1024,
+                    utilization=97, power_draw_w=180, power_limit_w=230, temp_c=91,
+                    clock_sm_mhz=555, clock_max_sm_mhz=2100, clock_event_reasons=0x40),
+            # an older driver / card that reports neither clock nor reason
+            GpuInfo(index=2, mem_used_mib=1024, mem_total_mib=24 * 1024, utilization=5),
+            # idle: sw_power_cap alone at 0 % util is a driver blip, not a cause
+            GpuInfo(index=3, mem_used_mib=1, mem_total_mib=24 * 1024, utilization=0,
+                    clock_sm_mhz=210, clock_max_sm_mhz=2100, clock_event_reasons=0x4),
+        ]
+        app, _, _ = make_app(gpus=gpus, target=ServingTarget(gpus=gpus))
+        async with app.run_test(size=(120, 60)) as pilot:
+            await _enter_operate(pilot)
+            # a second estate poll — the existing GPU repaint — fills cards 2-3,
+            # which mount (async) on the first pass
+            app._periodic_estate_refresh()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            bars = [str(app.query_one(f"#gpu{i}-bar", Static).render()) for i in range(4)]
+            lines0 = bars[0].splitlines()
+            at = next(i for i, ln in enumerate(lines0) if "power:" in ln)
+            assert lines0[at + 1] == "  clock: 1,665 / 2,115 MHz (power cap)"
+            assert "clock: 555 / 2,100 MHz (thermal)" in bars[1]
+            assert "clock: — / — MHz" in bars[2]
+            assert "(" not in bars[2].split("clock:", 1)[1]  # no tag without a reason
+            assert "clock: 210 / 2,100 MHz" in bars[3]
+            assert "power cap" not in bars[3]
+
+    @pytest.mark.asyncio
     async def test_cap_write_repolls_estate(self, monkeypatch):
         wr = FakeWriteRunner()
         app, runner, _ = make_app(write_runner=wr)
@@ -15094,3 +15130,267 @@ class TestCatalogSort:
         M.apply_persisted_settings(app3, {})
         async with app3.run_test(size=(120, 40)):
             assert app3.query_one("#catalog-pane", CatalogPane)._sort_mode == "model"
+
+
+# ===========================================================================
+# #1814 — Catalog · [W] a slug's weights folders, and removing them
+# ===========================================================================
+
+from club3090_cockpit.app import WeightsScreen  # noqa: E402
+
+WEIGHTS_SHOW_JSON = json.dumps({
+    "slug": "vllm/dual", "status": "production", "model_dir": "/models-fx",
+    "folders": [
+        {"path": "/models-fx/qwen-awq", "resolved": "/disk2/qwen-awq", "linked": True,
+         "role": "main", "recipes": ["qwen3.6-27b:awq"], "mounts": [], "state": "complete",
+         "size_bytes": 20 * 1024 ** 3, "file_count": 9,
+         "users": [{"slug": "vllm/dual-old", "status": "deprecated", "needs_files": True}]},
+        {"path": "/models-fx/qwen-drafter", "resolved": "/models-fx/qwen-drafter", "linked": False,
+         "role": "draft", "recipes": ["qwen3.6-27b:dflash"], "mounts": [], "state": "missing",
+         "size_bytes": 0, "file_count": 0, "users": []},
+        {"path": "/models-fx/qwen-gguf", "resolved": "/models-fx/qwen-gguf", "linked": False,
+         "role": "mmproj", "recipes": ["qwen3.6-27b:gguf_mmproj_f16"], "mounts": [], "state": "complete",
+         "size_bytes": 75 * 1024 ** 3, "file_count": 37, "recipe_bytes": 1024 ** 3, "users": []},
+    ],
+    "warnings": [],
+})
+
+
+def _weights_plan(exit_code, *, allow_shared=False, refusals=None):
+    return json.dumps({
+        "slug": "vllm/dual", "dry_run": True, "allow_shared": allow_shared,
+        "folders": ["/models-fx/qwen-awq"],
+        "targets": [
+            {"path": "/models-fx/qwen-awq/model-00001.safetensors", "resolved": "/disk2/qwen-awq/model-00001.safetensors",
+             "folder": "/models-fx/qwen-awq", "recipe": "qwen3.6-27b:awq", "bytes": 10 * 1024 ** 3,
+             "freed_bytes": 10 * 1024 ** 3, "ino": 1, "bookkeeping": False},
+            {"path": "/models-fx/qwen-awq/.cache/huggingface/download/model-00001.safetensors.metadata",
+             "resolved": "/disk2/qwen-awq/.cache/huggingface/download/model-00001.safetensors.metadata",
+             "folder": "/models-fx/qwen-awq", "recipe": "qwen3.6-27b:awq", "bytes": 4096,
+             "freed_bytes": 4096, "ino": 2, "bookkeeping": True},
+        ],
+        "dirs": [], "links": [], "total_bytes": 10 * 1024 ** 3 + 4096, "freed_bytes": 10 * 1024 ** 3 + 4096,
+        "refusals": refusals or [], "notes": [], "digest": "abc123def4567890", "exit": exit_code,
+    })
+
+
+SHARED_REFUSAL = [{"code": "shared", "overridable": True, "folder": "/models-fx/qwen-awq",
+                   "message": "1 file(s) in /models-fx/qwen-awq are needed by 1 other slug(s)",
+                   "slugs": [{"slug": "vllm/dual-old", "status": "deprecated"}]}]
+HARD_REFUSAL = [{"code": "container", "overridable": False, "folder": "/models-fx/qwen-awq",
+                 "message": "vllm-qwen is running and mounts /models-fx — stop it first"}]
+
+
+class TestCatalogWeights:
+    """[W] shows each weights folder (path, resolved path, state, size, other
+    users); [x] is a dry run that lists exactly what goes; ⏎ hands the plan,
+    pinned by its digest, to the standard confirm gate.  Refusals come from
+    weights.sh and leave no way to remove — except the explicit [A] for files
+    other slugs need."""
+
+    @staticmethod
+    def _responses(plan_json, allow_json=None):
+        r = {"weights.sh show vllm/dual --json": ok(WEIGHTS_SHOW_JSON)}
+        if allow_json is not None:
+            # more specific first: FakeRunner takes the FIRST substring match
+            r["weights.sh remove vllm/dual --dry-run --allow-shared"] = ok(allow_json)
+        r["weights.sh remove vllm/dual --dry-run"] = ok(plan_json)
+        return fake_responses(**r)
+
+    async def _open(self, app, pilot):
+        await _settle(pilot)
+        app.query_one("#catalog-table", DataTable).move_cursor(row=0)
+        await pilot.press("W")
+        await _settle(pilot)
+        assert isinstance(app.screen, WeightsScreen)
+        return str(app.screen.query_one("#weights-body", Static).render())
+
+    @pytest.mark.asyncio
+    async def test_shows_each_folder(self):
+        app, runner, wr = make_app(responses=self._responses(_weights_plan(0)))
+        async with app.run_test(size=(140, 50)) as pilot:
+            body = await self._open(app, pilot)
+            assert "/models-fx/qwen-awq" in body and "→ /disk2/qwen-awq" in body  # symlink resolved
+            assert "complete" in body and "20.00 GiB" in body and "9 file(s)" in body
+            assert "also used by 1" in body and "vllm/dual-old" in body and "deprecated" in body
+            assert "draft" in body and "missing" in body and "no other slug uses it" in body
+            # a projector in a bucket of quants: the folder's size AND its own
+            assert "75.00 GiB" in body and "this recipe's files: 1.00 GiB" in body
+            show = [c for c in runner.calls if "weights.sh" in " ".join(c)]
+            assert show and show[0][:5] == ["bash", "scripts/weights.sh", "show", "vllm/dual", "--json"]
+            assert "--model-dir" in show[0]               # looks where the catalog looks
+            assert wr.started == []                       # a read — nothing written
+
+    @pytest.mark.asyncio
+    async def test_dry_run_lists_exactly_what_goes_then_confirm_gate(self):
+        app, runner, wr = make_app(responses=self._responses(_weights_plan(0)))
+        async with app.run_test(size=(140, 50)) as pilot:
+            await self._open(app, pilot)
+            await pilot.press("x")
+            await _settle(pilot)
+            body = str(app.screen.query_one("#weights-body", Static).render())
+            assert "dry run" in str(app.screen.query_one("#weights-title", Label).render())
+            assert "delete  model-00001.safetensors  10.00 GiB" in body
+            assert "→ /disk2/qwen-awq/model-00001.safetensors" in body
+            assert "1 bookkeeping file(s)" in body and "frees 10.00 GiB" in body
+            assert wr.started == []                       # the dry run deletes nothing
+            await pilot.press("enter")                    # → the standard confirm gate
+            await pilot.pause()
+            assert isinstance(app.screen, ConfirmActionScreen)
+            plan = app.screen._plan
+            assert plan.kind == "weights_remove" and plan.requires_reconcile is False
+            assert plan.cmd[:6] == ["bash", "scripts/weights.sh", "remove", "vllm/dual", "--yes", "--digest"]
+            assert plan.cmd[6] == "abc123def4567890"      # pinned to the dry run just shown
+            assert "--allow-shared" not in plan.cmd
+            assert wr.started == []                       # still nothing until confirmed
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            await pilot.press("enter")                    # confirm → gated executor
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            assert len(wr.started) == 1 and wr.started[0]["cmd"] == plan.cmd
+
+    @pytest.mark.asyncio
+    async def test_shared_files_refuse_until_explicitly_overridden(self):
+        app, runner, wr = make_app(responses=self._responses(
+            _weights_plan(3, refusals=SHARED_REFUSAL),
+            allow_json=_weights_plan(0, allow_shared=True, refusals=SHARED_REFUSAL)))
+        async with app.run_test(size=(140, 50)) as pilot:
+            await self._open(app, pilot)
+            await pilot.press("x")
+            await _settle(pilot)
+            screen = app.screen
+            body = str(screen.query_one("#weights-body", Static).render())
+            assert "✗ refused" in body and "[shared]" in body and "vllm/dual-old" in body
+            assert screen.check_action("remove", ()) is False   # ⏎ can't remove
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.screen is screen                         # no confirm opened
+            await pilot.press("A")                              # explicit override
+            await _settle(pilot)
+            assert any("--allow-shared" in c for c in runner.calls if "weights.sh" in " ".join(c))
+            body = str(screen.query_one("#weights-body", Static).render())
+            assert "⚠ overridden" in body
+            await pilot.press("enter")
+            await pilot.pause()
+            assert isinstance(app.screen, ConfirmActionScreen)
+            assert "--allow-shared" in app.screen._plan.cmd
+            assert "INCLUDING files other slugs need" in app.screen._plan.description
+            assert wr.started == []
+
+    @pytest.mark.asyncio
+    async def test_hard_refusal_leaves_no_way_to_remove(self):
+        app, _, wr = make_app(responses=self._responses(_weights_plan(4, refusals=HARD_REFUSAL)))
+        async with app.run_test(size=(140, 50)) as pilot:
+            await self._open(app, pilot)
+            await pilot.press("x")
+            await _settle(pilot)
+            screen = app.screen
+            body = str(screen.query_one("#weights-body", Static).render())
+            assert "✗ refused" in body and "[container]" in body
+            assert screen.check_action("remove", ()) is False
+            assert screen.check_action("allow_shared", ()) is False   # not overridable
+            await pilot.press("A")
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.screen is screen and wr.started == []
+
+    @pytest.mark.asyncio
+    async def test_show_failure_is_reported_not_raised(self):
+        app, _, _ = make_app(responses=fake_responses(**{
+            "weights.sh show vllm/dual --json": RunResult(returncode=1, stdout="", stderr="[weights] ERROR: boom")}))
+        async with app.run_test(size=(140, 50)) as pilot:
+            body = await self._open(app, pilot)
+            assert "weights.sh show failed" in body and "boom" in body
+            assert app.screen.check_action("plan", ()) is False
+
+    # ── the ⏎ serve card: where the weights are, and [x] (#1814 follow-up) ────────
+
+    @staticmethod
+    async def _card(app, pilot, state):
+        """⏎ on catalog row 0 (vllm/dual) with its weights set to ``state`` under a
+        known model dir → the serve card and its rendered body."""
+        from club3090_cockpit.data import WeightsMeta
+        await _settle(pilot)
+        app._data._model_dir = "/models-fx"
+        pane = app.query_one("#catalog-pane", CatalogPane)
+        pane._downloaded_only = False     # [w]'s default would hide the row once it's absent
+        app.query_one("#catalog-table", DataTable).move_cursor(row=0)
+        entry = pane.selected_entry()
+        entry.weights_state = state
+        entry.weights = WeightsMeta(model=entry.model, variant="awq", subdir="qwen-awq",
+                                    hf_repo="Some/Repo", size_gb=20.0, verify_glob="*.safetensors")
+        await pilot.press("enter")
+        await _settle(pilot)
+        sc = app.screen
+        assert isinstance(sc, ConfirmActionScreen)
+        return sc, _serve_card_text(sc)
+
+    @pytest.mark.asyncio
+    async def test_serve_card_shows_the_folder_and_x_opens_the_dry_run(self):
+        from club3090_cockpit.data import WEIGHTS_PRESENT
+        app, runner, wr = make_app(responses=self._responses(_weights_plan(0)),
+                                   gpus=_FREE_GPUS, target=ServingTarget(gpus=_FREE_GPUS))
+        async with app.run_test(size=(140, 50)) as pilot:
+            sc, card = await self._card(app, pilot, WEIGHTS_PRESENT)
+            assert sc._serve_mode == "start"
+            assert "/models-fx/qwen-awq" in card and "on disk" in card and "~20 GB" in card
+            assert "[x] remove weights" in card
+            assert "x" in _serve_footer_keys(sc) and sc.check_action("remove_weights", ()) is True
+            await pilot.press("x")
+            await _settle(pilot)
+            ws = app.screen
+            assert isinstance(ws, WeightsScreen)          # the card closed first
+            assert not any(isinstance(s, ConfirmActionScreen) for s in app.screen_stack)
+            assert "dry run" in str(ws.query_one("#weights-title", Label).render())
+            assert any("remove vllm/dual --dry-run" in " ".join(c) for c in runner.calls)
+            assert wr.started == []                       # a dry run — nothing deleted
+
+    @pytest.mark.asyncio
+    async def test_partial_download_card_offers_x(self):
+        from club3090_cockpit.data import WEIGHTS_PARTIAL
+        app, _, _ = make_app(responses=self._responses(_weights_plan(0)))
+        async with app.run_test(size=(140, 50)) as pilot:
+            sc, card = await self._card(app, pilot, WEIGHTS_PARTIAL)
+            assert sc._serve_mode == "download"
+            assert "to     /models-fx/qwen-awq" in card
+            assert "partial download on disk" in card and "[x] removes it instead" in card
+            assert sc.check_action("remove_weights", ()) is True
+
+    @pytest.mark.asyncio
+    async def test_absent_weights_show_where_they_go_and_offer_no_x(self):
+        from club3090_cockpit.data import WEIGHTS_ABSENT
+        app, runner, _ = make_app(responses=self._responses(_weights_plan(0)))
+        async with app.run_test(size=(140, 50)) as pilot:
+            sc, card = await self._card(app, pilot, WEIGHTS_ABSENT)
+            assert sc._serve_mode == "download"
+            assert "to     /models-fx/qwen-awq" in card and "[x]" not in card
+            assert sc.check_action("remove_weights", ()) is False
+            assert "x" not in _serve_footer_keys(sc)
+            await pilot.press("x")
+            await _settle(pilot)
+            assert app.screen is sc                        # nothing to remove: inert
+            assert not any("weights.sh" in " ".join(c) for c in runner.calls)
+
+    @pytest.mark.asyncio
+    async def test_serving_slug_card_says_stop_first(self):
+        from club3090_cockpit.data import WEIGHTS_PRESENT
+        target = ServingTarget(container="vllm_qwen36_27b", host_port=8010, gpus=_FREE_GPUS)
+        app, _, _ = make_app(responses=fake_responses(**{"docker ps": ok(DOCKER_PS_ENGINE)}),
+                             gpus=_FREE_GPUS, target=target)
+        async with app.run_test(size=(140, 50)) as pilot:
+            await _enter_operate(pilot)
+            app.query_one("#operate-tabs", TabbedContent).active = "tab-catalog"
+            await pilot.pause()
+            sc, card = await self._card(app, pilot, WEIGHTS_PRESENT)
+            assert sc._serve_mode == "stop"
+            assert "/models-fx/qwen-awq" in card and "stop it before removing" in card
+            assert sc.check_action("remove_weights", ()) is False
+
+    def test_weights_remove_plan_needs_a_digest(self, tmp_path):
+        data = CockpitData(tmp_path, runner=FakeRunner(), write_runner=FakeWriteRunner())
+        with pytest.raises(ValueError):
+            data.weights_remove("vllm/dual", digest="")
+        plan = data.weights_remove("vllm/dual", digest="d1", allow_shared=True)
+        assert plan.requires_confirm is True and plan.requires_reconcile is False
+        assert plan.cmd[-1] == "--allow-shared" and "--model-dir" in plan.cmd

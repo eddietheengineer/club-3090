@@ -51,12 +51,13 @@ command grep -q "'n/a'" "$P" || bad "unmeasurable decode renders n/a" "an 'n/a' 
 command grep -q 'def ok(win, tok)' "$P" || bad "decode window/token floor present" "a window+token guard" "absent"
 ok "unmeasurable decode reports n/a, not a 0.0 that reads as silent-empty (#1267)"
 
-# --- static contract: TTFT must be taken on the first chunk carrying choices,
-# not the first chunk with CONTENT — otherwise a reasoning model's reasoning
-# phase is charged to prefill (the #1096 retraction).
-command grep -q 'if ttft is None: ttft = time.time() - t0' "$P" \
-  || bad "TTFT anchored on first choices chunk" "ttft set when ch is truthy" "not found"
-ok "TTFT anchored on the first chunk carrying choices (#1096 trap avoided)"
+# --- static contract: TTFT must be taken on the first chunk that carries ANY
+# output, not the first chunk with CONTENT — otherwise a reasoning model's
+# reasoning phase is charged to prefill (the #1096 retraction). Contract 6i below
+# covers the other side: an empty `role` chunk sent before the prompt read (#1752).
+command grep -qF 'if ttft is None and any(v not in (None, "", [], {}) for k, v in delta.items() if k != "role"):' "$P" \
+  || bad "TTFT anchored on the first chunk carrying output" "any non-role delta field starts TTFT" "not found"
+ok "TTFT anchored on the first chunk carrying output of any kind (#1096 trap avoided)"
 
 # ===========================================================================
 # Fake engine. REPORT mode selects how prefix reuse is (not) exposed:
@@ -79,7 +80,7 @@ PORT, REPORT = int(sys.argv[1]), sys.argv[2]
 # Two REPORT values change the STREAM SHAPE rather than the cached-token source;
 # both reproduce a decode n/a seen on a real 141K run. They report cached tokens
 # exactly like "usage" so only the decode path is under test.
-SHAPE = REPORT if REPORT in ("usage_once", "one_token", "one_chunk", "truncated") else "normal"
+SHAPE = REPORT if REPORT in ("usage_once", "one_token", "one_chunk", "truncated", "role_first") else "normal"
 if SHAPE != "normal": REPORT = "usage"
 SEEN = []; COUNTER = {"cache": 0}; LOCK = threading.Lock(); KV_TOTAL = 10000
 def toks(s): return len(s) // 4 + 10
@@ -113,11 +114,18 @@ class H(BaseHTTPRequestHandler):
         # nocache: reuse is observable and reports ZERO, and the re-query gets no
         # speed-up either — cached==0 with a cold-cost TTFT. That is the branch
         # that returned "CLEAN eviction" regardless of pressure (#1299).
-        time.sleep(min(1.0, (ptok if REPORT == "nocache" else ptok - cached) * 0.0001))
         maxtok = int(req.get("max_tokens", 16))
-        self.send_response(200); self.send_header("Content-Type", "text/event-stream"); self.end_headers()
         def chunk(o): self.wfile.write(b"data: " + json.dumps(o).encode() + b"\n\n"); self.wfile.flush()
-        chunk({"choices": [{"index": 0, "delta": {"role": "assistant", "content": ""}, "finish_reason": None}], "usage": None})
+        role = {"choices": [{"index": 0, "delta": {"role": "assistant", "content": ""}, "finish_reason": None}], "usage": None}
+        if SHAPE == "role_first":
+            # Strata / Project Maya: the empty role chunk goes out as the request is
+            # accepted, THEN the prompt is read (0.5 s here) (#1752).
+            self.send_response(200); self.send_header("Content-Type", "text/event-stream"); self.end_headers()
+            chunk(role); time.sleep(0.5)
+        else:
+            time.sleep(min(1.0, (ptok if REPORT == "nocache" else ptok - cached) * 0.0001))
+            self.send_response(200); self.send_header("Content-Type", "text/event-stream"); self.end_headers()
+            chunk(role)
         steps = [(1, "OK")] if maxtok <= 8 else [(1, "one"), (9, ", two, three, four, five"), (16, ", six, seven, eight,")]
         if SHAPE == "one_token" and maxtok > 8: steps = [(1, "one")]   # model stops early: no window at all
         # one_chunk: the whole reply arrives in ONE chunk with no per-chunk usage
@@ -214,6 +222,17 @@ python3 -c "import sys; v=float(sys.argv[1].lstrip('~')); sys.exit(0 if v > 20 e
   || bad "fallback still counts TOKENS not chunks" ">20 tok/s for 16 tokens in 3 chunks" "'$d'"
 command grep -q 'decode basis: usage-window' <<<"$out" || bad "the fallback basis is named on the row" "'decode basis: usage-window'" "absent: $out"
 ok "usage sent ONCE still measures decode (content-chunk window), marked '~' and basis named"
+
+# --- contract 6i: an empty `role` chunk sent BEFORE the prompt read is not the
+# first token. Strata and Project Maya send one as soon as they accept a request;
+# timing on it read TTFT as 2-24 ms on #1752 and counted the prompt read as decode.
+run_fake role_first depth TARGET_CTX=2500 TURN_TOKENS=800
+[[ $rc -eq 0 ]] || bad "depth run against fake(role_first) exits 0" "0" "$rc: $(tail -3 <<<"$out")"
+tt="$(awk '$1 ~ /^[0-9]+$/ && $2 ~ /^[0-9,]+$/ {print $4}' <<<"$out")"
+[[ -n "$tt" ]] || bad "depth table rendered (role_first)" "turn rows" "none: $out"
+python3 -c "import sys; v=[float(x) for x in sys.argv[1].split()]; sys.exit(0 if v and min(v) >= 0.45 else 1)" "$tt" 2>/dev/null \
+  || bad "TTFT includes the prompt read after an early role chunk" "every ttft_s >= 0.45 (the fake reads for 0.5 s)" "$(tr '\n' ' ' <<<"$tt")"
+ok "an empty role chunk before the prompt read does not start TTFT (#1752)"
 
 # --- contract 6c: when decode is genuinely unmeasurable (one token, no window),
 # n/a is correct — but it must carry the stream shape that caused it, so a reader

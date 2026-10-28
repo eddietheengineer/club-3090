@@ -85,7 +85,7 @@ print("\n".join(sorted(seen)))
 # python3 must still get the old behaviour rather than nothing. `tabbyapi-` and
 # `exl3-` are present here so the fallback is not itself missing an engine, which
 # was the original sin.
-CLUB_CONTAINER_PREFIX_RE_FALLBACK='^(vllm-|llama-cpp-|ik-llama-|sglang-|beellama-|club3090-|tabbyapi-|exl3-|exllamav3-|strata-)'
+CLUB_CONTAINER_PREFIX_RE_FALLBACK='^(vllm-|llama-cpp-|ik-llama-|sglang-|beellama-|club3090-|tabbyapi-|exl3-|exllamav3-|strata-|qengine-)'
 
 # club_container_re — an anchored alternation matching any known container.
 # Registry names are EXACT, so they are anchored at both ends; the legacy

@@ -178,5 +178,126 @@ python3 "$SM" host-ram "$base/maya" --log-file "$work/no-such.log" >/dev/null 2>
 python3 "$SM" host-ram "http://127.0.0.1:1" >/dev/null 2>&1; r=$?
 [[ $r -eq 3 ]] && ok "host-ram: unreachable server: exit 3" || bad "host-ram unreachable: exit $r, want 3"
 
+# 8. Project Maya's DeepSeek engine (maya-ds4): its draft line is "maya ds4 serve: drafts N of M kept",
+# its /metrics names no storage.path, so the log is the one its run config names (the server's
+# --config), and its host-RAM evidence is the CPU lane's experts. A stub docker serves the
+# container's files from a folder, so the lookup runs without a container.
+mkdir -p "$work/ds4" "$work/ds4-131" "$work/bin" "$work/ctr/proc/1" "$work/ctr/data/ista" "$work/ctr-nocfg/proc/1" \
+  "$work/ctr-nolog/proc/1" "$work/ctr-nolog/data/ista" "$work/ctr/data/maya-s" \
+  "$work/ctr-glm/proc/1" "$work/ctr-glm/data/maya-s" "$work/ctr-glm-nocfg/proc/1" "$work/ctr-glm-nocfg/data/maya-s"
+python3 - "$work" <<'PY'
+import json, sys
+w = sys.argv[1]
+doc = json.load(open(f"{w}/maya/metrics"))
+doc["engine"]["maya_version"] = "1.1.28"
+doc["storage"] = None                              # what DeepSeek's server sends
+json.dump(doc, open(f"{w}/ds4/metrics", "w"))
+doc["storage"] = {"path": "/data/ista"}            # what DeepSeek's server sends from v1.1.31 (its quant's folder)
+json.dump(doc, open(f"{w}/ds4-131/metrics", "w"))
+glm = ["/opt/maya/.venv/bin/python", "/opt/maya/serve/server.py", "--engine", "strata",
+       "--config", "/data/maya-s/maya.json", "--host", "0.0.0.0", "--port", "8080"]
+open(f"{w}/ctr-glm/proc/1/cmdline", "w").write("\0".join(glm) + "\0")
+json.dump({"log": "/data/maya-s/maya.log", "args": []}, open(f"{w}/ctr-glm/data/maya-s/maya.json", "w"))
+open(f"{w}/ctr-glm-nocfg/proc/1/cmdline", "w").write("\0".join(glm[:4]) + "\0")
+argv = ["/opt/maya/.venv/bin/python", "/opt/maya/serve/server.py", "--engine", "strata",
+        "--config", "/data/ista/maya-ds4.json", "--host", "0.0.0.0", "--port", "8080"]
+for d in ("ctr", "ctr-nolog"):
+    open(f"{w}/{d}/proc/1/cmdline", "w").write("\0".join(argv) + "\0")
+open(f"{w}/ctr-nocfg/proc/1/cmdline", "w").write("\0".join(argv[:4]) + "\0")
+json.dump({"log": "/data/ista/maya-ds4.log", "args": []}, open(f"{w}/ctr/data/ista/maya-ds4.json", "w"))
+json.dump({"args": []}, open(f"{w}/ctr-nolog/data/ista/maya-ds4.json", "w"))
+PY
+# two starts appended (the first copied less into RAM), then requests; a GLM line must not leak in
+printf '%s\n' "ds4: 9000 routed experts on the CPU lane (80.0 GB): 9000 copied into RAM (1 NUMA parts)" \
+  "maya ds4 serve: drafts 1 of 1 kept; per position (kept / reached): 1: 1/1 100%" \
+  "ds4: 11665 routed experts on the CPU lane (100.4 GB): 11665 copied into RAM (1 NUMA parts), 24 threads" \
+  "maya ds4 serve: drafts 40 of 44 kept; per position (kept / reached): 1: 10/10 100%" \
+  "maya ds4 serve: drafts 995 of 1181 kept; per position (kept / reached): 1: 510/603 85%" > "$work/ctr/data/ista/maya-ds4.log"
+head -2 "$work/ctr/data/ista/maya-ds4.log" > "$work/ds4-early.log"
+cp "$work/maya.log" "$work/ctr/data/maya-s/maya.log"
+cp "$work/maya.log" "$work/ctr-glm/data/maya-s/maya.log"
+cp "$work/maya.log" "$work/ctr-glm-nocfg/data/maya-s/maya.log"
+cat > "$work/bin/docker" <<'SH'
+#!/bin/sh
+# stub: `docker exec <container> cat <path>` reads <path> under $work/<container>
+[ "$1" = exec ] && [ "$3" = cat ] || { echo "stub docker: unexpected: $*" >&2; exit 1; }
+f="$STUB_ROOT/$2$4"
+[ -f "$f" ] && exec cat "$f"
+echo "cat: $4: No such file or directory" >&2; exit 1
+SH
+chmod +x "$work/bin/docker"
+sdocker() { PATH="$work/bin:$PATH" STUB_ROOT="$work" "$@"; }
+
+out="$(python3 "$SM" recent "$base/ds4" 2 --log-file "$work/ctr/data/ista/maya-ds4.log")"
+command grep -qx 'drafts_offered=1225' <<<"$out" && command grep -qx 'drafts_accepted=1035' <<<"$out" \
+  && ok "maya-ds4 recent N --log-file: the newest N 'maya ds4 serve: drafts' lines" || bad "ds4 recent log: $(tr '\n' ' ' <<<"$out")"
+out="$(sdocker python3 "$SM" snapshot "$base/ds4" --container ctr)"; r=$?
+python3 -c 'import json,sys; t=json.loads(sys.argv[1])["totals"]; sys.exit(0 if (t["drafts_accepted"], t["drafts_offered"]) == (1036, 1226) else 1)' "$out" 2>/dev/null \
+  && ok "maya-ds4 snapshot --container: no storage.path, so the log its --config names; every draft line summed" \
+  || bad "ds4 snapshot container: rc=$r, got: $out"
+sdocker python3 "$SM" snapshot "$base/ds4" --log-file "$work/ds4-early.log" > "$work/d0.json" \
+  && sdocker python3 "$SM" snapshot "$base/ds4" --container ctr > "$work/d1.json" \
+  && out="$(python3 "$SM" delta "$work/d0.json" "$work/d1.json")" \
+  && command grep -qx 'drafts_offered=1225' <<<"$out" && command grep -qx 'accept_rate=0.8449' <<<"$out" \
+  && ok "maya-ds4 delta: the drafts between two snapshots (what verify-full's acceptance check reads)" \
+  || bad "ds4 delta: $(tr '\n' ' ' <<<"${out:-}")"
+sdocker python3 "$SM" snapshot "$base/ds4" --container ctr-nocfg >/dev/null 2>&1; r=$?
+[[ $r -eq 3 ]] && ok "maya-ds4: a server command line without --config: exit 3" || bad "ds4 no --config: exit $r, want 3"
+sdocker python3 "$SM" snapshot "$base/ds4" --container ctr-nolog >/dev/null 2>&1; r=$?
+[[ $r -eq 3 ]] && ok "maya-ds4: a run config that names no log: exit 3" || bad "ds4 config without log: exit $r, want 3"
+# the run config's log comes first for every Maya engine; <storage.path>/maya.log is GLM's fallback only
+out="$(sdocker python3 "$SM" snapshot "$base/ds4-131" --container ctr)"; r=$?
+python3 -c 'import json,sys; t=json.loads(sys.argv[1])["totals"]; sys.exit(0 if (t["drafts_accepted"], t["drafts_offered"]) == (1036, 1226) else 1)' "$out" 2>/dev/null \
+  && ok "maya-ds4 from v1.1.31 (/metrics names storage.path /data/ista): still the log its --config names, not <storage.path>/maya.log" \
+  || bad "ds4 v1.1.31 storage.path: rc=$r, got: $out"
+out="$(sdocker python3 "$SM" snapshot "$base/maya" --container ctr-glm)"
+python3 -c 'import json,sys; t=json.loads(sys.argv[1])["totals"]; sys.exit(0 if t["drafts_offered"] == 216 else 1)' "$out" 2>/dev/null \
+  && ok "GLM Maya --container: the log its --config names (maya.log)" || bad "GLM container path: got $out"
+out="$(sdocker python3 "$SM" snapshot "$base/maya" --container ctr-glm-nocfg)"
+python3 -c 'import json,sys; t=json.loads(sys.argv[1])["totals"]; sys.exit(0 if t["drafts_offered"] == 216 else 1)' "$out" 2>/dev/null \
+  && ok "GLM Maya --container, no --config on its command line: falls back to <storage.path>/maya.log" || bad "GLM fallback path: got $out"
+out="$(python3 "$SM" host-ram "$base/ds4" --log-file "$work/ctr/data/ista/maya-ds4.log")"; r=$?
+[[ $r -eq 0 && "$out" == "engine log (CPU lane: 100.40 GB of experts)" ]] \
+  && ok "host-ram: maya-ds4's CPU lane, the latest start's line" || bad "host-ram ds4: rc=$r, got: $out"
+printf '%s\n' "ds4: 0 routed experts on the CPU lane (0.0 GB): 0 copied into RAM" > "$work/ds4-ram0.log"
+python3 "$SM" host-ram "$base/ds4" --log-file "$work/ds4-ram0.log" >/dev/null 2>&1; r=$?
+[[ $r -eq 1 ]] && ok "host-ram: a maya-ds4 CPU lane of 0 GB (every expert in VRAM) is not offload: exit 1" \
+  || bad "host-ram ds4 zero lane: exit $r, want 1"
+
+# 9. Project Maya's MiniMax engine (maya-mm3): its draft line is "maya mm3 serve: DSpark kept N of M drafts". It logs no
+# RAM line under the server, so its host-RAM evidence is its /metrics: the engine's INFO line (engine.ram_slots) and the
+# tiers block (tiers.now.ram_gb), as a v1.1.30 server reported them on the reference rig (2026-10-27).
+printf '%s\n' "maya mm3 serve: DSpark kept 1 of 2 drafts" \
+  "glm spec: 7 of 9 drafts accepted (77.8%)" \
+  "maya mm3 serve: DSpark kept 40 of 44 drafts" \
+  "maya mm3 serve: DSpark kept 300 of 400 drafts" > "$work/mm3.log"
+mkdir -p "$work/mm3" "$work/mm3-0"
+python3 - "$work" <<'PY'
+import json, sys
+w = sys.argv[1]
+doc = json.load(open(f"{w}/ds4/metrics"))
+doc["engine"].update({"version": "mm3", "maya_version": "1.1.30", "expert_slots": 320, "ram_slots": 6976, "dspark": 0,
+                      "kv": "int8", "cpu_experts": 6976, "ctx": 204800})
+doc["tiers"] = {"now": {"vram_used": 320.0, "ram_used": 6976.0, "vram_gb": 4.52, "ram_gb": 97.91}}
+json.dump(doc, open(f"{w}/mm3/metrics", "w"))
+doc["engine"]["ram_slots"] = 0
+doc["tiers"]["now"]["ram_gb"] = 0.0
+json.dump(doc, open(f"{w}/mm3-0/metrics", "w"))
+PY
+out="$(python3 "$SM" recent "$base/ds4" 2 --log-file "$work/mm3.log")"
+command grep -qx 'drafts_offered=444' <<<"$out" && command grep -qx 'drafts_accepted=340' <<<"$out" \
+  && ok "maya-mm3 recent N --log-file: the newest N 'maya mm3 serve: DSpark kept' lines" || bad "mm3 recent log: $(tr '\n' ' ' <<<"$out")"
+out="$(sdocker python3 "$SM" snapshot "$base/ds4" --log-file "$work/mm3.log")"
+python3 -c 'import json,sys; t=json.loads(sys.argv[1])["totals"]; sys.exit(0 if (t["drafts_accepted"], t["drafts_offered"]) == (348, 455) else 1)' "$out" 2>/dev/null \
+  && ok "maya-mm3 snapshot: every draft line summed (MiniMax's and the GLM line alike)" || bad "mm3 snapshot: got $out"
+out="$(python3 "$SM" host-ram "$base/mm3" --log-file "$work/mm3.log")"; r=$?
+[[ $r -eq 0 && "$out" == "/metrics (6976 expert slots in RAM, 97.91 GB)" ]] \
+  && ok "host-ram: maya-mm3's RAM tier from /metrics, its log having none" || bad "host-ram mm3: rc=$r, got: $out"
+out="$(python3 "$SM" host-ram "$base/mm3")"; r=$?
+[[ $r -eq 0 ]] && ok "host-ram: maya-mm3 needs no container or log for it" || bad "host-ram mm3 without a log: rc=$r, got: $out"
+python3 "$SM" host-ram "$base/mm3-0" --log-file "$work/mm3.log" >/dev/null 2>&1; r=$?
+[[ $r -eq 1 ]] && ok "host-ram: a maya-mm3 RAM tier of 0 (every expert in VRAM) is not offload: exit 1" \
+  || bad "host-ram mm3 zero tier: exit $r, want 1"
+
 if [[ $rc -eq 0 ]]; then echo "PASS: test-strata-metrics"; else echo "FAIL: test-strata-metrics"; fi
 exit $rc

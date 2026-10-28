@@ -76,6 +76,9 @@ supported_weight_formats:     # Only formats booted on this engine on this rig.
                               # On sm_86 this serves weight-only via Marlin upcast
                               # (fp8_utils.py::can_auto_enable_marlin_fp8 -> 80<=sm<89).
 supported_model_families:
+  - dense                     # generic dense decoders. RIG-VALIDATED 2026-10-26 on stock v0.5.22:
+                              # sgl/nanbeige43-33b-dual (LlamaForCausalLM, AutoRound INT4, TP=2) —
+                              # verify-full all pass, 206,433-token fp8 KV pool at 204800 ctx.
   - qwen35-dense              # ⭐ the family Qwen3.8-27B declares. RIG-VALIDATED
                               # 2026-09-10 across 3 booted slugs.
   - qwen3-next-hybrid   # 🌐 COMMUNITY-EVIDENCED, not rig-validated: club-3090 discussion

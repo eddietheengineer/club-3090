@@ -274,6 +274,77 @@ YAML
 out="$(run_deps "$target_compose" "${TMP_DIR}/bucko-empty")"
 [[ -z "$out" ]] || { echo "ASSERTION FAILED: a /models mount target was checked as weights: $out" >&2; exit 1; }
 
+# SGLang: the whole ${MODEL_DIR} is mounted at /models and a shell-script `command:`
+# sets M=/models/<sub> before `--model-path "$$M"`. Neither reader above saw it, so
+# every SGLang slug passed preflight with no weights on disk and the user got an
+# engine traceback instead of the recipe. The REAL composes again: Nanbeige (no
+# drafter), a Qwen3.8 DFlash2 slug (drafter behind ${DRAFTER_DIR:-…}, chat template
+# mounted inside the model folder) and a ThinkingCap one (the model hint).
+sgl_nanbeige="${ROOT_DIR}/models/nanbeige4.3-33b/sglang/compose/dual/autoround-int4/fp8.yml"
+sgl_qwen="${ROOT_DIR}/models/qwen3.8-27b/sglang/compose/dual/autoround-int4/dflash2.yml"
+sgl_tcap="${ROOT_DIR}/models/thinkingcap-qwen3.8-27b/sglang/compose/dual/fp8/mtp.yml"
+mkdir -p "${TMP_DIR}/sgl-empty"
+out="$(expect_missing "$sgl_nanbeige" "${TMP_DIR}/sgl-empty")"
+assert_contains "$out" "${TMP_DIR}/sgl-empty/nanbeige4.3-33b-autoround-int4/config.json (HF model)"
+assert_contains "$out" "hf download wasifb/Nanbeige4.3-33B-AutoRound-W4A16 --revision b87aa7fa5462094f8ea714767b7ac0fbbd4a239a"
+assert_contains "$out" "WEIGHT_KEY=nanbeige4.3-33b:autoround-int4 bash scripts/setup.sh nanbeige4.3-33b"
+out="$(expect_missing "$sgl_qwen" "${TMP_DIR}/sgl-empty")"
+assert_contains "$out" "${TMP_DIR}/sgl-empty/qwen3.8-27b-autoround-int4/config.json (HF model)"
+assert_contains "$out" "WEIGHT_KEY=qwen3.8-27b:autoround-int4 bash scripts/setup.sh qwen3.8-27b"
+# The drafter is the script's own check (SPEC_N=0 switches it off), so it is not read.
+assert_not_contains "$out" "dflash2-zlab-bf16"
+assert_not_contains "$out" "thinkingcap"
+out="$(expect_missing "$sgl_tcap" "${TMP_DIR}/sgl-empty")"
+assert_contains "$out" "${TMP_DIR}/sgl-empty/thinkingcap-qwen3.8-27b-fp8/config.json (HF model)"
+assert_contains "$out" "bash scripts/setup.sh thinkingcap-qwen3.8-27b"
+# POSITIVE CONTROL: the model folders present → no complaint.
+mkdir -p "${TMP_DIR}/sgl-ok/nanbeige4.3-33b-autoround-int4" "${TMP_DIR}/sgl-ok/qwen3.8-27b-autoround-int4" \
+         "${TMP_DIR}/sgl-ok/thinkingcap-qwen3.8-27b-fp8"
+touch "${TMP_DIR}/sgl-ok/nanbeige4.3-33b-autoround-int4/config.json" \
+      "${TMP_DIR}/sgl-ok/qwen3.8-27b-autoround-int4/config.json" \
+      "${TMP_DIR}/sgl-ok/thinkingcap-qwen3.8-27b-fp8/config.json"
+for c in "$sgl_nanbeige" "$sgl_qwen" "$sgl_tcap"; do
+  out="$(run_deps "$c" "${TMP_DIR}/sgl-ok")"
+  [[ -z "$out" ]] || { echo "ASSERTION FAILED: SGLang weights present but reported for $c: $out" >&2; exit 1; }
+done
+# The spellings: `$${M}` as well as `$$M`, only the FIRST assignment (a later one sits
+# behind a condition), a literal --model-path, and no other /models/… shell value.
+sgl_fixture="${TMP_DIR}/sgl-script.yml"
+cat > "$sgl_fixture" <<'YAML'
+services:
+  engine:
+    image: example
+    volumes:
+      - "${MODEL_DIR:-../models-cache}:/models:ro"
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        # M=/models/commented-out
+        M=/models/fixture-main
+        if [ -n "${ALT:-}" ]; then M=/models/fixture-conditional; fi
+        D="${DRAFTER_DIR:-/models/fixture-drafter}"
+        exec python3 -m sglang.launch_server \
+          --model-path "$${M}" \
+          --speculative-draft-model-path "$$D" \
+          --tokenizer-path /models/fixture-tokenizer
+  other:
+    image: example
+    command:
+      - |
+        exec python3 -m sglang.launch_server --model-path /models/fixture-literal
+YAML
+out="$(expect_missing "$sgl_fixture" "${TMP_DIR}/sgl-empty")"
+assert_contains "$out" "${TMP_DIR}/sgl-empty/fixture-main/config.json (HF model)"
+assert_contains "$out" "${TMP_DIR}/sgl-empty/fixture-literal/config.json (HF model)"
+assert_not_contains "$out" "fixture-conditional"
+assert_not_contains "$out" "commented-out"
+assert_not_contains "$out" "fixture-drafter"
+assert_not_contains "$out" "fixture-tokenizer"
+mkdir -p "${TMP_DIR}/sgl-ok/fixture-main" "${TMP_DIR}/sgl-ok/fixture-literal"
+touch "${TMP_DIR}/sgl-ok/fixture-main/config.json" "${TMP_DIR}/sgl-ok/fixture-literal/config.json"
+out="$(run_deps "$sgl_fixture" "${TMP_DIR}/sgl-ok")"
+[[ -z "$out" ]] || { echo "ASSERTION FAILED: SGLang fixture weights present but reported: $out" >&2; exit 1; }
+
 # #1742, on the REAL composes. HyperQwen mounts the dir ABOVE its weights
 # (qwen3.8-27b-hyperqwen/, where prepare also writes a -fast copy), and no weights
 # entry is that dir, so preflight offered nothing for the 19 GB base. And the DFlash2

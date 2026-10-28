@@ -1557,6 +1557,61 @@ class CockpitData:
             return None, err
         return data, None
 
+    # ── READ/WRITE: a slug's weights folders (#1814) ───────────────────────────────
+    #
+    # scripts/weights.sh owns every rule (which folders a compose mounts, who else
+    # uses them, what a removal may delete and when it must refuse); c3 only shows
+    # its JSON and routes the removal through the confirm gate.  The model dir is
+    # passed explicitly so the script looks where the Catalog's weights column does.
+
+    async def _weights_json(self, args: list[str], timeout: float) -> tuple[Optional[dict[str, Any]], Optional[str]]:
+        data, err = await self._run_json(
+            ["bash", "scripts/weights.sh", *args, "--json", "--model-dir", self.weights_model_dir()],
+            timeout=timeout,
+        )
+        if data is None:
+            return None, err
+        if not isinstance(data, dict):
+            return None, "unexpected output from weights.sh"
+        if data.get("error") and "slug" not in data:
+            return None, str(data["error"])
+        return data, None
+
+    async def weights_folders(self, slug: str) -> tuple[Optional[dict[str, Any]], Optional[str]]:
+        """``weights.sh show <slug> --json`` — each folder: path, resolved path,
+        state, size, and the other slugs with weights there."""
+        return await self._weights_json(["show", slug], timeout=180.0)
+
+    async def weights_remove_plan(
+        self, slug: str, *, allow_shared: bool = False
+    ) -> tuple[Optional[dict[str, Any]], Optional[str]]:
+        """``weights.sh remove <slug> --dry-run --json`` — exactly what a removal
+        would delete, what it frees, and every refusal.  Deletes nothing."""
+        args = ["remove", slug, "--dry-run"] + (["--allow-shared"] if allow_shared else [])
+        return await self._weights_json(args, timeout=180.0)
+
+    def weights_remove(
+        self, slug: str, *, digest: str, allow_shared: bool = False, summary: str = ""
+    ) -> ActionPlan:
+        """The removal itself (WRITE — confirm-gated, never spawned in tests).
+
+        ``--digest`` pins it to the dry run the user just read: weights.sh
+        recomputes every check and refuses if the plan changed.  No GPU claim, so
+        no reconcile gate, but always a confirm."""
+        if not digest:
+            raise ValueError("weights_remove needs the dry run's digest")
+        cmd = ["bash", "scripts/weights.sh", "remove", slug, "--yes", "--digest", digest,
+               "--model-dir", self.weights_model_dir()]
+        if allow_shared:
+            cmd.append("--allow-shared")
+        return ActionPlan(
+            kind="weights_remove",
+            cmd=cmd,
+            description=summary or f"remove {slug} weights",
+            requires_reconcile=False,
+            requires_confirm=True,
+        )
+
     # ── READ: fit ──────────────────────────────────────────────────────────────────
 
     async def fit(self, slug: str, card: Optional[str] = None) -> FitVerdict:

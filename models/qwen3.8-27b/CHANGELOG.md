@@ -2,6 +2,20 @@
 
 Dated history for Qwen3.8-27B configs in this repo. Append-only — add a new entry, don't rewrite past ones.
 
+## 2026-10-28 — HyperQwen moves to commit ce9615c4; CTX=long changes backend
+
+`vllm-hyperqwen/qwen38-27b-single-ultrafast` now runs syv-ai's `:sha-ce9615c` (commit
+`ce9615c4`, still vLLM 0.31.0; was `95ee3b64`). The default setup is unchanged: on the
+reference rig it boots in 288 s (a cold first start on the new image) on the same backend
+(FLASH_ATTN, bf16 KV, 64K, prefix caching on), with `reasoning_effort` low, and passes
+verify-full with a DFlash2 acceptance length of 3.42. Boot test only: no new throughput numbers.
+
+`CTX=long` changed in the image. On a 3090 it now defaults to int8 KV on HyperQwen's own
+pth-flash-attn kernel (`PTH_FA=1`). With any `SPEC_N` but 7, or `PTH_FA=0`, it uses fp8 KV
+through the FA2 fp8-KV plugin our ultrafast tiers use (`FA2_FP8KV=1`). Our measured numbers
+(2026-10-14) are for the old int8-on-Triton arm, which `PTH_FA=0 FA2_FP8KV=0` restores; the
+compose now forwards both. These were checked with `PRINT_ARGV=1`; neither new arm was booted.
+The 2026-10-14 entry's "there is no fp8 KV" no longer holds on this image.
 ## 2026-10-21 — Swift 1.5 (UkisAI fine-tune) single-card slug
 
 New curated slug `llamacpp/qwen38-27b-swift15-iq3s-mtp`: UkisAI's Swift-1.5

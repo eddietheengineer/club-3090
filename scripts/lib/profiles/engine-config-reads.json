@@ -3,7 +3,7 @@
  "engines": {
   "strata": {
    "engine_profile": "scripts/lib/profiles/engines/strata.yml",
-   "verified_image": "ghcr.io/niko1221/strata@sha256:a0398afb7a60253f1442ec149326aa7d80e0137e9f1ffe304bb0e84a6939ee8e",
+   "verified_image": "ghcr.io/niko1221/strata@sha256:db96cd9b111c930f7deb77444f38f66e53db43af57644a33a9e8a2f05f038360",
    "render": "strata_config",
    "programs": [
     "models/qwen3.8-flash-next/strata/launcher/strata_config.py"
@@ -65,7 +65,8 @@
     "TOP_K": "10",
     "MIN_P": "0.05",
     "PRESENCE_PENALTY": "0.5",
-    "REPEAT_PENALTY": "1.1"
+    "REPEAT_PENALTY": "1.1",
+    "SERVED_NAME": "llm"
    },
    "setup_only": {
     "CONTEXT": "Strata's own entrypoint passes it to `strata launch --context` (setup owns it: it sizes the KV and expert cache); strata_config.py only checks it",
@@ -94,12 +95,13 @@
     "sampling.min_p": "sampling_defaults_from_config()",
     "sampling.presence_penalty": "sampling_defaults_from_config()",
     "sampling.repetition_penalty": "sampling_defaults_from_config()",
-    "args:--spec": "the engine's own flag: the MTP drafter's verify window"
+    "args:--spec": "the engine's own flag: the MTP drafter's verify window",
+    "aliases": "main(): svc.set_aliases(), other names the model answers to (Strata #297), each listed in /v1/models"
    }
   },
   "strata-maya": {
    "engine_profile": "scripts/lib/profiles/engines/strata-maya.yml",
-   "verified_image": "ghcr.io/noonghunna/strata-maya-club3090@sha256:1918560b4a436e2f03abdad1ef9e51f47e2ba043e9c2d5e59312ae9c0ead4ce6",
+   "verified_image": "ghcr.io/noonghunna/strata-maya-club3090@sha256:fba8ae1089c8bc72944abab4259be496db4e8ec34ccb064ebe92d6f07f299376",
    "render": "maya_prepare",
    "programs": [
     "models/glm-5.3-flash/strata-maya/launcher/maya_settings.py",
@@ -116,7 +118,9 @@
     "MIN_P": "0.05",
     "PRESENCE_PENALTY": "0.5",
     "REPEAT_PENALTY": "1.1",
-    "CONTEXT": "65536"
+    "CONTEXT": "65536",
+    "SERVED_NAME": "llm",
+    "LOOP_GUARD": "false"
    },
    "setup_only": {},
    "server": "/opt/maya/serve/server.py",
@@ -125,11 +129,13 @@
     "--help"
    ],
    "config_receivers": [
-    "cfg"
+    "cfg",
+    "cfg or {}"
    ],
    "config_scopes": [
     "main",
-    "sampling_defaults_from_config"
+    "sampling_defaults_from_config",
+    "loop_guard_setting"
    ],
    "reads": {
     "reasoning_effort": "main(): svc.default_effort (logged 'thinking level when a request names none: ...')",
@@ -141,7 +147,119 @@
     "sampling.presence_penalty": "sampling_defaults_from_config()",
     "sampling.repetition_penalty": "sampling_defaults_from_config()",
     "args:--kv": "the engine's own flag (its GLM path reads only int8: the launcher refuses q4_0 / k8v4, a value rule this gate doesn't check)",
-    "args:--max-context": "the engine's own flag: KV/state capacity"
+    "args:--max-context": "the engine's own flag: KV/state capacity",
+    "model_name": "main(): the served name (/v1/models, /props, every answer's model field)",
+    "loop_guard": "loop_guard_setting(), from main(): svc.loop_guard (serve/loop_guard.py; MAYA_LOOP_GUARD in the environment wins, and no compose forwards it)"
+   }
+  },
+  "strata-maya:ds4": {
+   "engine_profile": "scripts/lib/profiles/engines/strata-maya.yml",
+   "verified_image": "ghcr.io/noonghunna/strata-maya-club3090@sha256:fba8ae1089c8bc72944abab4259be496db4e8ec34ccb064ebe92d6f07f299376",
+   "render": "maya_ds4_prepare",
+   "programs": [
+    "models/deepseek-v4.1-flash-1017/strata-maya/launcher/ds4_settings.py",
+    "models/deepseek-v4.1-flash-1017/strata-maya/launcher/ds4_prepare.py"
+   ],
+   "settings": {
+    "REASONING_EFFORT": "low",
+    "ENABLE_THINKING": "false",
+    "THINKING_BUDGET": "256",
+    "TEMP": "0.7",
+    "TOP_P": "0.9",
+    "TOP_K": "10",
+    "MIN_P": "0.05",
+    "PRESENCE_PENALTY": "0.5",
+    "REPEAT_PENALTY": "1.1",
+    "CONTEXT": "32768",
+    "SERVED_NAME": "llm",
+    "THREADS": "7",
+    "LOOP_GUARD": "false"
+   },
+   "setup_only": {},
+   "server": "/opt/maya/serve/server.py",
+   "engine_help": [
+    "/opt/maya/build/maya-ds4",
+    "--help"
+   ],
+   "config_receivers": [
+    "cfg",
+    "cfg or {}"
+   ],
+   "config_scopes": [
+    "main",
+    "sampling_defaults_from_config",
+    "loop_guard_setting"
+   ],
+   "reads": {
+    "reasoning_effort": "main(): svc.default_effort (DeepSeek's template: deepseek_effort_kwargs, logged 'thinking level when a request names none: ...')",
+    "thinking_budget": "main(): svc.think_budget (logged 'thinking budget: N tokens')",
+    "sampling.temperature": "sampling_defaults_from_config(): a default for requests that leave the field out",
+    "sampling.top_p": "sampling_defaults_from_config()",
+    "sampling.top_k": "sampling_defaults_from_config()",
+    "sampling.min_p": "sampling_defaults_from_config()",
+    "sampling.presence_penalty": "sampling_defaults_from_config()",
+    "sampling.repetition_penalty": "sampling_defaults_from_config()",
+    "args:--max-context": "maya-ds4's own flag: KV capacity",
+    "args:--cpu-threads": "maya-ds4's own flag: the CPU lane's threads (the experts VRAM doesn't hold)",
+    "model_name": "main(): the served name (/v1/models, /props, every answer's model field)",
+    "loop_guard": "loop_guard_setting(), from main(): svc.loop_guard (serve/loop_guard.py; MAYA_LOOP_GUARD in the environment wins, and no compose forwards it)"
+   }
+  },
+  "strata-maya:mm3": {
+   "engine_profile": "scripts/lib/profiles/engines/strata-maya.yml",
+   "verified_image": "ghcr.io/noonghunna/strata-maya-club3090@sha256:fba8ae1089c8bc72944abab4259be496db4e8ec34ccb064ebe92d6f07f299376",
+   "render": "maya_mm3_prepare",
+   "programs": [
+    "models/minimax-m3.1-flash/strata-maya/launcher/mm3_settings.py",
+    "models/minimax-m3.1-flash/strata-maya/launcher/mm3_prepare.py"
+   ],
+   "settings": {
+    "REASONING_EFFORT": "low",
+    "ENABLE_THINKING": "false",
+    "THINKING_BUDGET": "256",
+    "TEMP": "0.7",
+    "TOP_P": "0.9",
+    "TOP_K": "10",
+    "MIN_P": "0.05",
+    "PRESENCE_PENALTY": "0.5",
+    "REPEAT_PENALTY": "1.1",
+    "CONTEXT": "32768",
+    "SERVED_NAME": "llm",
+    "LOOP_GUARD": "false",
+    "KV": "bf16",
+    "DSPARK": "off",
+    "THREADS": "7"
+   },
+   "setup_only": {},
+   "server": "/opt/maya/serve/server.py",
+   "engine_help": [
+    "/opt/maya/build/maya-mm3",
+    "--help"
+   ],
+   "config_receivers": [
+    "cfg",
+    "cfg or {}"
+   ],
+   "config_scopes": [
+    "main",
+    "sampling_defaults_from_config",
+    "loop_guard_setting"
+   ],
+   "reads": {
+    "reasoning_effort": "main(): svc.default_effort (a MiniMax template: effort_name, logged 'thinking level when a request names none: ...'; auto names none, the template's adaptive default)",
+    "thinking_budget": "main(): svc.think_budget (logged 'thinking budget: N tokens'; MiniMax closes its reasoning with </mm:think>)",
+    "sampling.temperature": "sampling_defaults_from_config(): a default for requests that leave the field out",
+    "sampling.top_p": "sampling_defaults_from_config()",
+    "sampling.top_k": "sampling_defaults_from_config()",
+    "sampling.min_p": "sampling_defaults_from_config()",
+    "sampling.presence_penalty": "sampling_defaults_from_config()",
+    "sampling.repetition_penalty": "sampling_defaults_from_config()",
+    "args:--max-context": "maya-mm3's own flag: K / V capacity (streamed: 32K positions of each layer in VRAM, every one in pinned RAM)",
+    "args:--kv-cache": "maya-mm3's own flag: the K / V format (int8 its default; the launcher offers bf16 too)",
+    "args:--dspark": "maya-mm3's own flag: the DSpark drafter in the pack, on or off",
+    "args:--cpu-threads": "maya-mm3's own flag: the CPU lane's threads (the experts VRAM doesn't hold)",
+    "model_name": "main(): the served name (/v1/models, /props, every answer's model field)",
+    "loop_guard": "loop_guard_setting(), from main(): svc.loop_guard (serve/loop_guard.py; MAYA_LOOP_GUARD in the environment wins, and no compose forwards it)"
    }
   }
  },

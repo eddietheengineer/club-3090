@@ -10,7 +10,7 @@
 #   API_KEY                the key every request must send (Strata 0.2+ serves nothing but /health
 #                          without one); the composes set club-3090's default unless STRATA_API_KEY is set
 #   REASONING_EFFORT, ENABLE_THINKING, THINKING_BUDGET, SPEC_N,
-#   TEMP, TOP_P, TOP_K, MIN_P, PRESENCE_PENALTY, REPEAT_PENALTY
+#   TEMP, TOP_P, TOP_K, MIN_P, PRESENCE_PENALTY, REPEAT_PENALTY, SERVED_NAME
 #                          written into the run config by strata_config.py (mounted next to this file;
 #                          its header maps each to Strata's key). Unset = Strata's own default; a bad
 #                          value stops the boot.

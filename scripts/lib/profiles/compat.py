@@ -1259,9 +1259,15 @@ def fits(
     # qwen3-next (the family label predates the hybrid correction) — Tess-4-27B AutoRound
     # W4A16 + e4m3 KV live-validated on 2x3090 sm_86 @262K (rebench-full: verify-stress
     # 8/8 incl. NIAH ceiling ladder, soak PASS, 8-pack both legs). FlashInfer path.
+    # `dense` family added 2026-10-26: a standard GQA decoder (head_dim 128) takes FlashInfer on
+    # sm_86 whatever its weights — the Triton fallback that rejects Gemma W4A16 is head-dim
+    # driven, not quant driven. Live-verified on nanbeige4.3-33b (AutoRound W4A16, TP=2, vLLM
+    # v0.32.0): "Using FLASHINFER attention backend out of potential backends: ['FLASHINFER',
+    # 'TRITON_ATTN']", fp8_e4m3 KV pool 207,616 tokens, verify-full all pass.
     _fp8w_ampere_kv = effective_kv == "fp8_e4m3" and (
         str(effective_weights or "").startswith(("fp8", "nvfp4", "bf16", "fp16"))
         or model.family.startswith(("qwen3-next", "qwen35"))
+        or model.family == "dense"
     )
     # qwen4exp (Qwen3.8-Flash-Next) added 2026-10-18: its QSA attention kernel is Triton and
     # fails to compile fp8e4nv below SM89, so vllm/qwen38-flash-next-dual mounts the

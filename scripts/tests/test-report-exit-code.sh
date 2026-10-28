@@ -67,6 +67,17 @@ assert_contains "$REPORT_OUT" "## Check summary"
 assert_contains "$REPORT_OUT" "**Overall: PASS**"
 assert_contains "$REPORT_OUT" "| verify-stress.sh | 0 | PASS |"
 
+# #1826: a check verify-stress could not run is named on its PASS row; the exit code stays 0.
+all_pass
+report_stage_stub verify-stress.sh 0 \
+  "  ⊘ could not detect n_ctx from endpoint; set N_CTX=<the server's context length> to run it (skipped)" \
+  "All stress / boundary checks that ran passed, but 1 did not run — not a full stress pass:" \
+  "  ⊘ skipped (not run): ceiling_ladder: could not detect n_ctx from endpoint; set N_CTX=<the server's context length> to run it"
+report_run --stress --no-redact
+assert_rc 0 "a check that did not run doesn't change the exit code"
+assert_contains "$REPORT_OUT" "| verify-stress.sh | 0 | PASS | did not run: ceiling_ladder: could not detect n_ctx"
+assert_contains "$REPORT_OUT" "**Overall: PASS**"
+
 # ── 2. the #619 case: advisory-only inside verify-stress → exit 2 ───────────
 all_pass
 report_stage_stub verify-stress.sh 1 "$ADVISORY_PASS" "$ADVISORY_WARN" "$ADVISORY_TAIL"

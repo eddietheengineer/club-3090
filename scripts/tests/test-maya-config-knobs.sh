@@ -2,8 +2,9 @@
 # Guard: the Project Maya recipe writes club-3090's launch settings into maya.json at every boot
 # (models/glm-5.3-flash/strata-maya/launcher/: maya_prepare.py config() through maya_settings.py).
 # Runs config() itself against a scratch data folder (no /opt/maya needed for that step):
-#   1. no settings: effort max, sampling 1.0 / 0.95, no thinking_budget / --kv (Maya's own);
+#   1. no settings: effort max, sampling 1.0 / 0.95, no thinking_budget / --kv (Maya's own), name glm-5.3-flash;
 #   2. each setting lands on Maya's key; medium / xhigh become high / max; ENABLE_THINKING=false wins;
+#      LOOP_GUARD true / false writes loop_guard (unset writes nothing: Maya's own, on);
 #   3. the config is rewritten from scratch each time, so a setting removed is gone;
 #   4. a bad value exits 2 from `validate` and stops maya_prepare.py's main() before any shard work;
 #   5. every key a setting writes has evidence that the pinned Maya reads it (engine_config_reads.py check:
@@ -22,7 +23,7 @@ ok()  { echo "  ✓ $*"; }
 bad() { echo "  ✗ $*"; rc=1; }
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-SETTINGS="REASONING_EFFORT ENABLE_THINKING THINKING_BUDGET MAX_TOKENS KV TEMP TOP_P TOP_K MIN_P PRESENCE_PENALTY REPEAT_PENALTY"
+SETTINGS="REASONING_EFFORT ENABLE_THINKING THINKING_BUDGET MAX_TOKENS KV TEMP TOP_P TOP_K MIN_P PRESENCE_PENALTY REPEAT_PENALTY SERVED_NAME LOOP_GUARD"
 clean() { for v in $SETTINGS; do printf -- '-u %s ' "$v"; done; }
 # config() for maya-s into $work/maya-s/maya.json, with the given settings
 write() {
@@ -41,8 +42,9 @@ echo "== 1. no settings"
 write >/dev/null || bad "config() failed with no settings"
 [[ "$(get 'c["reasoning_effort"]')" == max ]] && ok "effort max" || bad "effort: $(get 'c.get("reasoning_effort")')"
 [[ "$(get 'c["sampling"]')" == "{'temperature': 1.0, 'top_p': 0.95}" ]] && ok "sampling 1.0 / 0.95" || bad "sampling: $(get 'c["sampling"]')"
-[[ "$(get '"thinking_budget" in c or "max_tokens" in c or "--kv" in c["args"]')" == False ]] \
-  && ok "no thinking_budget / --kv: Maya's own" || bad "an unset setting was written"
+[[ "$(get '"thinking_budget" in c or "max_tokens" in c or "--kv" in c["args"] or "loop_guard" in c')" == False ]] \
+  && ok "no thinking_budget / --kv / loop_guard: Maya's own" || bad "an unset setting was written"
+[[ "$(get 'c["model_name"]')" == glm-5.3-flash ]] && ok "served as glm-5.3-flash" || bad "model_name: $(get 'c.get("model_name")')"
 
 echo "== 2. each setting reaches Maya's key"
 write REASONING_EFFORT=medium THINKING_BUDGET=8192 MAX_TOKENS=4096 KV=int8 TEMP=0.7 TOP_P=0.9 TOP_K=40 \
@@ -56,21 +58,26 @@ write REASONING_EFFORT=medium THINKING_BUDGET=8192 MAX_TOKENS=4096 KV=int8 TEMP=
 [[ "$(get 'sorted(c["sampling"].items())')" == "[('min_p', 0.05), ('presence_penalty', 0.5), ('repetition_penalty', 1.1), ('temperature', 0.7), ('top_k', 40), ('top_p', 0.9)]" ]] \
   && ok "sampler settings" || bad "sampling: $(get 'c["sampling"]')"
 write REASONING_EFFORT=xhigh >/dev/null; [[ "$(get 'c["reasoning_effort"]')" == max ]] && ok "xhigh -> max" || bad "xhigh"
+write SERVED_NAME=llm >/dev/null; [[ "$(get 'c["model_name"]')" == llm ]] && ok "SERVED_NAME=llm -> model_name llm" || bad "served name: $(get 'c["model_name"]')"
+write LOOP_GUARD=false >/dev/null; [[ "$(get 'c["loop_guard"]')" == False ]] && ok "LOOP_GUARD=false -> loop_guard false" || bad "loop guard off: $(get 'c.get("loop_guard")')"
+write LOOP_GUARD=true >/dev/null; [[ "$(get 'c["loop_guard"]')" == True ]] && ok "LOOP_GUARD=true -> loop_guard true" || bad "loop guard on: $(get 'c.get("loop_guard")')"
 out="$(write ENABLE_THINKING=false REASONING_EFFORT=low)"
 [[ "$(get 'c["reasoning_effort"]')" == none ]] && command grep -q "ENABLE_THINKING=false wins" <<<"$out" \
   && ok "ENABLE_THINKING=false -> none, with a note" || bad "thinking off: $out"
 
 echo "== 3. a removed setting is gone"
 write >/dev/null
-[[ "$(get 'c["reasoning_effort"], "--kv" in c["args"], "thinking_budget" in c')" == "('max', False, False)" ]] \
+[[ "$(get 'c["reasoning_effort"], "--kv" in c["args"], "thinking_budget" in c, c["model_name"], "loop_guard" in c')" == "('max', False, False, 'glm-5.3-flash', False)" ]] \
   && ok "back to the defaults" || bad "a setting lingered"
 
 echo "== 4. a bad value"
 for probe in REASONING_EFFORT=minimal ENABLE_THINKING=off THINKING_BUDGET=-1 KV=q8 KV=q4_0 KV=k8v4 TEMP=x TOP_P=0 \
-             TOP_K=65 MIN_P=2 PRESENCE_PENALTY=-1 REPEAT_PENALTY=0; do
+             TOP_K=65 MIN_P=2 PRESENCE_PENALTY=-1 REPEAT_PENALTY=0 LOOP_GUARD=off LOOP_GUARD=0; do
   err="$(env $(clean) "$probe" python3 "$L/maya_settings.py" validate 2>&1)"; r=$?
   [[ $r -eq 2 && "$err" == *"${probe%%=*}"* ]] && ok "$probe refused" || bad "$probe: rc=$r $err"
 done
+err="$(env $(clean) "SERVED_NAME=my model" python3 "$L/maya_settings.py" validate 2>&1)"; r=$?
+[[ $r -eq 2 && "$err" == *SERVED_NAME* ]] && ok "SERVED_NAME with a space refused" || bad "SERVED_NAME=my model: rc=$r $err"
 err="$(env $(clean) REASONING_EFFORT=minimal python3 "$L/maya_prepare.py" --tag maya-s --src "$work/nowhere" --data "$work" 2>&1)"; r=$?
 [[ $r -ne 0 && "$err" == *REASONING_EFFORT* && "$err" != *"first shard"* ]] \
   && ok "maya_prepare.py stops on it before looking at the shards" || bad "main(): rc=$r $err"

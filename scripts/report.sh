@@ -115,6 +115,8 @@ source "$REPO_ROOT/scripts/lib/llamacpp-spec.sh"
 source "$REPO_ROOT/scripts/lib/club-containers.sh"
 source "$REPO_ROOT/scripts/lib/gpu-select.sh"
 source "$REPO_ROOT/scripts/lib/report_calib.sh"
+# strata_maya_log_path: Project Maya's engine log, which is not where Strata's is (#1706, #1752)
+source "$REPO_ROOT/scripts/lib/strata-log.sh"
 # shellcheck source=lib/p2p-state.sh
 source "$REPO_ROOT/scripts/lib/p2p-state.sh"
 
@@ -1079,7 +1081,7 @@ section "Active container"
 # Engine class — drives which probes run inside the container body. Inferred
 # from container name; user can override with ENGINE_KIND=<engine-family> env var.
 case "${ENGINE_KIND:-}" in
-  vllm|llamacpp|sglang|exllamav3|strata|unknown) ;;  # respect user override (sglang: club-3090#1261)
+  vllm|llamacpp|sglang|exllamav3|strata|qengine|unknown) ;;  # respect user override (sglang: club-3090#1261)
   *)
     # Prefix arms live in scripts/lib/engine-kind.sh (club-3090#1282).
     ENGINE_KIND="$(engine_kind_from_container "$CONTAINER")"
@@ -1223,7 +1225,12 @@ else
     subsection "Setup log (docker logs, first 200 lines)"
     docker logs "$CONTAINER" 2>&1 | head -200 | redact | details "First 200 lines of docker logs"
     subsection "Engine log (last 200 lines)"
-    docker exec "$CONTAINER" sh -c 'tail -200 /data/state/strata/launch/*.engine.log /opt/strata/strata-*.log 2>/dev/null' 2>&1 | redact | details "Last 200 lines of the engine log inside the container"
+    _maya_log="$(strata_maya_log_path "$CONTAINER")"
+    if [[ -n "$_maya_log" ]]; then
+      { echo "(${_maya_log})"; docker exec "$CONTAINER" tail -200 "$_maya_log" 2>&1; } | redact | details "Last 200 lines of the engine log inside the container"
+    else
+      docker exec "$CONTAINER" sh -c 'tail -200 /data/state/strata/launch/*.engine.log /opt/strata/strata-*.log 2>/dev/null' 2>&1 | redact | details "Last 200 lines of the engine log inside the container"
+    fi
 
   else
   # ---- vLLM probe set (default for engine=vllm or unknown) ----
@@ -1629,6 +1636,16 @@ stage_record() {
   local key="$1" rc="$2" raw="${3:-}" verdict detail advisory=0 hard=0
   if [[ "$rc" -eq 0 ]]; then
     verdict="PASS"; detail="—"
+    # A check the stage could not run (verify-stress's `skipped (not run):` lines,
+    # #1826) is named here, so a PASS that left the ceiling ladder unrun says so.
+    # It doesn't change the verdict or the exit code: what ran, passed.
+    if [[ -n "$raw" && -f "$raw" ]]; then
+      local not_run
+      not_run="$(sed -E 's/\x1b\[[0-9;]*[mK]//g' "$raw" | command grep 'skipped (not run):' \
+        | sed -E 's/^.*skipped \(not run\):[[:space:]]*//' | head -3 | paste -sd';' - \
+        | sed -E 's/;/ · /g')" || true
+      [[ -z "$not_run" ]] || detail="did not run: ${not_run}"
+    fi
   else
     if [[ -n "$raw" && -f "$raw" ]]; then
       hard="$(command grep -c '✗' "$raw" 2>/dev/null || true)"

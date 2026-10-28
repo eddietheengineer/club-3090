@@ -162,7 +162,7 @@ def config(tag: str, d: Path, p: Path, a) -> Path:
                  "--kv-streaming", "on", "--expert-profile", str(MAYA / "data/expert-profile-glm.bin")],
         "cwd": str(MAYA),
         "tokenizer": str(p / "tokenizer"),
-        "model_name": "glm-5.3-flash",
+        "model_name": "glm-5.3-flash",               # SERVED_NAME replaces it (maya_settings.py)
         "gpu": gpus,
         # GLM-5.3's vendor sampling (1.0 / 0.95, as Maya's setup writes it) unless TEMP / TOP_P / ... say otherwise
         "sampling": sampling,

@@ -4,7 +4,7 @@
 The entrypoint runs this inside the container (with the image's python), on the run config setup
 writes, /data/install/strata-<tag>.json, before the server starts (Strata 0.2's launcher makes the
 live launch config from it at every start, so an edit there is lost). Strata reads these keys from
-its config (serve/server.py, 0.2.1), but setup writes none of them:
+its config (serve/server.py; engine_config_reads.py re-checks that on every bump), but setup writes none of them:
 
   knob                   config key                    Strata's own rule (server.py)
   REASONING_EFFORT       reasoning_effort              none | low | medium | high (high = the template's xhigh)
@@ -15,6 +15,10 @@ its config (serve/server.py, 0.2.1), but setup writes none of them:
   MIN_P                  sampling.min_p                0..1
   PRESENCE_PENALTY       sampling.presence_penalty     >= 0
   REPEAT_PENALTY         sampling.repetition_penalty   > 0 (1 = off)
+  SERVED_NAME            aliases: [name]               another name the model answers to (Strata #297, like
+                                                llama-server's --alias): /v1/models lists it after setup's own
+                                                name, and an answer to a request that names it carries it.
+                                                One name, no spaces
 
 A new setting here needs its key's evidence in scripts/lib/profiles/engine-config-reads.json (where the
 pinned server reads it): test-strata-config-knobs fails until it has some.
@@ -43,8 +47,8 @@ import sys
 
 EFFORTS = {"none": "none", "low": "low", "medium": "medium", "high": "high",
            "xhigh": "high", "max": "high"}     # our other engines' names for Strata's "high" (the template's xhigh)
-KV_FORMATS = ("fp16", "int8", "q4_0", "k8v4")  # `strata launch --kv` choices (0.2.1)
-MANAGED = ("reasoning_effort", "reasoning_budget_tokens")
+KV_FORMATS = ("fp16", "int8", "q4_0", "k8v4")  # `strata launch --kv` choices; strata-pin-bump.sh checks each new image still offers them
+MANAGED = ("reasoning_effort", "reasoning_budget_tokens", "aliases")
 MANAGED_SAMPLING = ("temperature", "top_p", "top_k", "min_p", "presence_penalty", "repetition_penalty")
 
 
@@ -113,6 +117,11 @@ def settings():
     top_k = env("TOP_K")
     if top_k is not None:
         sampling["top_k"] = as_int("TOP_K", top_k, lo=1, hi=64)
+    served = env("SERVED_NAME")
+    if served is not None:
+        if any(c.isspace() for c in served):
+            raise Bad(f"SERVED_NAME={served!r}: expected one name, without spaces")
+        keys["aliases"] = [served]
     kv = env("KV")
     if kv is not None and kv not in KV_FORMATS:
         raise Bad(f"KV={kv!r}: expected one of {', '.join(KV_FORMATS)}")
@@ -129,7 +138,7 @@ def arg_value(args, flag):
     return args[args.index(flag) + 1] if flag in args[:-1] else None
 
 
-SETUP_SPEC = "4"   # `strata --help` (0.2.1): "--spec N ... (setup writes 4)"; used when setup's own was never seen
+SETUP_SPEC = "4"   # `strata --help`: "--spec N ... (setup writes 4)", re-checked by strata-pin-bump.sh; used when setup's own was never seen
 
 
 def setup_spec_record(value=None):
