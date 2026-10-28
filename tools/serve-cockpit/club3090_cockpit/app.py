@@ -84,8 +84,10 @@ from textual.coordinate import Coordinate
 from textual.events import Click
 from textual.message import Message
 
+from rich.markup import escape as _markup_escape
 from rich.text import Text
 
+from club3090_tui_core.detect import throttle_tag
 from club3090_tui_core.registry import VariantRow
 from club3090_tui_core.widgets.live_pane import LivePane
 
@@ -1114,9 +1116,10 @@ class HelpScreen(ModalScreen):
             "  [cyan]Shift+←/→[/cyan] page-scroll a wide table sideways (faster than the ←/→ column cursor)",
             "",
             "[bold]Run & Operate · Catalog[/bold]",
-            "  [cyan]⏎[/cyan] serve selected slug (reconcile-gated confirm; F to Force the teardown)",
+            "  [cyan]⏎[/cyan] serve selected slug (reconcile-gated confirm; F to Force the teardown) — the card shows where its weights are; x removes them",
             "  [cyan]e[/cyan] explain   [cyan]i[/cyan] model info (metadata popup for the selected slug)",
             "  [cyan]E[/cyan] launch settings — what the slug's next launch uses, per-slug edits, a running container's drift",
+            "  [cyan]W[/cyan] weights folders — where the slug's weights are, who shares them; x removes them (dry run first)",
             "  [cyan]d[/cyan] set-default   [cyan]D[/cyan] clear-default",
             "  [cyan]O[/cyan] ▸ Optimize for my card (kv-calc recs, advisory)",
             # These six are show=False bindings whose ONLY other teaching surface
@@ -2715,6 +2718,297 @@ class ExplainScreen(_CopyableModal, ModalScreen):
         self.app.pop_screen()
 
 
+# ── Weights folders modal (Catalog · [W], #1814) ──────────────────────────────────
+
+
+def _gib_label(n: Any) -> str:
+    try:
+        return f"{float(n) / 1024 ** 3:,.2f} GiB"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _weights_user_label(u: dict) -> str:
+    status = str(u.get("status") or "")
+    tag = f" [dim]({_markup_escape(status)})[/dim]" if status and status != "production" else ""
+    return f"{_markup_escape(str(u.get('slug') or '?'))}{tag}"
+
+
+def _weights_show_lines(d: dict) -> list[str]:
+    """``weights.sh show --json`` → the modal body.  Display only — every rule
+    (what's a folder, who shares it, its state) was decided by the script."""
+    lines = [f"  [bold]MODEL_DIR[/bold]  {_markup_escape(str(d.get('model_dir') or '—'))}"]
+    folders = d.get("folders") or []
+    if not folders:
+        lines += ["", "  [dim]this slug's compose mounts no weights folder under MODEL_DIR[/dim]"]
+    for f in folders:
+        state = str(f.get("state") or "")
+        color = {"complete": "green", "incomplete": "yellow", "missing": "red"}.get(state, "dim")
+        lines.append("")
+        lines.append(f"  [bold]{_markup_escape(str(f.get('role') or '')):<6}[/bold] {_markup_escape(str(f.get('path') or ''))}")
+        if f.get("linked"):
+            lines.append(f"         [dim]→[/dim] {_markup_escape(str(f.get('resolved') or ''))}")
+        meta = f"[{color}]{_markup_escape(state) or '—'}[/{color}]"
+        if f.get("note"):
+            meta += f" [dim]({_markup_escape(str(f['note']))})[/dim]"
+        meta += f" · {_gib_label(f.get('size_bytes'))} · {int(f.get('file_count') or 0)} file(s)"
+        if (f.get("recipe_bytes") is not None
+                and float(f["recipe_bytes"]) < 0.99 * float(f.get("size_bytes") or 0)):
+            meta += f" [dim](this recipe's files: {_gib_label(f.get('recipe_bytes'))})[/dim]"
+        if f.get("recipes"):
+            meta += f" · [dim]{_markup_escape(', '.join(str(r) for r in f['recipes']))}[/dim]"
+        lines.append("         " + meta)
+        users = f.get("users") or []
+        need = [u for u in users if u.get("needs_files")]
+        beside = [u for u in users if not u.get("needs_files")]
+        if need:
+            lines.append(f"         [yellow]also used by {len(need)}:[/yellow] "
+                         + ", ".join(_weights_user_label(u) for u in need))
+        if beside:
+            lines.append(f"         [dim]other weights in this folder: {len(beside)} slug(s) — "
+                         + ", ".join(_markup_escape(str(u.get("slug") or "?")) for u in beside) + "[/dim]")
+        if not users:
+            lines.append("         [dim]no other slug uses it[/dim]")
+    for w in d.get("warnings") or []:
+        lines.append(f"  [dim]note: {_markup_escape(str(w))}[/dim]")
+    return lines
+
+
+def _weights_plan_lines(p: dict) -> list[str]:
+    """``weights.sh remove --dry-run --json`` → exactly what goes, what it frees,
+    and every refusal.  Nothing here decides anything."""
+    lines: list[str] = []
+    by_folder: dict[str, list[dict]] = {}
+    for t in p.get("targets") or []:
+        by_folder.setdefault(str(t.get("folder") or ""), []).append(t)
+    for folder, ts in by_folder.items():
+        lines.append(f"  [bold]{_markup_escape(folder)}[/bold]")
+        for t in ts:
+            if t.get("bookkeeping"):
+                continue
+            name = str(t.get("path") or "")
+            if folder and name.startswith(folder.rstrip("/") + "/"):
+                name = name[len(folder.rstrip("/")) + 1:]
+            note = f"  [dim]({_markup_escape(str(t['note']))})[/dim]" if t.get("note") else ""
+            lines.append(f"    [red]delete[/red]  {_markup_escape(name)}  {_gib_label(t.get('bytes'))}{note}")
+            if t.get("resolved") and t["resolved"] != t.get("path"):
+                lines.append(f"            [dim]→ {_markup_escape(str(t['resolved']))}[/dim]")
+        bk = sum(1 for t in ts if t.get("bookkeeping"))
+        if bk:
+            lines.append(f"    [red]delete[/red]  {bk} bookkeeping file(s) [dim](hf download records, setup.sh's verify marker)[/dim]")
+    for d in p.get("dirs") or []:
+        lines.append(f"  [red]rmdir[/red]   {_markup_escape(str(d))}  [dim](empty once the files go)[/dim]")
+    for lk in p.get("links") or []:
+        lines.append(f"  [red]unlink[/red]  {_markup_escape(str(lk.get('path') or ''))}  "
+                     f"[dim](→ {_markup_escape(str(lk.get('target') or ''))}, empty once the files go)[/dim]")
+    if not p.get("targets") and not p.get("links"):
+        lines.append("  [dim]nothing to delete[/dim]")
+    n = sum(1 for t in p.get("targets") or [] if not t.get("bookkeeping"))
+    lines += ["", f"  [bold]total[/bold]  {n} weight file(s), {_gib_label(p.get('total_bytes'))} — "
+                  f"frees [bold]{_gib_label(p.get('freed_bytes'))}[/bold]"]
+    for note in p.get("notes") or []:
+        lines.append(f"  [dim]note: {_markup_escape(str(note))}[/dim]")
+    refusals = p.get("refusals") or []
+    if refusals:
+        lines.append("")
+    for r in refusals:
+        overridden = r.get("overridable") and p.get("allow_shared")
+        head = "[yellow]⚠ overridden[/yellow]" if overridden else "[red]✗ refused[/red]"
+        lines.append(f"  {head} [dim]\\[{_markup_escape(str(r.get('code') or ''))}][/dim] {_markup_escape(str(r.get('message') or ''))}")
+        slugs = r.get("slugs") or []
+        if slugs:
+            lines.append("      " + ", ".join(_weights_user_label(s) for s in slugs))
+    return lines
+
+
+class WeightsScreen(_CopyableModal, ModalScreen):
+    """[W] on the Catalog tab — the selected slug's weights folders (#1814).
+
+    Shows each folder the slug's compose mounts (its own weights and companions
+    such as a drafter or vision projector): path, where a symlink really points,
+    state, size, and every other slug with weights there.  [x] shows exactly what
+    a removal would delete (``weights.sh remove --dry-run``); ⏎ then hands that
+    plan, pinned by its digest, to the standard confirm gate.  Every rule —
+    shared files, running containers, paths outside the model dir — is enforced
+    by scripts/weights.sh, which re-checks all of it when the removal runs; this
+    screen only displays its answers.  The serve card's [x] opens it with
+    ``plan_first``: straight into the dry run once the folders have loaded.
+    """
+
+    DEFAULT_CSS = """
+    WeightsScreen {
+        align: center middle;
+    }
+    WeightsScreen > Vertical {
+        width: 110;
+        max-width: 95%;
+        height: auto;
+        max-height: 85%;
+        border: thick $accent;
+        background: $surface;
+        padding: 1 2;
+    }
+    WeightsScreen .weights-title {
+        text-style: bold;
+        color: $accent;
+        margin-bottom: 1;
+    }
+    WeightsScreen #weights-scroll {
+        height: auto;
+        max-height: 40;
+    }
+    WeightsScreen #weights-body {
+        height: auto;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close"),
+        Binding("W", "dismiss", "Close", show=False),
+        Binding("x", "plan", "Remove…", show=True),
+        Binding("A", "allow_shared", "Delete shared too", show=True),
+        Binding("enter", "remove", "Remove", show=True, priority=True),
+        Binding("b", "back", "Back", show=True),
+        Binding("Y", "app.copy_context", "Copy", show=True),
+    ]
+
+    def __init__(self, slug: str, *, status: str = "", plan_first: bool = False, **kwargs):
+        super().__init__(**kwargs)
+        self._slug = slug
+        self._status = status
+        self._plan_first = plan_first        # the serve card's [x]: dry run on arrival
+        self._view = "show"                  # show | plan
+        self._show: Optional[dict] = None
+        self._show_err: Optional[str] = None
+        self._plan: Optional[dict] = None
+        self._plan_err: Optional[str] = None
+        self._allow_shared = False
+        self._busy = False
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Label(f"Weights · {self._slug}", classes="weights-title", id="weights-title")
+            with VerticalScroll(id="weights-scroll"):
+                yield Static("Reading this slug's weights folders… (scripts/weights.sh show)",
+                             id="weights-body")
+            yield Footer()
+
+    def on_mount(self) -> None:
+        self._busy = True
+        self.app.run_weights_show(self, self._slug)  # type: ignore[attr-defined]
+
+    def check_action(self, action: str, parameters: tuple) -> Optional[bool]:
+        if action == "plan":
+            return self._view == "show" and self._show is not None and not self._busy
+        if action == "back":
+            return self._view == "plan" and not self._busy
+        if action == "allow_shared":
+            return (self._view == "plan" and not self._busy and not self._allow_shared
+                    and bool(self._plan) and self._plan.get("exit") == 3)
+        if action == "remove":
+            return self._view == "plan" and not self._busy and self._removable()
+        return True
+
+    def _removable(self) -> bool:
+        p = self._plan or {}
+        return p.get("exit") == 0 and bool(p.get("targets") or p.get("links")) and bool(p.get("digest"))
+
+    # ── worker callbacks ─────────────────────────────────────────────────────────
+
+    def set_show(self, data: Optional[dict], error: Optional[str]) -> None:
+        self._busy = False
+        self._show, self._show_err = data, error
+        self._view = "show"
+        self._render_body()
+        if self._plan_first and data is not None:   # (a failed show stays on its error)
+            self._plan_first = False
+            self.action_plan()
+
+    def set_plan(self, data: Optional[dict], error: Optional[str]) -> None:
+        self._busy = False
+        self._plan, self._plan_err = data, error
+        self._view = "plan"
+        self._render_body()
+
+    # ── actions ──────────────────────────────────────────────────────────────────
+
+    def action_plan(self) -> None:
+        if not self.check_action("plan", ()):
+            return
+        self._busy = True
+        self._allow_shared = False
+        self.query_one("#weights-body", Static).update(
+            "Working out exactly what a removal would delete… (weights.sh remove --dry-run)")
+        self.refresh_bindings()
+        self.app.run_weights_plan(self, self._slug, allow_shared=False)  # type: ignore[attr-defined]
+
+    def action_allow_shared(self) -> None:
+        if not self.check_action("allow_shared", ()):
+            return
+        self._busy = True
+        self._allow_shared = True
+        self.refresh_bindings()
+        self.app.run_weights_plan(self, self._slug, allow_shared=True)  # type: ignore[attr-defined]
+
+    def action_back(self) -> None:
+        if not self.check_action("back", ()):
+            return
+        self._view = "show"
+        self._plan = None
+        self._allow_shared = False
+        self._render_body()
+
+    def action_remove(self) -> None:
+        if not self.check_action("remove", ()):
+            return
+        p = self._plan or {}
+        n = sum(1 for t in p.get("targets") or [] if not t.get("bookkeeping"))
+        summary = (f"remove {n} weight file(s) of {self._slug} — frees "
+                   f"{_gib_label(p.get('freed_bytes'))}"
+                   + (" (INCLUDING files other slugs need)" if self._allow_shared else ""))
+        plan = self.app._data.weights_remove(  # type: ignore[attr-defined]
+            self._slug, digest=str(p.get("digest") or ""), allow_shared=self._allow_shared,
+            summary=summary)
+        self.app.pop_screen()
+        self.app.push_screen(ConfirmActionScreen(plan))
+
+    def action_dismiss(self) -> None:
+        self.app.pop_screen()
+
+    # ── render ───────────────────────────────────────────────────────────────────
+
+    def _render_body(self) -> None:
+        try:
+            body = self.query_one("#weights-body", Static)
+            title = self.query_one("#weights-title", Label)
+        except Exception:
+            return
+        if self._view == "plan":
+            title.update(f"Remove weights · {self._slug}  (dry run — nothing deleted yet)")
+            if self._plan_err or self._plan is None:
+                lines = [f"[red]dry run failed:[/red] {_markup_escape(self._plan_err or 'no data')}"]
+            else:
+                lines = _weights_plan_lines(self._plan)
+                lines.append("")
+                if self._removable():
+                    lines.append("  [bold]⏎[/bold] remove — asks once more · [bold]b[/bold] back · Esc close")
+                elif self._plan.get("exit") == 3:
+                    lines.append("  Other slugs need these files.  [bold]A[/bold] delete them anyway "
+                                 "(those slugs stop working until re-downloaded) · [bold]b[/bold] back")
+                else:
+                    lines.append("  [dim]Nothing can be removed here — see above.  b back · Esc close[/dim]")
+        else:
+            title.update(f"Weights · {self._slug}" + (f"  ({self._status})" if self._status else ""))
+            if self._show_err or self._show is None:
+                lines = [f"[red]weights.sh show failed:[/red] {_markup_escape(self._show_err or 'no data')}"]
+            else:
+                lines = _weights_show_lines(self._show)
+                lines += ["", "  [bold]x[/bold] remove… (dry run first) · Esc close"]
+        body.update("\n".join(lines))
+        self._copy_payload = "\n".join(Text.from_markup(ln).plain for ln in lines)
+        self.refresh_bindings()
+
+
 # ── Boot-log KV back-solve modal (producer ③ Gate · [K]) ───────────────────────
 
 
@@ -3341,6 +3635,9 @@ class ConfirmActionScreen(ModalScreen):
         # for a download in flight.  Disjoint with start/stop via check_action
         # (mode-gated), same proven pattern as the dual confirm/start enter.
         Binding("enter", "download", "Download", show=True, priority=True),
+        # #1814 follow-up: [x] this slug's weights → WeightsScreen's dry run (only
+        # while they're on disk and not serving; see _weights_removable).
+        Binding("x", "remove_weights", "Remove weights", show=True),
         Binding("k", "stop", "Stop", show=True, priority=True),
         Binding("k", "cancel_download", "Cancel download", show=True, priority=True),
         Binding("f", "force", "Force", show=True, priority=True),
@@ -3870,16 +4167,81 @@ class ConfirmActionScreen(ModalScreen):
         )
         warn = ""
         if (getattr(entry, "weights_state", "") or "") == WEIGHTS_PARTIAL:
-            warn = "  [yellow]⚠ partial download on disk — Download resumes it[/yellow]\n"
+            warn = ("  [yellow]⚠ partial download on disk — Download resumes it[/yellow]"
+                    "  [dim]· \\[x] removes it instead[/dim]\n")
+        dest = self._weights_location(w)
         return (
             f"  [bold]{slug}[/bold]   [dim]weights not on disk[/dim]\n"
             f"{_hw_warn}"
             f"  repo   [dim]{w.hf_repo}[/dim]   ({size})\n"
-            f"{disk}\n"
+            + (f"  to     [dim]{dest}[/dim]\n" if dest else "")
+            + f"{disk}\n"
             f"{warn}\n"
             "  [dim]⏎ Download (streams in the background, progress in the list) · "
             "Esc Cancel[/dim]"
         )
+
+    # ── the slug's weights on this disk (#1814 follow-up) ─────────────────────────
+
+    def _weights_location(self, meta: Any) -> str:
+        """The folder the catalog's on-disk check reads for ``meta``: the model dir
+        + the recipe's subdir (+ the glob's own folder when it names one, the
+        shared-parent layout weights_state_for probes).  Escaped for markup; ""
+        when there's no recipe or no model dir to join."""
+        from pathlib import Path as _Path, PurePosixPath as _PPath
+        if meta is None or not getattr(meta, "subdir", ""):
+            return ""
+        try:
+            p = _Path(self.app._data.weights_model_dir()) / meta.subdir  # type: ignore[attr-defined]
+        except Exception:
+            return ""
+        sub = str(_PPath(getattr(meta, "verify_glob", "") or "").parent)
+        if sub not in ("", "."):
+            p = p / sub
+        return _markup_escape(str(p))
+
+    def _weights_removable(self) -> bool:
+        """[x] Remove weights — offered while the slug's weights (or part of them)
+        are on disk and the card isn't for the slug that's serving them: Start mode
+        with them present, or Download mode over a partial download.  Not while
+        serving (stop mode) or downloading; weights.sh refuses those anyway."""
+        ctx = self._serve_ctx
+        if ctx is None or ctx.entry is None:
+            return False
+        ws = getattr(ctx.entry, "weights_state", "") or ""
+        return ((ctx.mode == "start" and ws == WEIGHTS_PRESENT)
+                or (ctx.mode == "download" and ws == WEIGHTS_PARTIAL))
+
+    def _weights_card_lines(self, entry: Any) -> list[str]:
+        """Where this slug's weights live on this disk, from cached fields: the
+        recipe's folder with its state and size, and each companion the registry
+        lists (a drafter, a vision projector).  [x] opens the full view
+        (weights.sh show), which is the authority on what a removal touches."""
+        w = getattr(entry, "weights", None)
+        ws = getattr(entry, "weights_state", "") or ""
+        loc = self._weights_location(w)
+        if not loc:
+            return ["  [bold]weights[/bold] [dim]not in the weights catalog — "
+                    "the compose names its own files[/dim]"]
+        state = {
+            WEIGHTS_PRESENT: "[green]● on disk[/green]",
+            WEIGHTS_PARTIAL: "[yellow]⚠ partial[/yellow]",
+            WEIGHTS_ABSENT: "[dim]not on disk[/dim]",
+        }.get(ws, "")
+        size = f"  [dim]~{w.size_gb:.0f} GB[/dim]" if getattr(w, "size_gb", None) else ""
+        lines = [f"  [bold]weights[/bold] {loc}  {state}{size}".rstrip()]
+        index = getattr(self.app._data, "_weights_index_cache", None) or {}  # type: ignore[attr-defined]
+        for ck in getattr(entry, "weights_companions", None) or []:
+            cvar = ck.split(":", 1)[1] if ":" in ck else ck
+            cloc = self._weights_location(index.get((entry.model, cvar)))
+            if cloc:
+                lines.append(f"          + {cloc}  [dim]({_markup_escape(cvar)})[/dim]")
+        if self._weights_removable():
+            lines.append("          [dim]\\[x] remove weights — a dry run first lists "
+                         "exactly what goes[/dim]")
+        elif self._serve_mode == "stop" and ws == WEIGHTS_PRESENT:
+            lines.append("          [dim]serving now — stop it before removing its weights[/dim]")
+        return lines
 
     # ── SERVE card (immediate, then reconcile-enriched) ───────────────────────────
 
@@ -3930,6 +4292,8 @@ class ConfirmActionScreen(ModalScreen):
                     f"{fv.hw_requirement()}{got_s}. "
                     "[yellow]Serving here will NOT boot.[/yellow]"
                 )
+            # Where the weights live on this disk, and [x] to remove them (#1814).
+            lines.extend(self._weights_card_lines(entry))
             # int8-activation knob (#609/#1010) — three shapes by slug class:
             # "optin" (16bit + capable, the classic enable), "inverted" (ships
             # int8 + W4A8 gate → ON default, [a] disables via W4A8=0), "fixed"
@@ -4209,6 +4573,9 @@ class ConfirmActionScreen(ModalScreen):
                 return mode == "download"
             if action == "cancel_download":
                 return mode == "downloading"
+            # A DISK read first (the dry run), never a GPU write — no reconcile gate.
+            if action == "remove_weights":
+                return self._weights_removable()
             # Start/Stop need the fresh detect to have resolved (GPU writes).
             if action == "stop":
                 return bool(resolved and mode == "stop")
@@ -4241,8 +4608,8 @@ class ConfirmActionScreen(ModalScreen):
             return bool(resolved and rec.safe)
         if action == "force":
             return bool(resolved and not rec.safe)
-        # stop/start/download/cancel_download never apply in the legacy modal.
-        if action in ("stop", "start", "download", "cancel_download"):
+        # stop/start/download/cancel_download/remove_weights never apply in the legacy modal.
+        if action in ("stop", "start", "download", "cancel_download", "remove_weights"):
             return False
         return True
 
@@ -4299,6 +4666,17 @@ class ConfirmActionScreen(ModalScreen):
             return
         self.app.pop_screen()
         self.app.cancel_download(ctx.entry.slug)  # type: ignore[attr-defined]
+
+    def action_remove_weights(self) -> None:
+        """[x] → this slug's weights view, straight into its dry run (#1814): what
+        a removal would delete, what it frees, every refusal; ⏎ there hands the
+        plan to the confirm gate.  The card closes first, so the confirm doesn't
+        open over a card that still says the weights are on disk."""
+        if not self._weights_removable():
+            return
+        entry = self._serve_ctx.entry  # type: ignore[union-attr]
+        self.app.pop_screen()
+        self.app.push_screen(WeightsScreen(entry.slug, status=entry.status, plan_first=True))
 
     def action_toggle_act8(self) -> None:
         """[a] → flip the int8-activation toggle (#609/#1010). No-op where the
@@ -4390,6 +4768,26 @@ class ConfirmActionScreen(ModalScreen):
 
     def action_cancel(self) -> None:
         self.app.pop_screen()
+
+
+def _gpu_clock_text(gpu: Any) -> str:
+    """The GPU card's clock line: ``clock: 1,665 / 2,115 MHz`` (#1813).
+
+    A value the driver doesn't report is ``—`` — never 0, which would read as a
+    stalled card.  A busy card the driver is holding back gets a short tag,
+    ``(power cap)`` / ``(thermal)``, from ``clocks_event_reasons.active``.
+    """
+    def _mhz(v: Any) -> str:
+        return f"{v:,}" if isinstance(v, int) and not isinstance(v, bool) else "—"
+
+    cur = getattr(gpu, "clock_sm_mhz", None)
+    peak = getattr(gpu, "clock_max_sm_mhz", None)
+    text = f"clock: {_mhz(cur)} / {_mhz(peak)} MHz"
+    tag = throttle_tag(getattr(gpu, "clock_event_reasons", None),
+                       busy=(getattr(gpu, "utilization", 0) or 0) > 0)
+    if tag:
+        text += f" [yellow]({tag})[/yellow]"
+    return text
 
 
 def _with_force(plan: ActionPlan) -> list[str]:
@@ -4905,6 +5303,10 @@ class OperateOrchPane(Container):
             lines = [
                 f"  {bar_str}  {used / 1024:.1f} / {total / 1024:.1f} GiB · {pct}%",
                 f"  power: {pwr:.0f} / {pwr_lim:.0f} W{cap_note} · {temp}°C · util {util}%",
+                # #1813: its own line, straight under power: — appended to the power
+                # line it ran 87-96 cells against an 82-cell card at 120 columns and
+                # wrapped mid-number ("… 2,115" / "MHz (power cap)").
+                f"  {_gpu_clock_text(gpu)}",
             ]
             # Batch 5 (GPU-VRAM → container attribution): WHO holds this card's
             # VRAM — closes the Batch-1 "GPU0's 22GB owner is invisible" loop.
@@ -10031,6 +10433,7 @@ _PALETTE_COMMANDS: tuple[tuple[str, str, str], ...] = (
     # Run & Operate · Catalog tab.
     ("primary_action", "Serve selected / primary action", "⏎ — serve the selected slug (reconcile-gated)"),
     ("explain", "Explain selected slug", "Catalog — detail + cross-rig benchmarks"),
+    ("catalog_weights", "Weights folders…", "Catalog — where the selected slug's weights are, who shares them, and remove them (\\[W])"),
     ("launch_settings", "Launch settings…", "Catalog — see and change what the selected slug's next launch uses (\\[E])"),
     ("model_info", "Model info", "Catalog — metadata popup for the selected slug (\\[i])"),
     ("filter_catalog", "Filter catalog", "Catalog — filter by slug / engine / status"),
@@ -10244,6 +10647,8 @@ class CockpitApp(App):
         Binding("vertical_line", "catalog_columns", "Columns", show=False),
         Binding("u", "copy_endpoint", "API URL", show=False),
         Binding("e", "explain", "Explain", show=False),
+        # #1814 — [W] the selected slug's weights folders (and removing them).
+        Binding("W", "catalog_weights", "Weights", show=False),
         # #1465 — [E] Launch settings for the selected slug: e explains a slug,
         # E edits what its next launch uses (the switch.sh --set twin).
         Binding("E", "launch_settings", "Launch settings", show=False),
@@ -10554,6 +10959,7 @@ class CockpitApp(App):
         # nothing is serving).
         "copy_endpoint":    ({0}, {"tab-catalog", "tab-orchestration", "tab-containers", "tab-doctor"}),
         "explain":          ({0}, {"tab-catalog"}),  # Catalog (guards inside action)
+        "catalog_weights":  ({0}, {"tab-catalog"}),  # #1814 weights folders / remove
         "launch_settings":  ({0}, {"tab-catalog"}),  # Catalog — [E] form (guards inside action)
         "model_info":       ({0}, {"tab-catalog"}),  # Catalog — [i] popup (guards inside action)
         "set_default":      ({0}, {"tab-catalog"}),  # Catalog
@@ -13073,6 +13479,49 @@ class CockpitApp(App):
         except Exception:
             pass
 
+    @work(group="weights-folders")
+    async def run_weights_show(self, screen: "WeightsScreen", slug: str) -> None:
+        data, err = await self._data.weights_folders(slug)
+        try:
+            screen.set_show(data, err)
+        except Exception:
+            pass
+
+    @work(group="weights-folders")
+    async def run_weights_plan(self, screen: "WeightsScreen", slug: str, *, allow_shared: bool = False) -> None:
+        data, err = await self._data.weights_remove_plan(slug, allow_shared=allow_shared)
+        try:
+            screen.set_plan(data, err)
+        except Exception:
+            pass
+
+    @work(group="weights-remove-watch")
+    async def _watch_weights_remove(self, plan: ActionPlan, state: Any) -> None:
+        """A dispatched removal: wait for weights.sh to finish, say how it went,
+        then re-read the catalog so the weights column (⬇ / ⚠) catches up for
+        every slug the removal touched.  weights.sh re-checks everything itself;
+        a non-zero exit means it refused or stopped, and it deleted nothing it
+        hadn't re-verified."""
+        import asyncio
+
+        done = getattr(state, "done", None)
+        if done is not None:
+            try:
+                await asyncio.wait_for(done.wait(), timeout=900)
+            except asyncio.TimeoutError:
+                pass
+        slug = plan.cmd[3] if len(plan.cmd) > 3 else ""
+        code = getattr(state, "exit_code", None)
+        if code == 0:
+            self.notify(f"✓ {plan.description}", title="Weights", timeout=6)
+        elif code is not None:
+            self.notify(
+                f"weights.sh exited {code} for {slug} — run `bash scripts/weights.sh remove "
+                f"{slug} --dry-run` to see why.",
+                title="Weights", severity="warning", timeout=10,
+            )
+        self.load_catalog()
+
     # ── The reconcile gate (called by the confirm modal on mount) ────────────────────
 
     @work(group="reconcile")
@@ -13205,6 +13654,10 @@ class CockpitApp(App):
         }
         if plan.kind in _REGISTRY_REPOLL_KINDS:
             self.load_catalog()
+        if plan.kind == "weights_remove":
+            # The removal runs in the background; re-read the catalog when it ENDS,
+            # not now (an immediate re-read would race the deletion).
+            self._watch_weights_remove(plan, _state)
         if plan.kind == "serve":
             if live is not None:
                 # Reveal the transient Run boot pane (Fold 2).  Do NOT print the
@@ -14227,6 +14680,20 @@ class CockpitApp(App):
                 status=entry.status,
             )
         )
+
+    def action_catalog_weights(self) -> None:
+        """[W] (merged mode 0 · Catalog) → the selected slug's weights folders and
+        the removal flow (#1814).  The modal loads its own data on mount."""
+        if self._active_mode != 0 or self._current_subtab() != "tab-catalog":
+            return
+        try:
+            entry = self.query_one("#catalog-pane", CatalogPane).selected_entry()
+        except Exception:
+            entry = None
+        if entry is None:
+            self.notify("No slug selected.", title="Weights", severity="warning", timeout=3)
+            return
+        self.push_screen(WeightsScreen(entry.slug, status=entry.status))
 
     def action_launch_settings(self) -> None:
         """[E] — the Launch settings form for the selected catalog slug (merged

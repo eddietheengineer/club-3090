@@ -472,3 +472,149 @@ class TestStrataDetection:
         # positive control for the trap: the same port, a llama.cpp name, still reads llamacpp
         assert _classify_engine_from_container("llama-cpp-x") == "llamacpp"
         assert _classify_engine("8080") == "llamacpp"
+
+
+# ============================================================================
+# #1813 — SM clock + throttle reason on the GPU read
+# ============================================================================
+
+import club3090_tui_core.detect as _detect  # noqa: E402
+from club3090_tui_core.detect import get_gpu_info, throttle_tag  # noqa: E402
+
+# Real 610.57 output shape for the full query (index … temperature.gpu,
+# clocks.sm, clocks.max.sm, clocks_event_reasons.active).
+SMI_CLOCKS = (
+    "0, 99, 22000, 24576, 229.80, 230.00, 83, 1665, 2115, 0x0000000000000004\n"
+    "1, 0, 1, 24576, 20.54, 230.00, 45, 210, 2100, 0x0000000000000001\n"
+)
+SMI_INVALID = 'Field "clocks_event_reasons.active" is not a valid field to query.\n\n'
+
+
+def _smi(stdout: str):
+    mock = AsyncMock()
+    mock.communicate = AsyncMock(return_value=(stdout.encode(), b""))
+    return mock
+
+
+class _SmiStub:
+    """Answers nvidia-smi by the fields it was asked for; records each query."""
+
+    def __init__(self, answer):
+        self.answer = answer
+        self.queries: list[str] = []
+
+    async def __call__(self, *argv, **_kw):
+        q = next(a for a in argv if a.startswith("--query-gpu="))
+        self.queries.append(q)
+        return _smi(self.answer(q))
+
+
+@pytest.fixture(autouse=False)
+def fresh_gpu_query_cache():
+    _detect._GPU_QUERY_REJECTED.clear()
+    yield
+    _detect._GPU_QUERY_REJECTED.clear()
+
+
+@pytest.mark.usefixtures("fresh_gpu_query_cache")
+class TestGpuClocks:
+    def test_parses_clock_and_reasons(self):
+        stub = _SmiStub(lambda q: SMI_CLOCKS)
+        with patch("asyncio.create_subprocess_exec", stub):
+            gpus = _run(get_gpu_info())
+        assert [g.index for g in gpus] == [0, 1]
+        assert gpus[0].clock_sm_mhz == 1665 and gpus[0].clock_max_sm_mhz == 2115
+        assert gpus[0].clock_event_reasons == 0x4
+        assert gpus[1].clock_event_reasons == 0x1
+        assert gpus[0].power_draw_w == 229.8 and gpus[0].temp_c == 83  # base fields intact
+        assert len(stub.queries) == 1
+        assert "clocks.sm,clocks.max.sm,clocks_event_reasons.active" in stub.queries[0]
+
+    def test_unreported_values_are_none_not_zero(self):
+        row = "0, 5, 100, 24576, 30.0, 230.0, 40, [N/A], [Not Supported], [Not Supported]\n"
+        with patch("asyncio.create_subprocess_exec", _SmiStub(lambda q: row)):
+            (gpu,) = _run(get_gpu_info())
+        assert gpu.clock_sm_mhz is None
+        assert gpu.clock_max_sm_mhz is None
+        assert gpu.clock_event_reasons is None
+        assert gpu.mem_used_mib == 100
+
+    def test_older_driver_falls_back_to_throttle_reasons_name(self):
+        """A driver that rejects clocks_event_reasons (pre-R535 name) still gets clocks."""
+        def answer(q):
+            if "clocks_event_reasons" in q:
+                return SMI_INVALID
+            return SMI_CLOCKS.replace("0x0000000000000004", "0x0000000000000020")
+        stub = _SmiStub(answer)
+        with patch("asyncio.create_subprocess_exec", stub):
+            gpus = _run(get_gpu_info())
+            assert gpus[0].clock_event_reasons == 0x20
+            assert "clocks_throttle_reasons.active" in stub.queries[1]
+            # the rejection is remembered: the next poll spawns ONCE, not twice
+            _run(get_gpu_info())
+        assert len(stub.queries) == 3
+        assert "clocks_event_reasons" not in stub.queries[2]
+
+    def test_driver_without_any_clock_field_keeps_the_card(self):
+        """Every clock field rejected → the bare base query, exactly today's card."""
+        base_row = "0, 10, 2000, 24576, 100.0, 230.0, 60\n"
+
+        def answer(q):
+            if "clocks" in q:
+                return 'Field "clocks.max.sm" is not a valid field to query.\n'
+            return base_row
+        stub = _SmiStub(answer)
+        with patch("asyncio.create_subprocess_exec", stub):
+            (gpu,) = _run(get_gpu_info())
+        assert gpu.mem_used_mib == 2000
+        assert gpu.clock_sm_mhz is None and gpu.clock_event_reasons is None
+        assert len(stub.queries) == 4
+        assert stub.queries[-1] == "--query-gpu=" + _detect._GPU_BASE_FIELDS
+
+    def test_no_rows_without_a_rejection_is_one_spawn(self):
+        """Negative control for the fallback: 'No devices were found' is the answer,
+        not a reason to try three more queries."""
+        stub = _SmiStub(lambda q: "No devices were found\n")
+        with patch("asyncio.create_subprocess_exec", stub):
+            assert _run(get_gpu_info()) == []
+        assert len(stub.queries) == 1
+        assert _detect._GPU_QUERY_REJECTED == set()
+
+    def test_timeout_is_not_retried_per_fallback_set(self):
+        calls = {"n": 0}
+
+        async def hang(*_a, **_k):
+            calls["n"] += 1
+            raise asyncio.TimeoutError
+        with patch("asyncio.create_subprocess_exec", hang):
+            assert _run(get_gpu_info()) == []
+        assert calls["n"] == 1
+
+    def test_bad_base_field_still_empties_the_read(self):
+        """Unchanged contract: an unparseable base column (here power.draw) → []."""
+        row = "0, 5, 100, 24576, [N/A], 230.0, 40, 1500, 2100, 0x0000000000000000\n"
+        with patch("asyncio.create_subprocess_exec", _SmiStub(lambda q: row)):
+            assert _run(get_gpu_info()) == []
+
+
+class TestThrottleTag:
+    def test_power_cap_and_thermal(self):
+        assert throttle_tag(0x04) == "power cap"
+        assert throttle_tag(0x20) == "thermal"
+        assert throttle_tag(0x40) == "thermal"
+        assert throttle_tag(0x04 | 0x40) == "power cap, thermal"
+        assert throttle_tag(0x20 | 0x40) == "thermal"  # one tag, not two
+
+    def test_nothing_to_flag(self):
+        assert throttle_tag(None) == ""
+        assert throttle_tag(0) == ""
+        assert throttle_tag(0x02) == ""   # applications clocks setting
+        assert throttle_tag(0x10) == ""   # sync boost
+        assert throttle_tag(0x100) == ""  # display clock setting
+
+    def test_idle_card_gets_no_tag(self):
+        assert throttle_tag(0x01) == ""
+        assert throttle_tag(0x01 | 0x04) == ""
+        # the 610.57 sample: sw_power_cap alone on an idle card
+        assert throttle_tag(0x04, busy=False) == ""
+        assert throttle_tag(0x04, busy=True) == "power cap"  # positive control

@@ -14,7 +14,7 @@ Two modes, shown as a tab bar; the producer mode is hidden in the lean view.
 
 - **`1` Run & Operate** *(always shown)*
   - **Catalog** — the full registry of model variants; filter, inspect, and **serve** one (`⏎`).
-  - **Orchestration** — live GPU cards, the `gpu-mode` scenes (incl. `ai-studio`), and supporting services; switch scene / stop.
+  - **Orchestration** — live GPU cards (VRAM, power and cap, temperature, utilisation, and the SM clock against its maximum with a `power cap` / `thermal` tag when a busy card is held back), the `gpu-mode` scenes (incl. `ai-studio`), and supporting services; switch scene / stop.
   - **Containers** — running/stopped services with engine + port; drill into **Logs / Top / Config**, start a stopped one.
   - **Doctor** — "is it serving correctly?" — six checks you can arrow through and run with `⏎` (or by hotkey): `health.sh` live, `verify` / `verify-full`, basic / full reports, and the power-cap sweep.
 - **`2` Bring & Validate** *(producer lane — hidden in lean view)*
@@ -72,6 +72,7 @@ A model dir or token that an older c3 kept in its own `c3-settings.json` is move
 | `S` | settings — set Model Dir + HF token (`Ctrl+S` saves) |
 | `E` | **launch settings** for the selected Catalog slug — each knob its compose reads (KV offload, thinking, reasoning effort, `SPEC_N`), the value its next launch uses and where it comes from, the allowed values, and what the next launch would refuse. `⏎` saves a value for that slug, `x` removes it — the same resolver and messages as `switch.sh --set/--unset/--explain`. Changes apply on the next launch; a running container of the slug is compared knob by knob (`≠` where it started with something else). |
 | `N` | new pod — Operate · Orchestration: compose a model + GPU set (fit-checked, gated) |
+| `W` | **weights folders** of the selected Catalog slug (the `⏎` card shows the folder too, and its `x` opens this view straight into the dry run) — each folder its compose mounts (its own weights, a drafter, a vision projector): the path with symlinks resolved, its state and size, and the other slugs that use it. `x` shows exactly what a removal would delete (a dry run) and `⏎` hands it to the confirm gate. It deletes only the recipe's `files:`, and refuses files another slug needs (`A` overrides that one), a folder a running container mounts, and paths outside the model dir — the rules of `bash scripts/weights.sh`, which c3 runs. |
 | `c` | **view the compose** behind the focused row — Catalog (what the slug will run), Containers, or a lane stage. Read-only; shows the profile header, the file's actual image/port/ctx/KV, and the raw YAML. *(On Orchestration `c` is power-cap.)* |
 | `Y` | copy the focused context to the clipboard |
 | `.` | toggle the left rail (full-width content) |

@@ -103,6 +103,16 @@ class GpuInfo:
     power_draw_w: float = 0.0
     power_limit_w: float = 0.0
     temp_c: int = 0
+    # SM clock now / its maximum, in MHz (#1813).  ``None`` = this driver or card
+    # doesn't report it ("[N/A]", "[Not Supported]", or an older nvidia-smi that
+    # rejects the field) — the card renders "—", never 0, which would read as a
+    # stalled GPU.
+    clock_sm_mhz: Optional[int] = None
+    clock_max_sm_mhz: Optional[int] = None
+    # Raw ``clocks_event_reasons.active`` bitmask (``clocks_throttle_reasons.active``
+    # on older drivers); ``None`` when not reported.  ``throttle_tag()`` turns it
+    # into the short tag the card shows.
+    clock_event_reasons: Optional[int] = None
 
 
 @dataclass
@@ -311,33 +321,155 @@ async def detect_endpoint(
     return target
 
 
-async def get_gpu_info() -> list[GpuInfo]:
-    """Query nvidia-smi for GPU stats."""
+_GPU_BASE_FIELDS = (
+    "index,utilization.gpu,memory.used,memory.total,power.draw,power.limit,temperature.gpu"
+)
+
+# #1813 — the clock fields, newest spelling first.  nvidia-smi rejects a WHOLE
+# query that names one field it doesn't know ('Field "…" is not a valid field to
+# query.', on stdout, exit 2, no rows at all), so the clocks can't simply be
+# appended: on an older driver that would blank every GPU card.  Each set is tried
+# in order and the bare base query is always last, so the worst case is today's
+# card without a clock.  ``clocks_throttle_reasons.*`` is the pre-R535 name of
+# ``clocks_event_reasons.*``; 610.x accepts both.
+_GPU_QUERY_SETS: tuple[tuple[str, ...], ...] = (
+    ("clocks.sm", "clocks.max.sm", "clocks_event_reasons.active"),
+    ("clocks.sm", "clocks.max.sm", "clocks_throttle_reasons.active"),
+    ("clocks.sm", "clocks.max.sm"),
+    (),
+)
+
+# Indices into _GPU_QUERY_SETS that this nvidia-smi has REJECTED as invalid
+# fields.  Remembered so a rig on an old driver doesn't spawn nvidia-smi three
+# times on every repaint.  Only the explicit "not a valid field" answer is cached;
+# a transient failure (driver busy, timeout) is retried next poll.
+_GPU_QUERY_REJECTED: set[int] = set()
+
+# clocks_event_reasons bits (nvidia-smi --help-query-gpu; NVML
+# nvmlClocksEventReason*).  Idle (0x1), the application-clocks setting (0x2),
+# sync boost (0x10) and the display-clock setting (0x100) are deliberately NOT
+# tagged — they aren't the card holding itself back under load.
+_CLOCK_EVENT_IDLE = 0x01      # gpu_idle
+_CLOCK_EVENT_TAGS: tuple[tuple[int, str], ...] = (
+    (0x04, "power cap"),      # sw_power_cap
+    (0x20, "thermal"),        # sw_thermal_slowdown
+    (0x40, "thermal"),        # hw_thermal_slowdown
+    (0x80, "power brake"),    # hw_power_brake_slowdown
+    (0x08, "hw slowdown"),    # hw_slowdown (thermal OR power — NVML can't say which)
+)
+
+
+def throttle_tag(reasons: Optional[int], busy: bool = True) -> str:
+    """The short tag for an active clock-event bitmask ("" = nothing to flag).
+
+    ``power cap`` / ``thermal`` are the two that matter on a 3090 rig (#1813);
+    several active reasons join with ", " in a fixed order.  An idle card gets
+    no tag — the idle bit (0x1) set, or ``busy=False`` (the caller passes
+    utilization > 0): its clock is low because nothing is running.  The driver
+    can report sw_power_cap ALONE on an idle card for a sample (seen on 610.57:
+    0x4 at 20 W / 210 MHz / 0 % util), and tagging that "power cap" would point
+    at the wrong cause.
+    """
+    if not reasons or not busy or reasons & _CLOCK_EVENT_IDLE:
+        return ""
+    tags: list[str] = []
+    for bit, tag in _CLOCK_EVENT_TAGS:
+        if reasons & bit and tag not in tags:
+            tags.append(tag)
+    return ", ".join(tags)
+
+
+def _opt_int(raw: str, base: int = 10) -> Optional[int]:
+    """A reported number, or ``None`` for nvidia-smi's "[N/A]" / "[Not Supported]"."""
+    raw = raw.strip()
+    if not raw or raw.startswith("["):
+        return None
+    try:
+        return int(raw, 16) if base == 16 else int(float(raw))
+    except ValueError:
+        return None
+
+
+def _parse_gpu_rows(text: str, extra: tuple[str, ...]) -> list[GpuInfo]:
+    """Parse ``--format=csv,noheader,nounits`` rows for the base fields + ``extra``.
+
+    A row must carry exactly the requested column count — an error message
+    ("Field … is not a valid field to query.") or a short row is not a GPU.  A
+    base field that doesn't parse empties the whole read, as it always has; only
+    the clock columns are optional.
+    """
+    want = 7 + len(extra)
+    gpus: list[GpuInfo] = []
+    for line in text.strip().split("\n"):
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) != want:
+            continue
+        try:
+            gpu = GpuInfo(
+                index=int(parts[0]),
+                utilization=int(float(parts[1])),
+                mem_used_mib=int(float(parts[2])),
+                mem_total_mib=int(float(parts[3])),
+                power_draw_w=float(parts[4]),
+                power_limit_w=float(parts[5]),
+                temp_c=int(float(parts[6])),
+            )
+        except ValueError:
+            return []
+        for name, raw in zip(extra, parts[7:]):
+            if name == "clocks.sm":
+                gpu.clock_sm_mhz = _opt_int(raw)
+            elif name == "clocks.max.sm":
+                gpu.clock_max_sm_mhz = _opt_int(raw)
+            elif name.endswith("_reasons.active"):
+                gpu.clock_event_reasons = _opt_int(raw, base=16)
+        gpus.append(gpu)
+    return gpus
+
+
+async def _query_gpus(extra: tuple[str, ...]) -> tuple[list[GpuInfo], bool]:
+    """One nvidia-smi query → (rows, rejected-as-invalid-field).
+
+    Raises on a spawn failure or timeout, so the caller stops instead of paying
+    the timeout again for every fallback set.
+    """
+    fields = _GPU_BASE_FIELDS + "".join("," + f for f in extra)
+    proc = None
     try:
         proc = await asyncio.create_subprocess_exec(
             "nvidia-smi",
-            "--query-gpu=index,utilization.gpu,memory.used,memory.total,power.draw,power.limit,temperature.gpu",
+            f"--query-gpu={fields}",
             "--format=csv,noheader,nounits",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
-        gpus = []
-        for line in stdout.decode().strip().split("\n"):
-            parts = [p.strip() for p in line.split(",")]
-            if len(parts) >= 7:
-                gpus.append(GpuInfo(
-                    index=int(parts[0]),
-                    utilization=int(float(parts[1])),
-                    mem_used_mib=int(float(parts[2])),
-                    mem_total_mib=int(float(parts[3])),
-                    power_draw_w=float(parts[4]),
-                    power_limit_w=float(parts[5]),
-                    temp_c=int(float(parts[6])),
-                ))
-        return gpus
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10)
     except Exception:
-        await _reap(locals().get("proc"))
+        await _reap(proc)
+        raise
+    out = stdout.decode("utf-8", "replace") if isinstance(stdout, bytes) else ""
+    err = stderr.decode("utf-8", "replace") if isinstance(stderr, bytes) else ""
+    rejected = "not a valid field" in out or "not a valid field" in err
+    return _parse_gpu_rows(out, extra), rejected
+
+
+async def get_gpu_info() -> list[GpuInfo]:
+    """Query nvidia-smi for GPU stats, with the SM clock where the driver has it.
+
+    Falls back through ``_GPU_QUERY_SETS`` ONLY when nvidia-smi names a field as
+    invalid; any other empty answer (no devices, a driver error) is the answer,
+    exactly as before the clock fields existed — one spawn per poll.
+    """
+    try:
+        for i, extra in enumerate(_GPU_QUERY_SETS):
+            if i in _GPU_QUERY_REJECTED:
+                continue
+            gpus, rejected = await _query_gpus(extra)
+            if gpus or not rejected or not extra:
+                return gpus
+            _GPU_QUERY_REJECTED.add(i)
+        return []
+    except Exception:
         return []
 
 
