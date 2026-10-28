@@ -178,6 +178,7 @@ A container on any other internal port is invisible to `verify*.sh`, `bench.sh`,
 
 - **Prefer the family's standard internal port.** Most wrapper launchers take a `PORT` env var.
 - **If you genuinely need another port,** add it to every mirrored copy of the port set: `club-containers.sh`, `tools/tui-core/.../detect.py`, `scripts/catalog.sh`, and the port loops in `report.sh` and `soak-test.sh`. `test-engine-port-set-drift` checks they agree.
+- **A new family's container prefix** goes into every mirrored copy of the prefix set too: the fallback regex in `club-containers.sh`, `ENGINE_PREFIXES` in `tools/tui-core/.../detect.py` and `_DETECT_PREFIXES` in `scripts/catalog.sh` (plus the `engine_kind_from_container` arm, [Engine kind](#1-engine-kind--scriptslibengine-kindsh)). `test-catalog-detectability` checks that `catalog.sh` matches `detect.py`. QEngine's registration missed the `catalog.sh` copy, and that test was red on master until it was added.
 
 ### 3. Throughput and spec-decode parsing
 
