@@ -31,18 +31,50 @@ run_test() {
 }
 
 run_test "load_profiles parses all profile groups" <<'PY'
+import pathlib, shutil, tempfile
+import yaml
 from scripts.lib.profiles.compat import load_profiles
-p = load_profiles()
-assert len(p.hardware) == 12  # +dgx-spark (#576 follow-up), +rtx-a6000 (#948 thread), +cmp-170hx-64gb
-_p = __import__("pathlib").Path
-_nloc = lambda d: len(list(_p(d).glob("*.yml"))) if _p(d).is_dir() else 0
-assert len(p.models) - _nloc("scripts/lib/profiles-local/models.d") == 26   # +inkling-small, +qwen3.8-27b, +glm-5.3-flash, +qwen3.8-flash-next, +deepseek-v4-flash-vision-exp, +mimo-v2.6-9b, +thinkingcap-qwen3.8-27b, +deepseek-v4.1-flash-1017, +nanbeige4.3-33b, +minimax-m3.1-flash
-assert len(p.workloads) == 5
-_p = __import__("pathlib").Path
-_nloc = lambda d: len(list(_p(d).glob("*.yml"))) if _p(d).is_dir() else 0
-assert len(p.engines) - _nloc("scripts/lib/profiles-local/engines.d") == 25   # +llamacpp-club3090-v1.1, -v1.5, -v1.6, +sglang-stable, +exllamav3, +llama-cpp-prism, +llama-cpp-prism-mtp, -llama-cpp-prism-mtp (2026-10-06, folded onto llama-cpp-prism), +bucko-vllm (2026-10-13), +strata (2026-10-13), +vllm-hyperqwen (2026-10-14), +strata-maya (2026-10-15), +qengine (2026-10-27)
-assert len(p.drafters) == 22  # +syvai-qwen38-dflash2, +anbeeld-glm53-dflash2, +zlab-qwen38-dflash2, +prism-mtp-bundled, +maya-dspark-xs2, +maya-mm3-dspark
-assert len(p.calibration) == 6
+
+def census(profiles_root, local_root):
+    """Every profile file on disk loads, and nothing else does: each group's ids are the ids its files
+    declare, plus the local layer's models.d / engines.d. Derived from the tree, not hand-kept. A
+    `len(p.<group>) == N` per group made every PR that adds a profile edit the same adjacent lines, so
+    two such PRs always conflicted. Two files declaring one id fail here (the loader keeps only one)."""
+    def ids(d, key="id"):
+        files = sorted(pathlib.Path(d).glob("*.yml")) if pathlib.Path(d).is_dir() else []
+        got = [yaml.safe_load(f.read_text(encoding="utf-8"))[key] for f in files]
+        dup = sorted({x for x in got if got.count(x) > 1})
+        assert not dup, f"{d}: two files declare the same {key}: {dup}"
+        return set(got)
+    want = {
+        "hardware": ids(f"{profiles_root}/hardware"),
+        "models": ids(f"{profiles_root}/models") | ids(f"{local_root}/models.d"),
+        "workloads": ids(f"{profiles_root}/workloads"),
+        "engines": ids(f"{profiles_root}/engines") | ids(f"{local_root}/engines.d"),
+        "drafters": ids(f"{profiles_root}/drafters"),
+        "calibration": ids(f"{profiles_root}/calibration", key="model"),
+    }
+    p = load_profiles(pathlib.Path(profiles_root))
+    for group, w in want.items():
+        assert w, f"{group}: no profile files under {profiles_root} (wrong root?)"
+        got = set(getattr(p, group))
+        assert got == w, f"{group}: loaded but not on disk {sorted(got - w)}, on disk but not loaded {sorted(w - got)}"
+
+census("scripts/lib/profiles", "scripts/lib/profiles-local")
+
+# negative control: a second file declaring an existing engine's id fails the census
+tmp = pathlib.Path(tempfile.mkdtemp())
+try:
+    shutil.copytree("scripts/lib/profiles", tmp / "profiles")
+    shutil.copy(tmp / "profiles/engines/strata.yml", tmp / "profiles/engines/strata-copy.yml")
+    try:
+        census(tmp / "profiles", tmp / "profiles-local")
+    except AssertionError as e:
+        assert "two files declare the same id: ['strata']" in str(e), e
+    else:
+        raise AssertionError("a duplicated engine id passed the census")
+finally:
+    shutil.rmtree(tmp)
 PY
 
 run_test "fits() happy path: Qwen dual on 2x3090" <<'PY'
@@ -560,9 +592,11 @@ PY
 run_test "strict keys: every shipped profile group loads under validation" <<'PY'
 from scripts.lib.profiles.compat import load_profiles
 p = load_profiles()  # raises UnknownProfileKeyError on any unknown key
-_p = __import__("pathlib").Path
-_nloc = lambda d: len(list(_p(d).glob("*.yml"))) if _p(d).is_dir() else 0
-assert len(p.models) - _nloc("scripts/lib/profiles-local/models.d") == 26
+import pathlib, yaml
+want = {yaml.safe_load(f.read_text(encoding="utf-8"))["id"]
+        for d in ("scripts/lib/profiles/models", "scripts/lib/profiles-local/models.d")
+        for f in sorted(pathlib.Path(d).glob("*.yml"))}
+assert want and set(p.models) == want, sorted(set(p.models) ^ want)
 PY
 
 run_test "strict keys: typo'd top-level model key fails naming file + closest key" <<'PY'
