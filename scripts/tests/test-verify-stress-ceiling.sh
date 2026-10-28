@@ -9,6 +9,9 @@
 #   7. SKIP_CEILING=1 / SKIP_LONGCTX=1 skip the ceiling ladder
 #   8. All 8 probe headers [N/8] are present in output
 #   9. Small compose skips the ladder (ceiling ≤ start)
+#  10. N_CTX: wins over detection, runs the ladder where nothing is detected, a
+#      malformed one fails; a skipped check is named in the summary, which then
+#      doesn't claim "paths are sound" (#1826)
 set -euo pipefail
 export CLUB3090_CONFIG_DIR=/nonexistent/club-3090-test-config   # tests never read your real settings (#1466)
 
@@ -32,6 +35,15 @@ assert_eq() {
     PASS=$((PASS + 1))
   else
     echo "FAIL: $label: expected '$expected', got '$actual'" >&2
+    FAIL=$((FAIL + 1))
+  fi
+}
+assert_not_contains() {
+  local haystack="$1" needle="$2" label="${3:-}"
+  if [[ "$haystack" != *"$needle"* ]]; then
+    PASS=$((PASS + 1))
+  else
+    echo "FAIL: ${label:-assert_not_contains}: output must NOT contain: $needle" >&2
     FAIL=$((FAIL + 1))
   fi
 }
@@ -121,6 +133,44 @@ result="$(ENGINE_KIND=llamacpp URL=http://mock CONTAINER=none \
   PATH="${tmp_dir}:$PATH" \
   bash -c "source '$HELPERS_FILE'; get_n_ctx")"
 assert_eq "get_n_ctx 512K compose (nested)" "524288" "$result"
+
+# ---- N_CTX (#1826): an explicit context length wins, and runs where nothing is detected ----
+make_curl_mock ''
+result="$(ENGINE_KIND=unknown URL=http://mock CONTAINER=none N_CTX=200000 \
+  PATH="${tmp_dir}:$PATH" \
+  bash -c "source '$HELPERS_FILE'; get_n_ctx")"
+assert_eq "get_n_ctx: N_CTX when the server reports nothing" "200000" "$result"
+
+make_curl_mock '  */props*) printf '"'"'{"default_generation_settings":{"n_ctx":262144}}'"'"'; exit 0 ;;'
+result="$(ENGINE_KIND=llamacpp URL=http://mock CONTAINER=none N_CTX=131072 \
+  PATH="${tmp_dir}:$PATH" \
+  bash -c "source '$HELPERS_FILE'; get_n_ctx")"
+assert_eq "get_n_ctx: N_CTX wins over detection" "131072" "$result"
+
+result="$(ENGINE_KIND=llamacpp URL=http://mock CONTAINER=none N_CTX=lots \
+  PATH="${tmp_dir}:$PATH" \
+  bash -c "source '$HELPERS_FILE'; get_n_ctx")"
+assert_eq "get_n_ctx: a malformed N_CTX falls through to detection" "262144" "$result"
+
+# ---- The summary (#1826): a skipped check is named, and the run isn't called sound ----
+SUMMARY_FILE="$(mktemp --suffix=.sh)"
+sed -n '/^if \[\[ "\$FAILED" == "0" && \${#SKIPPED_CHECKS/,/^done$/p' scripts/verify-stress.sh > "$SUMMARY_FILE"
+assert_contains "$(cat "$SUMMARY_FILE")" "skipped (not run)" "summary block extracted"
+out="$(bash -c 'FAILED=0; SKIPPED_CHECKS=(); source "$1"' _ "$SUMMARY_FILE" | sed 's/\x1b\[[0-9;]*m//g')"
+assert_eq "summary: nothing skipped keeps the clean line" \
+  "All stress / boundary checks passed. KV-cache and prefill paths are sound for the deployed config." "$out"
+out="$(bash -c 'FAILED=0; SKIPPED_CHECKS=("ceiling_ladder: could not detect n_ctx"); source "$1"' _ "$SUMMARY_FILE" \
+  | sed 's/\x1b\[[0-9;]*m//g')"
+assert_not_contains "$out" "paths are sound" "summary: a skip drops the 'sound' claim"
+assert_not_contains "$out" "All stress / boundary checks passed" "summary: a skip isn't catalog-baseline's full pass"
+assert_eq "summary: still starts 'All stress' (the c3 parser)" "All stress" "${out:0:10}"
+assert_contains "$out" "1 did not run" "summary: counts the skipped check"
+assert_contains "$out" "skipped (not run): ceiling_ladder: could not detect n_ctx" "summary: names the skipped check"
+out="$(bash -c 'FAILED=2; SKIPPED_CHECKS=("tool_prefill: SKIP_TOOL_PREFILL=1"); source "$1"' _ "$SUMMARY_FILE" \
+  | sed 's/\x1b\[[0-9;]*m//g')"
+assert_contains "$out" "2 stress check(s) failed." "summary: failures still lead"
+assert_contains "$out" "skipped (not run): tool_prefill: SKIP_TOOL_PREFILL=1" "summary: skips listed after failures too"
+rm -f "$SUMMARY_FILE"
 
 # ---- Test get_vram_free_mb dual GPU (no container context — MIN, not sum) ----
 # TP OOMs on whichever card runs out first, so min per-card free is the honest
@@ -281,6 +331,41 @@ assert_contains "$out" "SKIP_LONGCTX=1" "SKIP_LONGCTX also skips ceiling"
 for i in 1 2 3 4 5 6 7 8; do
   assert_contains "$out" "[${i}/8]" "probe ${i} header"
 done
+assert_contains "$out" "skipped (not run): ceiling_ladder: SKIP_LONGCTX=1" "a requested skip is listed too"
+
+# ---- Full runs, the #1826 shapes: a server that reports its context length nowhere ----
+make_curl_mock '
+  */v1/models*) printf '"'"'{"data":[{"id":"mock-model"}]}'"'"'; exit 0 ;;
+  */v1/chat/completions*) printf '"'"'{"choices":[{"message":{"content":"mock response"},"finish_reason":"stop"}],"usage":{"prompt_tokens":100,"completion_tokens":10}}'"'"'; exit 0 ;;'
+out="$(PATH="${tmp_dir}:$PATH" PREFLIGHT_NO_AUTODETECT=1 URL=http://mock MODEL=mock-model \
+  CONTAINER=none SKIP_TOOL_PREFILL=1 \
+  bash scripts/verify-stress.sh 2>&1 | sed 's/\x1b\[[0-9;]*m//g')" || true
+assert_contains "$out" "could not detect n_ctx" "no n_ctx anywhere: the ladder is skipped"
+assert_contains "$out" "set N_CTX=" "no n_ctx anywhere: the skip names N_CTX"
+assert_contains "$out" "skipped (not run): ceiling_ladder: could not detect n_ctx" "no n_ctx anywhere: listed in the summary"
+assert_not_contains "$out" "paths are sound" "no n_ctx anywhere: never 'sound'"
+
+out="$(PATH="${tmp_dir}:$PATH" PREFLIGHT_NO_AUTODETECT=1 URL=http://mock MODEL=mock-model \
+  CONTAINER=none SKIP_TOOL_PREFILL=1 N_CTX=131072 \
+  bash scripts/verify-stress.sh 2>&1 | sed 's/\x1b\[[0-9;]*m//g')" || true
+assert_contains "$out" "n_ctx from N_CTX=131072" "N_CTX: says where n_ctx came from"
+assert_contains "$out" "n_ctx=131072  ladder: 95000 → 120586" "N_CTX: the ladder runs on it"
+assert_not_contains "$out" "skipped (not run): ceiling_ladder" "N_CTX: the ladder is not listed as skipped"
+
+out="$(PATH="${tmp_dir}:$PATH" PREFLIGHT_NO_AUTODETECT=1 URL=http://mock MODEL=mock-model \
+  CONTAINER=none SKIP_TOOL_PREFILL=1 N_CTX=128k \
+  bash scripts/verify-stress.sh 2>&1 | sed 's/\x1b\[[0-9;]*m//g')" || true
+assert_contains "$out" "N_CTX='128k' is not a positive whole number" "a malformed N_CTX fails the ladder"
+
+# A small context is covered by probe 7: skipped, but not listed as a gap
+make_curl_mock '
+  */v1/models*) printf '"'"'{"data":[{"id":"mock-model","max_model_len":65536}]}'"'"'; exit 0 ;;
+  */v1/chat/completions*) printf '"'"'{"choices":[{"message":{"content":"mock response"},"finish_reason":"stop"}],"usage":{"prompt_tokens":100,"completion_tokens":10}}'"'"'; exit 0 ;;'
+out="$(PATH="${tmp_dir}:$PATH" PREFLIGHT_NO_AUTODETECT=1 URL=http://mock MODEL=mock-model \
+  CONTAINER=none SKIP_TOOL_PREFILL=1 \
+  bash scripts/verify-stress.sh 2>&1 | sed 's/\x1b\[[0-9;]*m//g')" || true
+assert_contains "$out" "probe 7 already covers this range" "small n_ctx: the ladder is skipped as covered"
+assert_not_contains "$out" "skipped (not run): ceiling_ladder" "small n_ctx: a covered skip is not a gap"
 
 # Note: Bug 3 (no-op ladder must FAIL) is validated by code review + live test.
 # The summary logic checks any_sizing_error before any_fail and emits FAIL.
