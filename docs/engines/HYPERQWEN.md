@@ -13,7 +13,7 @@ The image runs prepare, then HyperQwen's own `verify.sh --no-server`, then the l
 
 ## Image
 
-syv-ai's CI builds `ghcr.io/syv-ai/hyperqwen` on every push to main and tags it `:sha-<7>`; there are no versioned releases. The profile pins a digest (`:sha-95ee3b6`, commit `95ee3b64`, 2026-10-11) and the launchers inject it as `VLLM_IMAGE`, as they do for `vllm-lmcache`. It pulls without credentials.
+syv-ai's CI builds `ghcr.io/syv-ai/hyperqwen` on every push to main and tags it `:sha-<7>`; there are no versioned releases. The profile pins a digest (`:sha-ce9615c`, commit `ce9615c4`, 2026-10-21) and the launchers inject it as `VLLM_IMAGE`, as they do for `vllm-lmcache`. It pulls without credentials.
 
 **Bumping:** boot the slug on the new digest through `switch.sh`, run `verify-full`, then `scripts/engine-pin-bump.sh vllm-hyperqwen ghcr.io/syv-ai/hyperqwen@sha256:<digest>`. Update `lineage.source_ref` and `base_version`. [NIGHTLY_BUMP_RUNBOOK.md](../NIGHTLY_BUMP_RUNBOOK.md) lists the HyperQwen interfaces the compose leans on, which are what can move.
 
@@ -23,7 +23,7 @@ syv-ai's CI builds `ghcr.io/syv-ai/hyperqwen` on every push to main and tags it 
 |---|---|---|---|
 | `vllm-hyperqwen/qwen38-27b-single-ultrafast` | 1 | 8023 | upstream's setup B: DFlash2 W4A16 drafter at 7 tokens per verify, bf16 KV, 64K |
 
-**Why "ultrafast":** it runs the drafter of our `*-ultrafast` tiers (syv-ai's DFlash2 W4A16) on an INT4 target. It differs from them in KV and context: bf16 at 64K on HyperQwen's kernels, where our ultrafast tiers run fp8 KV at 262K through our FlashAttention fp8-KV plugin. HyperQwen has no fp8 KV for DFlash2 on sm_86, because FLASH_ATTN refuses fp8 there. Its 8-bit option is `CTX=long`: int8 per-token-head KV on Triton at 128K. On the reference rig, its decode measured the same, with prefill 15% slower at 10K (the compose header has the numbers). The bf16 default was the maintainer's call (2026-10-14).
+**Why "ultrafast":** it runs the drafter of our `*-ultrafast` tiers (syv-ai's DFlash2 W4A16) on an INT4 target. It differs from them in KV and context: bf16 at 64K on HyperQwen's kernels, where our ultrafast tiers run fp8 KV at 262K through our FlashAttention fp8-KV plugin. Its 8-bit option is `CTX=long`, at 128K. Since commit `ce9615c4` the image picks that backend on a 3090: by default int8 per-token-head KV on HyperQwen's own pth-flash-attn kernel (`PTH_FA=1`); with any `SPEC_N` but 7, or `PTH_FA=0`, fp8 KV through the FA2 fp8-KV plugin our ultrafast tiers use (`FA2_FP8KV=1`); and with both set to 0, int8 KV on Triton, which is what `CTX=long` ran before. That last arm is the one measured on the reference rig: decode the same as bf16, prefill 15% slower at 10K (the compose header has the numbers). The two newer arms aren't measured here. The bf16 default was the maintainer's call (2026-10-14).
 
 **Weights:** `hyperqwen-w4a16`, `dbirks/Qwen3.8-27B-W4A16-AutoRound` (19.47 GB, the export HyperQwen's prepare is written for), in its own directory, `qwen3.8-27b-hyperqwen/`, because prepare rewrites it in place. The DFlash2 drafter is our existing `dflash2` weights, mounted read-only. `setup.sh` fetches both.
 
