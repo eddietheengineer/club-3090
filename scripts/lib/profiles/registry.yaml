@@ -7032,7 +7032,7 @@ entries:
     kv_offload: null
     chat_template: native
     tp: 2
-    max_ctx: 262144
+    max_ctx: 131072
     max_num_seqs: 8
     mem_util: null
     compose_path: models/qwen3.8-flash-next/qengine/compose/dual/bpx03-qengine-int4/base.yml

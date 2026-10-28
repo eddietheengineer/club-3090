@@ -8,7 +8,7 @@
 #   Drafter:   MTP (adaptive, default k=3) + lookup drafts from the history (FLASH_LOOKUP=1)
 #   KV:        fp8_e4m3; conversation archive lowered to 16 GB (upstream default 48)
 #   Vision:    no (the Flash-Next engine has no encoder yet)
-#   Max ctx:   262144
+#   Max ctx:   131072
 #   Genesis:   N/A — Genesis is Qwen3-Next-specific
 #   Status:    🐣 Incubating
 #   Caveats:   Not gate-passing yet. ⚠️ The SAME artifact produced garbled
@@ -84,7 +84,7 @@ services:
       ENABLE_THINKING:
       SPEC_N:
       # verbatim passthrough to server/app.py: --think 0, --mtp-k N, ...
-      QE_EXTRA_ARGS: "${QE_EXTRA_ARGS:---max-ctx ${MAX_MODEL_LEN:-262144}}"
+      QE_EXTRA_ARGS: "${QE_EXTRA_ARGS:---max-ctx ${MAX_MODEL_LEN:-131072}}"
     volumes:
       - "${MODEL_DIR:-../../../../../../models-cache}/qwen3.8-flash-next-qengine:/app/models/Qwen3.8-Flash-Next-QE-INT4:ro"
       - "${CLUB3090_ENGINE_CACHE_DIR:-../../../cache}/qengine:/root/.cache/qengine"

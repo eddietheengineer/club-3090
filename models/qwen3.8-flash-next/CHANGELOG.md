@@ -2,6 +2,12 @@
 
 Dated history for Qwen3.8-Flash-Next configs in this repo. Append-only — add a new entry, don't rewrite past ones.
 
+## 2026-10-28 — QEngine Flash-Next slug ships 131K context
+
+`qengine/qwen38-flash-next-dual` now ships **131,072** context (was 262,144): the compose's
+`--max-ctx` default and the registry `max_ctx` lowered together. The engine still accepts
+`MAX_MODEL_LEN=` up to its 262K ceiling; the shipped default is the half-size window.
+
 ## 2026-10-27 — QEngine Flash-Next preview slug (🐣)
 
 **`qengine/qwen38-flash-next-dual`** (port 8146) runs the same pinned QEngine image's
