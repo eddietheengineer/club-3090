@@ -8,10 +8,17 @@ With `FLASH_COMM=ce` in place, the 8-pack still killed the engine — a *differe
 `[flash] graph instantiate out of memory` then `CUDA error cudaErrorMemoryAllocation at
 gemm.cu:3456` → abort. The QE-INT4 weights + 51.8 GB pinned n-gram table leave only ~0.25 GiB
 free per card at 8 sequence slots, and the 8-pack's concurrent multi-turn load (hermesagent-20,
-136K-token prompts) exhausts it — a headroom failure, not the NaN. `FLASH_MAX_SEQS=4` passes the
-full 8-pack (117/150 thinking-OFF, restarts=0), so the compose now ships 4 as the default
+136K-token prompts) exhausts it — a headroom failure, not the NaN. `FLASH_MAX_SEQS=4` clears it
+standalone (8-pack thinking-OFF 117/150, restarts=0), so the compose now ships 4 as the default
 (overridable). Both flash-half defects reproduce identically on 1.3-rc4, so neither is a bump
 regression.
+
+⚠️ **Residual cliff (same day).** On the combined `rebench-full` run — the 8-pack executed
+*after* bench + stress on one warm boot — 4 slots still hit a VRAM OOM at hermesagent-20
+(`cudaErrorMemoryAllocation at flash_batch.cuh:704`), where the standalone 4-slot 8-pack passed.
+The CUDA-graph pool grows across the pipeline and the marginal 2×24 GB headroom runs out under
+the heaviest pack. This is a rig ceiling, not a config bug (upstream tunes this half for 3
+cards); it keeps the slug 🐣. The thinking-ON 8-pack leg and soak are owed before any promotion.
 
 ## 2026-10-28 — long-prefill NaN found; the slug ships FLASH_COMM=ce
 

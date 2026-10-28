@@ -785,6 +785,8 @@ Expert-offloaded MoE on the [`llamacpp-club3090`](docs/engines/LLAMACPP_CLUB3090
 
 ⚠️ The 4.05bpw slug has no bench on the reference rig in the shipped container; its 2026-09-17 runs were in a host venv at 32768 with FP16 KV. **Owed before exl3's slugs move off 🐣:** 8-pack quality, verify-stress, soak-continuous.
 
+| `qengine/compose/dual/bpx03-qengine-int4/base.yml` (`qengine/qwen38-flash-next-dual` 🐣) | @eddietheengineer (2× 3090 PCIe P2P, 260 W / 240 W caps) | fp8 e4m3 (engine-native) | 131072 | **121.6 / 117.9** wall (decode 125.1 / 124.8, CV 3.3% / 8.6%, n=5) | 1197 @10K · 1530 @90K | ~24.2 / 24.2 GiB (98%) | 2026-10-28 | **QEngine 1.3** (`sha256:b9d1b0af…`), bpx03's QE-INT4 (libqflash.so), TP=2, **FLASH_MAX_SEQS=4 + FLASH_COMM=ce** (both shipped to work around flash-half defects — see `docs/engines/QENGINE.md`), thinking OFF, canonical sampler. verify-full 10/10 (MTP accept-len 3.97), verify-stress 8/8 (91K needle at 1448 t/s). 8-pack thinking-OFF **117/150** standalone (restarts=0); ⚠️ the combined rebench (8-pack after bench+stress on one warm boot) still hit a VRAM cliff at hermesagent-20 — a 2×24 GB rig ceiling, upstream tunes this half for 3 cards. ⚠️ 92 GB host RAM at the slug's ~85 GB pinned ceiling: bench flagged ~425 MB serving-process swap, so TPS reads conservative. Continuous soak PASS (172/200 MiB growth, 0 errors, 100% retention). Thinking-ON 8-pack leg: see compose `Quality:`. |
+
 ---
 
 ## GLM-5.3-Flash (320B MoE via CPU expert offload — 🐣 incubating)

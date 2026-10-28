@@ -20,7 +20,12 @@
 #              FLASH_COMM=ce (copy-engine) measures clean through bench's 90K + stress's 91K.
 #              (2) VRAM OOM at 8 sequence slots — the n-gram + expert weights leave only
 #              ~0.25 GiB/card, and concurrent multi-turn load (the 8-pack's hermesagent-20)
-#              exhausts it; shipped FLASH_MAX_SEQS=4, which passes the full 8-pack.
+#              exhausts it; shipped FLASH_MAX_SEQS=4, which passes the 8-pack standalone
+#              (117/150, restarts=0). ⚠️ Residual: on 2×24 GB the flash artifact still hits
+#              a VRAM cliff (flash_batch.cuh OOM) when the 8-pack runs back-to-back after
+#              bench+stress on one warm boot — a rig ceiling, not a config bug (upstream
+#              tunes this half for 3 cards). Continuous soak PASS (172/200 MiB growth, 0
+#              errors, 100% retention). Kept 🐣.
 #              ⚠️ The SAME artifact produced garbled
 #              multilingual output on the 1.3-rc1/rc2 images (2026-10-26); this slug
 #              runs the 1.3 pin and MUST be output-checked on every boot (the clean
