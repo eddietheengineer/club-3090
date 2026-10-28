@@ -22,7 +22,7 @@ What it does, from its README:
 
 ## Image
 
-The author publishes `ghcr.io/bpx03/qengine` (text only, about 0.3 GB; the `:vision` tags add the vision encoder and PyTorch, about 3 GB). Each image's `org.opencontainers.image.revision` label names its source commit. The profile pins **`1.3-rc4`** by digest (`sha256:18b3c4bb…`, source `116bd8d9` = git tag `v1.3-rc4`), and the launchers will inject it as `QENGINE_IMAGE`.
+The author publishes `ghcr.io/bpx03/qengine` (text only, about 0.3 GB; the `:vision` tags add the vision encoder and PyTorch, about 3 GB). Each image's `org.opencontainers.image.revision` label names its source commit. The profile pins **`1.3`** by digest (`sha256:b9d1b0af…`, source `d15a4d3a` = git tag `v1.3`), and the launchers will inject it as `QENGINE_IMAGE`.
 
 ## Settings
 
@@ -39,6 +39,9 @@ Its own environment variables (the image's entrypoint passes `QE_EXTRA_ARGS` to 
 | `QE_LOOP_GUARD_TURNS` | 3 | the cross-turn loop guard (from 1.3-rc4): after this many identical (reply, tool result) turns in a row, the next turn gets a presence penalty on the repeated reply (`QE_LOOP_GUARD_PENALTY`, 1.5) and no lookup drafts; 0 turns it off |
 | `QE_LOOP_GUARD_NOTE` | 1 | on a guarded turn, also append a short server note to the latest tool result; 0 drops the note |
 | `QE_MTP_FILE` | auto | the MTP head (`model_mtp_ft.safetensors` when present) |
+| `QE_MEM_MARGIN_GB` | max(8 GB, 5% of RAM) | the host RAM the archive always leaves free; the archive gives memory back before the OOM killer would end the server (from 1.3) |
+| `QE_ALLOW_SHARED_GPU` | 0 | 1 skips the one-engine-per-GPU check (from 1.3). The lock is `~/.cache/qengine/locks/gpu-<uuid>.lock` under the container's own home, so containers only see each other's when they share it |
+| `QE_LOG_FILE` | auto | the server's own log, `~/.cache/qengine/logs/<served-name>.log` (64 MB × 4); 0 turns it off (from 1.3) |
 | `QE_EXTRA_ARGS` | | `server/app.py` flags, e.g. `--think 0`, `--max-ctx 131072`, `--served-name` |
 
 ⚠️ The loop guard is on by default, and it writes into the conversation: on a guarded turn, an agent finds the server's note in its latest tool result. A request with `"loop_guard": false` turns it off for that request.

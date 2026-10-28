@@ -9,16 +9,18 @@ lineage:
   base: null
   base_version: null
   source: "https://github.com/bpx03/QEngine"
-  source_ref: "116bd8d978243f782e8d21d1d63d155bf89c3839"
+  source_ref: "d15a4d3aaa0c5c7e1e0d4fde0cc07fbb491b6cd0"
   chain: []
   delta: "Independent C++/CUDA engine (libqengine.so, about 26k lines) for one model, Qwen3.8-27B INT4 (RedHatAI's compressed-tensors W4A16 checkpoint and its MTP head), tuned for RTX 3090s with tensor parallel over PCIe, with its own Python server (OpenAI- and Anthropic-compatible APIs). Pinned to the image its author publishes (ghcr.io/bpx03/qengine)"
 image_env: QENGINE_IMAGE
 install:
   method: docker_image
   # The author's own image, ghcr.io/bpx03/qengine:<release> (text only; the :vision tags add the vision encoder and
-  # PyTorch, ~3 GB). Its org.opencontainers.image.revision label is the source commit: 1.3-rc4 is git tag v1.3-rc4.
-  # pin-current: 1.3-rc4 · source 116bd8d9 · pinned 2026-10-27 · not booted (no slug yet)
-  spec: ghcr.io/bpx03/qengine@sha256:18b3c4bb43604fa3dcbff023710ec8e799725070f957cf667882319a544c0537
+  # PyTorch, ~3 GB). Its org.opencontainers.image.revision label is the source commit: 1.3 is git tag v1.3, a single
+  # squashed release commit on main (the rc tags were a branch of their own, so diff rc4 → 1.3 by tree).
+  # pin-current: 1.3 · source d15a4d3a · pinned 2026-10-28 · not booted (no slug yet)
+  # pin-earlier: 1.3-rc4 `18b3c4bb…` (source 116bd8d9, 2026-10-27)
+  spec: ghcr.io/bpx03/qengine@sha256:b9d1b0afe8f96547b3a05de73aff437077effcb1117c82ab2e0fe62bf000b3da
 supported_model_families:
   - qwen35-dense          # Qwen3.8-27B, RedHatAI's INT4 only. Its second engine, for Qwen3.8-Flash-Next (libqflash.so,
                           # the author's own INT4), is an experimental preview and not listed yet
