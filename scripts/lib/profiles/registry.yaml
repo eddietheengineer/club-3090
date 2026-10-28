@@ -4579,6 +4579,70 @@ entries:
     gateway: false
     serve_aliases: []
     required_sm: 8.6
+  qengine/qwen38-27b-dual:
+    origin: core
+    model: qwen3.8-27b
+    weights_variant: redhat-int4
+    workload: multi-stream-tenant
+    engine: qengine
+    drafter: null
+    spec_method: mtp
+    kv_format: fp8_e4m3
+    act_format: 16bit
+    act8_capable: false
+    offload: null
+    moe_cache: false
+    host_ram_gb: null
+    kv_offload: null
+    chat_template: native
+    tp: 2
+    max_ctx: 262144
+    max_num_seqs: 32
+    mem_util: null
+    compose_path: models/qwen3.8-27b/qengine/compose/dual/redhat-int4/mtp.yml
+    requires_nvlink: false
+    requires_homogeneous_arch: false
+    required_engine_features: []
+    default_port: 8197
+    kvcalc_key: SKIP
+    status: incubating
+    status_note: "QEngine 1.3 (bpx03's own C++/CUDA engine and image) on two 3090s, tensor parallel 2, the README's two-card setting: QE_MAX_SEQS=32, full 262K context, FP8 KV in a shared pool per GPU (upstream: ~387K tokens on two cards). MTP up to 7 drafts a step (adaptive) with QEngine's fine-tuned head and draft vocabulary when the v1.0 release assets are in the weights folder, plus lookup drafts. Default effort low through a copy of QEngine's template made at boot; no thinking budget. ⚠️ PolyForm Noncommercial 1.0.0. Measured 2026-10-28 on two 3090s at 230 W (bench.sh, own boot): 147.2 / 216.3 decode, 2,430 prefill @10K, 1,786 @90K, MTP acceptance length 3.4, 23,370 MiB a card; KV pool 374,784 tokens; P2P for the decode all-reduce, the copy engine for prefill transfers (QEngine's own pick). verify-full 8 + 2 n/a. First start 25 s with the GEMM tuning, later 21 s. Upstream's two-card figure: ~162 tok/s single user."
+    weights_companions: []
+    gateway: false
+    serve_aliases: []
+    required_sm: 8.6
+  qengine/qwen38-flash-next-dual:
+    origin: core
+    model: qwen3.8-flash-next
+    weights_variant: qengine-int4
+    workload: multi-stream-tenant
+    engine: qengine
+    drafter: null
+    spec_method: mtp
+    kv_format: fp8_e4m3
+    act_format: 16bit
+    act8_capable: false
+    offload: engine
+    moe_cache: false
+    host_ram_gb: 85
+    kv_offload: null
+    chat_template: native
+    tp: 2
+    max_ctx: 262144
+    max_num_seqs: 16
+    mem_util: null
+    compose_path: models/qwen3.8-flash-next/qengine/compose/dual/qengine-int4/mtp.yml
+    requires_nvlink: false
+    requires_homogeneous_arch: false
+    required_engine_features: []
+    default_port: 8198
+    kvcalc_key: SKIP
+    status: incubating
+    status_note: "QEngine 1.3's Flash-Next engine (libqflash.so, upstream's preview: tested on one machine, no quality benchmark yet) on two 3090s: the routed experts split evenly over the cards, about half the expert groups in pinned host RAM (~15 GB a card) with a VRAM expert cache, FP8 attention KV split by position, 262K context, 16 slots, MTP up to 3 drafts a step plus lookup drafts. host_ram_gb 85 is upstream's two-card figure with the conversation archive off (the 51.8 GB INT8 n-gram table and the host-resident experts), not measured here; the archive (48 GB by default, ~130 GB together) is elastic: it stops at MemAvailable minus a margin. Default effort low through a copy of QEngine's template made at boot; no thinking budget. ⚠️ PolyForm Noncommercial 1.0.0. Upstream's two-card figures (2026-10-26): short c=1 139 tok/s, agent c=8 264 tok/s. Not booted here yet (2026-10-28)."
+    weights_companions: []
+    gateway: false
+    serve_aliases: []
+    required_sm: 8.6
   vllm/qwen38-27b-multi4-fast:
     origin: core
     model: qwen3.8-27b

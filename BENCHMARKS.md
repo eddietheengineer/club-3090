@@ -439,6 +439,12 @@ the remaining candidates are allocator fragmentation or cudagraph state after re
 **5.000**, the hard ceiling for `SPEC_N=4` — while throughput moves ~1% (102.29 / 132.52). It distorts the
 acceptance signal and buys nothing.
 
+### Dual-card (2× RTX 3090, TP=2) — QEngine
+
+| Compose | Rig | KV | Max ctx | Narr / Code TPS | PP tok/s | Peak VRAM | Date | Notes |
+| --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
+| `qengine/compose/dual/redhat-int4/mtp.yml` (`qengine/qwen38-27b-dual`, RedHatAI INT4 + QEngine's fine-tuned MTP head, at most 7 drafts a step) | @noonghunna (2× 3090 PCIe, P2P on, 230 W) | fp8 e4m3 | 262144 (374,784-token pool, 32 slots) | **147.24 / 216.32** decode (CV 3.7% / 4.0%); 146.45 / 213.88 wall | 2430 @10K (CV 0.6%) / 1786 @90K | 23,370 / 23,370 MiB | 2026-10-28 | 🐣 the author's image `ghcr.io/bpx03/qengine@sha256:b9d1b0af…` (QEngine 1.3). `bench.sh` on its own boot (ready 22 s). TTFT 36 ms; decode 114.9 at 10K depth, 110.7 at 90K. MTP mean acceptance length 3.41. P2P carries the decode all-reduce; prefill transfers go over the copy engine (QEngine's startup probe picks it). GPU0 ran at 85 °C with a median SM clock of 765 MHz, against GPU1's 1,620 MHz. verify-full 8 + 2 n/a. ⚠️ PolyForm Noncommercial. Not measured here: upstream's two-card figure, ~162 tok/s single user. Quality not measured (no 8-pack). |
+
 ### Single-card (1× RTX 3090) — vLLM derivatives
 
 | Compose | Rig | KV | Max ctx | Narr / Code TPS | PP tok/s | Peak VRAM | Date | Notes |

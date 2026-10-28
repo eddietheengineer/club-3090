@@ -294,13 +294,18 @@ does, and what to do by hand when it refuses.
 
 - Pinned by digest to the author's own `ghcr.io/bpx03/qengine:<release>` (text only; the `:vision` tags add PyTorch).
   Each image's `org.opencontainers.image.revision` label is its source commit, which `lineage.source_ref` records.
-  Registered with no slug yet (2026-10-27): until one exists a bump is only `scripts/engine-pin-bump.sh qengine
-  ghcr.io/bpx03/qengine@sha256:<digest>` and `source_ref`; from the first slug on, boot it on the new digest and run
-  `verify-full` first.
+  A bump is `scripts/engine-pin-bump.sh qengine ghcr.io/bpx03/qengine@sha256:<digest>` and `source_ref`, then a boot
+  of `qengine/qwen38-27b-dual` on the new digest with `verify-full` (the slugs since 2026-10-28; boot
+  `qengine/qwen38-flash-next-dual` too when the release changes the Flash-Next engine).
 - The volatile parts are QEngine's own interfaces: the image's entrypoint and its `QE_*` variables (`QE_GPUS`,
-  `QE_MAX_SEQS`, `QE_RESERVE_GB`, `QE_EXTRA_ARGS`), `server/app.py`'s flags, the model directory it expects
-  (`Qwen3.8-27B-INT4`, RedHatAI's layout, plus the `token_rank.bin` and `model_mtp_ft.safetensors` release assets),
-  and `/v1/models` `owned_by: "qengine"`, which engine-kind.sh reads. ⚠️ PolyForm Noncommercial license.
+  `QE_MODEL`, `QE_MAX_SEQS`, `QE_RESERVE_GB`, `QE_EXTRA_ARGS`) and Flash-Next's `FLASH_*` ones, `server/app.py`'s flags
+  (`--think`, `--mtp-k`, `--template`), the model directories it expects (`Qwen3.8-27B-INT4`, RedHatAI's layout, plus
+  the `token_rank.bin` and `model_mtp_ft.safetensors` release assets; `Qwen3.8-Flash-Next-QE-INT4`, the author's HF
+  folder, which a new release may re-convert), and `/v1/models` `owned_by: "qengine"`, which engine-kind.sh reads.
+- The composes copy `server/templates/qwen38_syssafe.jinja` at boot with its one `reasoning_effort|default('xhigh')`
+  replaced by the default effort, and refuse to start if that literal isn't there exactly once: a new image that
+  rewrites the template stops the boot there, on purpose. Read the new template before adapting the compose.
+  ⚠️ PolyForm Noncommercial license.
 
 ### Luce DFlash / xtransformers / future engines
 

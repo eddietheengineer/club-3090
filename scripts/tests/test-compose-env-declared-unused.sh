@@ -47,9 +47,15 @@ ENGINE_PREFIXES = (
     "VLLM_", "GGML_", "LLAMA_", "NCCL_", "CUDA_", "TRITON_", "PYTORCH_",
     "TORCH", "SGLANG_", "LMCACHE_", "HF_", "HUGGING_FACE_", "NVIDIA_",
     "OMP_", "MKL_", "EXL3_", "TABBY_", "SAFETENSORS_", "XDG_",
+    # QEngine: its image's entrypoint, server/app.py and libqengine.so / libqflash.so read QE_*
+    "QE_",
 )
 ENGINE_EXACT = {"PATH", "HOME", "HOSTNAME", "LD_LIBRARY_PATH", "PWD", "IFS",
-                "DEBIAN_FRONTEND", "PYTHONUNBUFFERED", "PYTHONUTF8"}
+                "DEBIAN_FRONTEND", "PYTHONUNBUFFERED", "PYTHONUTF8",
+                # QEngine's Flash-Next engine (libqflash.so) reads these; named one by one,
+                # because a FLASH_ prefix would also excuse FLASH_ATTN on the vLLM composes
+                "FLASH_MAX_SEQS", "FLASH_KV_ARCHIVE_GB", "FLASH_NGRAM_PIN",
+                "FLASH_EC_MARGIN_MB", "FLASH_LOOKUP", "FLASH_COMM"}
 
 # DEBT REGISTER — each entry must name WHY the dead knob is deliberate.
 # Shrink it; never grow it silently. An entry here means a documented knob is
