@@ -15130,3 +15130,184 @@ class TestCatalogSort:
         M.apply_persisted_settings(app3, {})
         async with app3.run_test(size=(120, 40)):
             assert app3.query_one("#catalog-pane", CatalogPane)._sort_mode == "model"
+
+
+# ===========================================================================
+# #1814 — Catalog · [W] a slug's weights folders, and removing them
+# ===========================================================================
+
+from club3090_cockpit.app import WeightsScreen  # noqa: E402
+
+WEIGHTS_SHOW_JSON = json.dumps({
+    "slug": "vllm/dual", "status": "production", "model_dir": "/models-fx",
+    "folders": [
+        {"path": "/models-fx/qwen-awq", "resolved": "/disk2/qwen-awq", "linked": True,
+         "role": "main", "recipes": ["qwen3.6-27b:awq"], "mounts": [], "state": "complete",
+         "size_bytes": 20 * 1024 ** 3, "file_count": 9,
+         "users": [{"slug": "vllm/dual-old", "status": "deprecated", "needs_files": True}]},
+        {"path": "/models-fx/qwen-drafter", "resolved": "/models-fx/qwen-drafter", "linked": False,
+         "role": "draft", "recipes": ["qwen3.6-27b:dflash"], "mounts": [], "state": "missing",
+         "size_bytes": 0, "file_count": 0, "users": []},
+        {"path": "/models-fx/qwen-gguf", "resolved": "/models-fx/qwen-gguf", "linked": False,
+         "role": "mmproj", "recipes": ["qwen3.6-27b:gguf_mmproj_f16"], "mounts": [], "state": "complete",
+         "size_bytes": 75 * 1024 ** 3, "file_count": 37, "recipe_bytes": 1024 ** 3, "users": []},
+    ],
+    "warnings": [],
+})
+
+
+def _weights_plan(exit_code, *, allow_shared=False, refusals=None):
+    return json.dumps({
+        "slug": "vllm/dual", "dry_run": True, "allow_shared": allow_shared,
+        "folders": ["/models-fx/qwen-awq"],
+        "targets": [
+            {"path": "/models-fx/qwen-awq/model-00001.safetensors", "resolved": "/disk2/qwen-awq/model-00001.safetensors",
+             "folder": "/models-fx/qwen-awq", "recipe": "qwen3.6-27b:awq", "bytes": 10 * 1024 ** 3,
+             "freed_bytes": 10 * 1024 ** 3, "ino": 1, "bookkeeping": False},
+            {"path": "/models-fx/qwen-awq/.cache/huggingface/download/model-00001.safetensors.metadata",
+             "resolved": "/disk2/qwen-awq/.cache/huggingface/download/model-00001.safetensors.metadata",
+             "folder": "/models-fx/qwen-awq", "recipe": "qwen3.6-27b:awq", "bytes": 4096,
+             "freed_bytes": 4096, "ino": 2, "bookkeeping": True},
+        ],
+        "dirs": [], "links": [], "total_bytes": 10 * 1024 ** 3 + 4096, "freed_bytes": 10 * 1024 ** 3 + 4096,
+        "refusals": refusals or [], "notes": [], "digest": "abc123def4567890", "exit": exit_code,
+    })
+
+
+SHARED_REFUSAL = [{"code": "shared", "overridable": True, "folder": "/models-fx/qwen-awq",
+                   "message": "1 file(s) in /models-fx/qwen-awq are needed by 1 other slug(s)",
+                   "slugs": [{"slug": "vllm/dual-old", "status": "deprecated"}]}]
+HARD_REFUSAL = [{"code": "container", "overridable": False, "folder": "/models-fx/qwen-awq",
+                 "message": "vllm-qwen is running and mounts /models-fx — stop it first"}]
+
+
+class TestCatalogWeights:
+    """[W] shows each weights folder (path, resolved path, state, size, other
+    users); [x] is a dry run that lists exactly what goes; ⏎ hands the plan,
+    pinned by its digest, to the standard confirm gate.  Refusals come from
+    weights.sh and leave no way to remove — except the explicit [A] for files
+    other slugs need."""
+
+    @staticmethod
+    def _responses(plan_json, allow_json=None):
+        r = {"weights.sh show vllm/dual --json": ok(WEIGHTS_SHOW_JSON)}
+        if allow_json is not None:
+            # more specific first: FakeRunner takes the FIRST substring match
+            r["weights.sh remove vllm/dual --dry-run --allow-shared"] = ok(allow_json)
+        r["weights.sh remove vllm/dual --dry-run"] = ok(plan_json)
+        return fake_responses(**r)
+
+    async def _open(self, app, pilot):
+        await _settle(pilot)
+        app.query_one("#catalog-table", DataTable).move_cursor(row=0)
+        await pilot.press("W")
+        await _settle(pilot)
+        assert isinstance(app.screen, WeightsScreen)
+        return str(app.screen.query_one("#weights-body", Static).render())
+
+    @pytest.mark.asyncio
+    async def test_shows_each_folder(self):
+        app, runner, wr = make_app(responses=self._responses(_weights_plan(0)))
+        async with app.run_test(size=(140, 50)) as pilot:
+            body = await self._open(app, pilot)
+            assert "/models-fx/qwen-awq" in body and "→ /disk2/qwen-awq" in body  # symlink resolved
+            assert "complete" in body and "20.00 GiB" in body and "9 file(s)" in body
+            assert "also used by 1" in body and "vllm/dual-old" in body and "deprecated" in body
+            assert "draft" in body and "missing" in body and "no other slug uses it" in body
+            # a projector in a bucket of quants: the folder's size AND its own
+            assert "75.00 GiB" in body and "this recipe's files: 1.00 GiB" in body
+            show = [c for c in runner.calls if "weights.sh" in " ".join(c)]
+            assert show and show[0][:5] == ["bash", "scripts/weights.sh", "show", "vllm/dual", "--json"]
+            assert "--model-dir" in show[0]               # looks where the catalog looks
+            assert wr.started == []                       # a read — nothing written
+
+    @pytest.mark.asyncio
+    async def test_dry_run_lists_exactly_what_goes_then_confirm_gate(self):
+        app, runner, wr = make_app(responses=self._responses(_weights_plan(0)))
+        async with app.run_test(size=(140, 50)) as pilot:
+            await self._open(app, pilot)
+            await pilot.press("x")
+            await _settle(pilot)
+            body = str(app.screen.query_one("#weights-body", Static).render())
+            assert "dry run" in str(app.screen.query_one("#weights-title", Label).render())
+            assert "delete  model-00001.safetensors  10.00 GiB" in body
+            assert "→ /disk2/qwen-awq/model-00001.safetensors" in body
+            assert "1 bookkeeping file(s)" in body and "frees 10.00 GiB" in body
+            assert wr.started == []                       # the dry run deletes nothing
+            await pilot.press("enter")                    # → the standard confirm gate
+            await pilot.pause()
+            assert isinstance(app.screen, ConfirmActionScreen)
+            plan = app.screen._plan
+            assert plan.kind == "weights_remove" and plan.requires_reconcile is False
+            assert plan.cmd[:6] == ["bash", "scripts/weights.sh", "remove", "vllm/dual", "--yes", "--digest"]
+            assert plan.cmd[6] == "abc123def4567890"      # pinned to the dry run just shown
+            assert "--allow-shared" not in plan.cmd
+            assert wr.started == []                       # still nothing until confirmed
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            await pilot.press("enter")                    # confirm → gated executor
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            assert len(wr.started) == 1 and wr.started[0]["cmd"] == plan.cmd
+
+    @pytest.mark.asyncio
+    async def test_shared_files_refuse_until_explicitly_overridden(self):
+        app, runner, wr = make_app(responses=self._responses(
+            _weights_plan(3, refusals=SHARED_REFUSAL),
+            allow_json=_weights_plan(0, allow_shared=True, refusals=SHARED_REFUSAL)))
+        async with app.run_test(size=(140, 50)) as pilot:
+            await self._open(app, pilot)
+            await pilot.press("x")
+            await _settle(pilot)
+            screen = app.screen
+            body = str(screen.query_one("#weights-body", Static).render())
+            assert "✗ refused" in body and "[shared]" in body and "vllm/dual-old" in body
+            assert screen.check_action("remove", ()) is False   # ⏎ can't remove
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.screen is screen                         # no confirm opened
+            await pilot.press("A")                              # explicit override
+            await _settle(pilot)
+            assert any("--allow-shared" in c for c in runner.calls if "weights.sh" in " ".join(c))
+            body = str(screen.query_one("#weights-body", Static).render())
+            assert "⚠ overridden" in body
+            await pilot.press("enter")
+            await pilot.pause()
+            assert isinstance(app.screen, ConfirmActionScreen)
+            assert "--allow-shared" in app.screen._plan.cmd
+            assert "INCLUDING files other slugs need" in app.screen._plan.description
+            assert wr.started == []
+
+    @pytest.mark.asyncio
+    async def test_hard_refusal_leaves_no_way_to_remove(self):
+        app, _, wr = make_app(responses=self._responses(_weights_plan(4, refusals=HARD_REFUSAL)))
+        async with app.run_test(size=(140, 50)) as pilot:
+            await self._open(app, pilot)
+            await pilot.press("x")
+            await _settle(pilot)
+            screen = app.screen
+            body = str(screen.query_one("#weights-body", Static).render())
+            assert "✗ refused" in body and "[container]" in body
+            assert screen.check_action("remove", ()) is False
+            assert screen.check_action("allow_shared", ()) is False   # not overridable
+            await pilot.press("A")
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.screen is screen and wr.started == []
+
+    @pytest.mark.asyncio
+    async def test_show_failure_is_reported_not_raised(self):
+        app, _, _ = make_app(responses=fake_responses(**{
+            "weights.sh show vllm/dual --json": RunResult(returncode=1, stdout="", stderr="[weights] ERROR: boom")}))
+        async with app.run_test(size=(140, 50)) as pilot:
+            body = await self._open(app, pilot)
+            assert "weights.sh show failed" in body and "boom" in body
+            assert app.screen.check_action("plan", ()) is False
+
+    def test_weights_remove_plan_needs_a_digest(self, tmp_path):
+        data = CockpitData(tmp_path, runner=FakeRunner(), write_runner=FakeWriteRunner())
+        with pytest.raises(ValueError):
+            data.weights_remove("vllm/dual", digest="")
+        plan = data.weights_remove("vllm/dual", digest="d1", allow_shared=True)
+        assert plan.requires_confirm is True and plan.requires_reconcile is False
+        assert plan.cmd[-1] == "--allow-shared" and "--model-dir" in plan.cmd

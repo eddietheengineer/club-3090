@@ -144,8 +144,9 @@ def _label(model: dict[str, Any], variant: str, meta: dict[str, Any]) -> str:
     return f"{display} {kind} ({variant})"
 
 
-def _recipe(model_id: str, variant: str) -> dict[str, str]:
-    models = _load_models()
+def _recipe(model_id: str, variant: str,
+            models: dict[str, dict[str, Any]] | None = None) -> dict[str, str]:
+    models = models if models is not None else _load_models()
     model = models.get(model_id)
     if not model:
         _die(f"unknown model: {model_id}")
@@ -210,7 +211,8 @@ def _resolve_key(key: str) -> tuple[str, str]:
     _die(f"unknown weight key: {key}")
 
 
-def _lookup_path(rel: str, model_hint: str | None = None) -> tuple[str, str]:
+def _lookup_path(rel: str, model_hint: str | None = None,
+                 models: dict[str, dict[str, Any]] | None = None) -> tuple[str, str]:
     rel = rel.split(" (", 1)[0].strip()
     rel = rel.removeprefix("./").removeprefix("/")
     rel = rel.removeprefix("models/")
@@ -233,7 +235,7 @@ def _lookup_path(rel: str, model_hint: str | None = None) -> tuple[str, str]:
     # last model, so a Qwen3.8-27B slug's fetch ran ThinkingCap's setup, which then said
     # "ThinkingCap downloaded" and suggested an SGLang ThinkingCap slug (#1742). The
     # caller's model (`--model`, from the compose's models/<id>/ dir) now breaks it.
-    models = _load_models()
+    models = models if models is not None else _load_models()
     matches: list[tuple[int, int, int, str, str]] = []
     # Entries whose dir sits BELOW `rel`, for the parent-mount fallback further down.
     below: list[tuple[int, int, str, str]] = []
@@ -281,6 +283,31 @@ def _lookup_path(rel: str, model_hint: str | None = None) -> tuple[str, str]:
             if len(pool) == 1:
                 return pool[0][2], pool[0][3]
     _die(f"no recipe for path: {rel}")
+
+
+def lookup_many(items: list[tuple[str, str | None]]) -> list[tuple[dict[str, str], dict[str, Any]] | None]:
+    """`lookup` for many mounted paths in one process: [(rel, model_hint)] →
+    [(recipe, raw weights entry) | None], in order.
+
+    The same `_lookup_path` + `_recipe` as the CLI, over ONE load of the profiles
+    (each CLI call re-reads every model YAML). scripts/weights.sh (#1814) maps
+    every slug's mounts to folders through this, so a removal and a launch's
+    preflight agree on which recipe a path belongs to. ``None`` = no recipe.
+    """
+    _require_yaml()
+    models = _load_models()
+    out: list[tuple[dict[str, str], dict[str, Any]] | None] = []
+    for rel, hint in items:
+        try:
+            model_id, variant = _lookup_path(rel, hint, models)
+            recipe = _recipe(model_id, variant, models)
+        except SystemExit:
+            out.append(None)
+            continue
+        meta = (models.get(recipe["WEIGHT_MODEL"]) or {}).get("weights", {}).get(
+            recipe["WEIGHT_VARIANT"]) or {}
+        out.append((recipe, meta if isinstance(meta, dict) else {}))
+    return out
 
 
 def _print_env(recipe: dict[str, str]) -> None:

@@ -1300,21 +1300,11 @@ for prefix, (total, width) in sorted(groups.items()):
 PY
 }
 
-preflight_compose_deps() {
-  local compose_file="$1"
-  if [[ "${PREFLIGHT_NO_COMPOSE_DEPS:-0}" == "1" ]]; then
-    return 0
-  fi
-  if [[ ! -f "$compose_file" ]]; then
-    echo "[preflight] ERROR: compose file not found: $compose_file" >&2
-    return 1
-  fi
-
-  local model_dir
-  model_dir="$(_preflight_compose_model_dir "$compose_file")"
-
-  local compose_files=("$compose_file")
-  local compose_dir extends_file
+# _preflight_compose_files <compose_file> — the compose plus every file it pulls in
+# through `extends: file:`, one per line, compose first.
+_preflight_compose_files() {
+  local compose_file="$1" compose_dir extends_file
+  printf '%s\n' "$compose_file"
   compose_dir="$(cd -- "$(dirname -- "$compose_file")" && pwd)"
   while IFS= read -r extends_file; do
     extends_file="$(_preflight_trim "$extends_file")"
@@ -1324,17 +1314,29 @@ preflight_compose_deps() {
     extends_file="${extends_file%'}"
     [[ -n "$extends_file" ]] || continue
     [[ "$extends_file" == /* ]] || extends_file="${compose_dir}/${extends_file}"
-    [[ -f "$extends_file" ]] && compose_files+=("$extends_file")
+    [[ -f "$extends_file" ]] && printf '%s\n' "$extends_file"
   done < <(command grep -hE '^[[:space:]]*file:[[:space:]]*[^#[:space:]]+' "$compose_file" \
     | sed -E 's/^[[:space:]]*file:[[:space:]]*//' || true)
+}
 
-  local missing=()
-  local escaped=()
-  # Model dirs that exist and are worth a #1042 shard scan (deduped below):
-  # HF subdirs with a config.json, GGUF/drafter/mmproj parent dirs, SGLang
-  # ${MODEL_DIR}/... volume dirs.
-  local shard_dirs=()
-  local shard_note=0
+# preflight_compose_weight_paths <compose_file> — every weights path the compose
+# mounts, as `<class><TAB><path relative to MODEL_DIR>` lines, in the order
+# preflight_compose_deps checks them. Classes:
+#   gguf / draft / mmproj — a llama.cpp-family FILE (-m / the drafter / --mmproj)
+#   hf                    — a vLLM HF-cache subdir (expects <dir>/config.json)
+#   volume                — a ${MODEL_DIR}/<path> volume source (file or dir)
+#   command               — a /models/<dir> named by a whole-MODEL_DIR compose's
+#                           exec-form or script `command:` (expects config.json)
+# The GGUF_FILE / DRAFT_FILE / MMPROJ_FILE overrides apply as they do at launch.
+#
+# This is THE reader of what a compose mounts: preflight_compose_deps checks these
+# paths and scripts/weights.sh (#1814) maps them to weights folders. Keep one copy —
+# a second reader would drift, and weights.sh deletes files on its answer.
+preflight_compose_weight_paths() {
+  local compose_file="$1"
+  [[ -f "$compose_file" ]] || return 1
+  local compose_files=()
+  mapfile -t compose_files < <(_preflight_compose_files "$compose_file")
 
   # Engine detection: llama.cpp composes mount ${MODEL_DIR}:/models and pass
   # `-m /models/<path>` or `--model /models/<path>`; vLLM composes mount
@@ -1363,11 +1365,11 @@ preflight_compose_deps() {
   done < <(command grep -hE '^[[:space:]]*image:' "${compose_files[@]}" \
              | sed -E 's/^[[:space:]]*image:[[:space:]]*//; s/^["'"'"']//; s/["'"'"']$//' || true)
 
+  local token path
   if [[ $is_llamacpp -eq 1 ]]; then
     local gguf_paths=()
     local draft_paths=()
     local mmproj_paths=()
-    local token path
 
     # Target weights: -m / --model
     while IFS= read -r token; do
@@ -1400,83 +1402,116 @@ preflight_compose_deps() {
       mmproj_paths=("$MMPROJ_FILE")
     fi
 
-    for path in "${gguf_paths[@]}"; do
-      if [[ ! -f "${model_dir}/${path}" ]]; then
-        missing+=("${model_dir}/${path} (llama.cpp GGUF weights)")
-      else
-        _preflight_escapes_mount "$model_dir" "${model_dir}/${path}" && escaped+=("${model_dir}/${path}")
-        shard_dirs+=("$(dirname -- "${model_dir}/${path}")")
-      fi
-    done
-    for path in "${draft_paths[@]}"; do
-      if [[ ! -f "${model_dir}/${path}" ]]; then
-        missing+=("${model_dir}/${path} (speculative drafter GGUF)")
-      else
-        _preflight_escapes_mount "$model_dir" "${model_dir}/${path}" && escaped+=("${model_dir}/${path}")
-        shard_dirs+=("$(dirname -- "${model_dir}/${path}")")
-      fi
-    done
-    for path in "${mmproj_paths[@]}"; do
-      if [[ ! -f "${model_dir}/${path}" ]]; then
-        missing+=("${model_dir}/${path} (vision projector)")
-      else
-        _preflight_escapes_mount "$model_dir" "${model_dir}/${path}" && escaped+=("${model_dir}/${path}")
-        shard_dirs+=("$(dirname -- "${model_dir}/${path}")")
-      fi
-    done
-  else
-    local seen_subdirs=" "
-    local subdir
+    for path in ${gguf_paths[@]+"${gguf_paths[@]}"};     do printf 'gguf\t%s\n' "$path"; done
+    for path in ${draft_paths[@]+"${draft_paths[@]}"};   do printf 'draft\t%s\n' "$path"; done
+    for path in ${mmproj_paths[@]+"${mmproj_paths[@]}"}; do printf 'mmproj\t%s\n' "$path"; done
+    return 0
+  fi
 
-    # vLLM path — collect every in-container HF model path the compose names:
-    # main `--model` entries and JSON `--speculative-config` draft models.
-    while IFS= read -r token; do
-      subdir="$(_preflight_compose_vllm_subdir "$token")"
-      [[ -n "$subdir" ]] || continue
-      if [[ "$seen_subdirs" != *" ${subdir} "* ]]; then
-        seen_subdirs+="${subdir} "
-        if [[ ! -f "${model_dir}/${subdir}/config.json" ]]; then
-          missing+=("${model_dir}/${subdir}/config.json (HF model)")
-        else
-          # Present enough to scan — the #1042 shard check runs on it below.
-          shard_dirs+=("${model_dir}/${subdir}")
-        fi
-      fi
-    # Char-class must NOT exclude `:` or `}` — model paths can be
-    # `/root/.cache/huggingface/${MODEL_SUBDIR:-default}` (vLLM) and excluding
-    # those truncated the token to `${MODEL_SUBDIR` before _preflight_compose_path_default
-    # could resolve the `:-default`, causing a false "missing" (the gemma-4-12b
-    # MODEL_SUBDIR/SPEC_MODEL_SUBDIR composes). Stop only at real delimiters
-    # (quote / whitespace / comma); the `${VAR:-default}` resolver runs downstream.
-    done < <(command grep -hv '^[[:space:]]*#' "${compose_files[@]}" 2>/dev/null | command grep -oE '/root/\.cache/huggingface/[^"'\''\\[:space:],]+' || true)
+  local seen_subdirs=" "
+  local subdir
 
-    # Experimental SGLang composes mount individual MODEL_DIR subdirectories to
-    # /models/target and /models/drafter instead of using the HF cache mount.
+  # vLLM path — collect every in-container HF model path the compose names:
+  # main `--model` entries and JSON `--speculative-config` draft models.
+  while IFS= read -r token; do
+    subdir="$(_preflight_compose_vllm_subdir "$token")"
+    [[ -n "$subdir" ]] || continue
+    if [[ "$seen_subdirs" != *" ${subdir} "* ]]; then
+      seen_subdirs+="${subdir} "
+      printf 'hf\t%s\n' "$subdir"
+    fi
+  # Char-class must NOT exclude `:` or `}` — model paths can be
+  # `/root/.cache/huggingface/${MODEL_SUBDIR:-default}` (vLLM) and excluding
+  # those truncated the token to `${MODEL_SUBDIR` before _preflight_compose_path_default
+  # could resolve the `:-default`, causing a false "missing" (the gemma-4-12b
+  # MODEL_SUBDIR/SPEC_MODEL_SUBDIR composes). Stop only at real delimiters
+  # (quote / whitespace / comma); the `${VAR:-default}` resolver runs downstream.
+  done < <(command grep -hv '^[[:space:]]*#' "${compose_files[@]}" 2>/dev/null | command grep -oE '/root/\.cache/huggingface/[^"'\''\\[:space:],]+' || true)
+
+  # Experimental SGLang composes mount individual MODEL_DIR subdirectories to
+  # /models/target and /models/drafter instead of using the HF cache mount.
+  while IFS= read -r token; do
+    path="$(_preflight_compose_path_default "$token")"
+    path="${path%%:*}"
+    [[ -n "$path" ]] || continue
+    printf 'volume\t%s\n' "$path"
+  # Comment lines are skipped, as in the vLLM extractor above: a compose header
+  # that MENTIONS `${MODEL_DIR}/sub` was otherwise checked as a mount.
+  done < <(command grep -hv '^[[:space:]]*#' "${compose_files[@]}" 2>/dev/null | command grep -oE '\$\{MODEL_DIR[^}]*\}/[^"[:space:]]+' || true)
+
+  # bucko-vllm mounts the whole ${MODEL_DIR} at /models and names the model (and
+  # the Swift slug's drafter) as bare exec-form `command:` arguments, with no flag,
+  # so none of the readers above saw them and a missing or misnamed folder got past
+  # preflight to fail inside the container (Discussion #1700). SGLang does the same
+  # with a shell-script `command:` whose --model-path names a variable set to
+  # /models/<sub>. Only those two readers count: elsewhere `/models/…` is also a
+  # bind-mount TARGET (SGLang's chat templates) or a shell default, which must not be
+  # checked as a host path.
+  if _preflight_compose_mounts_model_dir_whole "${compose_files[@]}"; then
     while IFS= read -r token; do
       path="$(_preflight_compose_path_default "$token")"
-      path="${path%%:*}"
       [[ -n "$path" ]] || continue
-      if [[ ! -e "${model_dir}/${path}" ]]; then
-        missing+=("${model_dir}/${path} (MODEL_DIR volume path)")
-      elif [[ -d "${model_dir}/${path}" ]]; then
-        shard_dirs+=("${model_dir}/${path}")
-      fi
-    # Comment lines are skipped, as in the vLLM extractor above: a compose header
-    # that MENTIONS `${MODEL_DIR}/sub` was otherwise checked as a mount.
-    done < <(command grep -hv '^[[:space:]]*#' "${compose_files[@]}" 2>/dev/null | command grep -oE '\$\{MODEL_DIR[^}]*\}/[^"[:space:]]+' || true)
+      printf 'command\t%s\n' "$path"
+    done < <({ _preflight_compose_command_model_paths "${compose_files[@]}"
+               _preflight_compose_script_model_paths "${compose_files[@]}"; } | sort -u)
+  fi
+  return 0
+}
 
-    # bucko-vllm mounts the whole ${MODEL_DIR} at /models and names the model (and
-    # the Swift slug's drafter) as bare exec-form `command:` arguments, with no flag,
-    # so none of the readers above saw them and a missing or misnamed folder got past
-    # preflight to fail inside the container (Discussion #1700). SGLang does the same
-    # with a shell-script `command:` whose --model-path names a variable set to
-    # /models/<sub>. Only those two readers count: elsewhere `/models/…` is also a
-    # bind-mount TARGET (SGLang's chat templates) or a shell default, which must not be
-    # checked as a host path.
-    if _preflight_compose_mounts_model_dir_whole "${compose_files[@]}"; then
-      while IFS= read -r token; do
-        path="$(_preflight_compose_path_default "$token")"
-        [[ -n "$path" ]] || continue
+preflight_compose_deps() {
+  local compose_file="$1"
+  if [[ "${PREFLIGHT_NO_COMPOSE_DEPS:-0}" == "1" ]]; then
+    return 0
+  fi
+  if [[ ! -f "$compose_file" ]]; then
+    echo "[preflight] ERROR: compose file not found: $compose_file" >&2
+    return 1
+  fi
+
+  local model_dir
+  model_dir="$(_preflight_compose_model_dir "$compose_file")"
+
+  local missing=()
+  local escaped=()
+  # Model dirs that exist and are worth a #1042 shard scan (deduped below):
+  # HF subdirs with a config.json, GGUF/drafter/mmproj parent dirs, SGLang
+  # ${MODEL_DIR}/... volume dirs.
+  local shard_dirs=()
+  local shard_note=0
+
+  # WHAT the compose mounts comes from preflight_compose_weight_paths (one reader,
+  # shared with scripts/weights.sh); this loop only decides what each path needs.
+  local cls path
+  while IFS=$'\t' read -r cls path; do
+    [[ -n "$path" ]] || continue
+    case "$cls" in
+      gguf|draft|mmproj)
+        local what="llama.cpp GGUF weights"
+        [[ "$cls" == "draft" ]] && what="speculative drafter GGUF"
+        [[ "$cls" == "mmproj" ]] && what="vision projector"
+        if [[ ! -f "${model_dir}/${path}" ]]; then
+          missing+=("${model_dir}/${path} (${what})")
+        else
+          _preflight_escapes_mount "$model_dir" "${model_dir}/${path}" && escaped+=("${model_dir}/${path}")
+          shard_dirs+=("$(dirname -- "${model_dir}/${path}")")
+        fi
+        ;;
+      hf)
+        if [[ ! -f "${model_dir}/${path}/config.json" ]]; then
+          missing+=("${model_dir}/${path}/config.json (HF model)")
+        else
+          # Present enough to scan — the #1042 shard check runs on it below.
+          shard_dirs+=("${model_dir}/${path}")
+        fi
+        ;;
+      volume)
+        if [[ ! -e "${model_dir}/${path}" ]]; then
+          missing+=("${model_dir}/${path} (MODEL_DIR volume path)")
+        elif [[ -d "${model_dir}/${path}" ]]; then
+          shard_dirs+=("${model_dir}/${path}")
+        fi
+        ;;
+      command)
         if [[ ! -f "${model_dir}/${path}/config.json" ]]; then
           missing+=("${model_dir}/${path}/config.json (HF model)")
         elif _preflight_escapes_mount "$model_dir" "${model_dir}/${path}"; then
@@ -1484,10 +1519,9 @@ preflight_compose_deps() {
         else
           shard_dirs+=("${model_dir}/${path}")
         fi
-      done < <({ _preflight_compose_command_model_paths "${compose_files[@]}"
-                 _preflight_compose_script_model_paths "${compose_files[@]}"; } | sort -u)
-    fi
-  fi
+        ;;
+    esac
+  done < <(preflight_compose_weight_paths "$compose_file")
 
   # Present on the host, unreachable from the container. Reported SEPARATELY from
   # `missing`, because the fix is completely different: the bytes are already

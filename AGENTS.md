@@ -63,6 +63,7 @@ Most agent sessions on a rig are "make it serve / find out why it doesn't", not 
 | What does the gateway send and receive? | `bash scripts/litellm-log.sh on` … `off` |
 | Is the prompt cache hitting? | `bash scripts/cache-share.sh` |
 | Where are the compile caches and the KV disk tier, and how big? | `bash scripts/settings.sh caches` |
+| Which weights folders does a slug use, where are they really, and who else uses them? Can I free them? | `bash scripts/weights.sh show <slug>`, then `bash scripts/weights.sh remove <slug> --dry-run` (deletes only the recipe's `files:`; refuses shared files, a running container's folder, paths outside the model dir) |
 | A redacted bundle to paste into an issue | `bash scripts/report.sh` (`--full` adds verify / stress / soak / bench) |
 
 ## Upstream issues — single source of truth
