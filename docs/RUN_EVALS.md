@@ -125,8 +125,9 @@ published ones.
 
 ### Engines with their own defaults
 
-Strata, Project Maya, bucko-vllm, HyperQwen, ExLlamaV3 and PrismML's llama.cpp each serve a
-different effort, and four of them don't serve the card's sampler on every leg. The Qwen3.8 card's
+Strata, Project Maya (its GLM, DeepSeek and MiniMax engines), bucko-vllm, HyperQwen, ExLlamaV3,
+PrismML's llama.cpp and QEngine each serve a different effort, and several of them don't serve the
+card's sampler on every leg. The Qwen3.8 card's
 rows, for where the table says to send one:
 - **thinking:** `--temperature 1.0 --top-p 0.95 --top-k 20 --min-p 0.0`
 - **instruct:** `--temperature 0.7 --top-p 0.80 --top-k 20 --min-p 0.0`
@@ -134,11 +135,14 @@ rows, for where the table says to send one:
 | Engine | Thinking-leg effort (as served) | Efforts it accepts | Send from the client (after `--`) | Also |
 |---|---|---|---|---|
 | Strata | `xhigh` | low, medium, xhigh (`high` and `max` mean xhigh) | the thinking row on the thinking leg, the instruct row on the instruct leg | no server reasoning budget |
-| Project Maya | **`max`** | none, low, medium, high, xhigh, max | nothing: the server serves GLM's one row (temperature 1.0, top_p 0.95) | a 32K reasoning budget, clamped per request to leave room for the answer. Maya sizes its RAM tier from free memory, so drop the page cache before each boot |
+| Project Maya, GLM-5.3-Flash | **`max`** | none, low, medium, high, xhigh, max | nothing: the server serves GLM's one row (temperature 1.0, top_p 0.95) | a 32K reasoning budget, clamped per request to leave room for the answer. Maya sizes its RAM tier from free memory, so drop the page cache before each boot |
+| Project Maya, DeepSeek-V4.1-Flash (`maya-ds4`) | `high` | low, high, max (`medium` means high, `xhigh` means max), which DeepSeek's template turns into its own 1–100 effort budget. `none`, `off` or `minimal` turns thinking off | nothing: the server serves Maya's DeepSeek default (temperature 1.0, top_p 1.0) | the same 32K reasoning budget. One request at a time |
+| Project Maya, MiniMax-M3.1-Flash (`maya-mm3`) | **`auto`** (the model decides whether to think) | auto, low, medium, high, xhigh, max: all five levels reach MiniMax's template. `none`, `off` or `minimal` turns thinking off | nothing: the server serves the model card's temperature 1.0, top_p 0.95 | the same 32K reasoning budget. Set `REASONING_EFFORT=auto` to score the served default: unset, benchlocal sends `high`. One request at a time |
 | bucko-vllm | `xhigh` | **low, medium, xhigh only**: `high` or `max` fails every request | the instruct row on the instruct leg | a 16,384-token server reasoning budget, the same as quality-test's cap: run the thinking leg with `THINKING_MAX_TOKENS=20480` |
 | HyperQwen | `low` | low, medium, xhigh (`high` and `max` mean xhigh) | the instruct row on the instruct leg | `REASONING_EFFORT` is also its boot setting, and the boot refuses `none` or `high`: set it on the `quality-test.sh` line only |
 | ExLlamaV3 | `xhigh` | low, medium, xhigh | the thinking row on the thinking leg, the instruct row on the instruct leg | boot with your rig's thread count (`THREADS=28` on the reference rig; [EXLLAMAV3.md](engines/EXLLAMAV3.md)) |
 | PrismML llama.cpp | **`medium`** | xhigh, medium, low, but **`low` behaves like xhigh** | nothing: `INSTRUCT=1` moves the server to the instruct row | a 32,768-token boot reasoning budget, which quality-test reads and raises its cap for |
+| QEngine | `low` (the compose's default; QEngine's own template defaults to xhigh) | low, medium, xhigh (`high` means xhigh); a request's `minimal`, `max` or unknown effort becomes **medium** | 27B: the thinking row on the thinking leg (it serves 0.6 / 0.95 / 20 / 0). Both slugs: the instruct row on the instruct leg | no reasoning budget. `REASONING_EFFORT` is also its boot setting, and the boot refuses anything but low, medium or xhigh: set it on the `quality-test.sh` line only. Its cross-turn loop guard is on by default: after three identical turns it adds a server note to the agent's latest tool result. `QE_LOOP_GUARD_TURNS=0` at boot turns it off ([QENGINE.md](engines/QENGINE.md)) |
 
 For an engine with no server switch, both legs look like this (Strata shown):
 
@@ -156,7 +160,7 @@ bash scripts/quality-test.sh --full --no-thinking \
 
 - **Set `REASONING_EFFORT` on every thinking leg** to the table's value. Unset isn't neutral: where
   the server advertises an effort control (Project Maya), benchlocal then sends `high`, not the
-  served `max`.
+  served `max` (GLM) or `auto` (MiniMax).
 - **Leave it unset on every instruct leg.** With it set, benchlocal turns thinking off by sending
   `reasoning_effort: "none"`, which ExLlamaV3's template rejects.
 - **Explicit sampler flags turn server sampling off** for that run, as on SGLang. Say which row you
