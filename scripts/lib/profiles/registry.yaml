@@ -7010,7 +7010,7 @@ entries:
     default_port: 8089
     kvcalc_key: SKIP
     status: incubating
-    status_note: "QEngine 1.3 (ghcr.io/bpx03/qengine, digest-pinned with the curated engine profile), TP=2 over PCIe on 2x3090. RedHatAI W4A16 INT4 + MTP (_ft head when present). Upstream tunes for 3 cards; 2 is author-measured at 72-85% of TP=3 and 1.2-2.0x vLLM dual-fast output TPS on short prompts. fp8_e4m3 is the engine's only KV format; 32 GB host-RAM KV archive. Not gate-passing (no verify-full/stress/soak/8-pack). PolyForm Noncommercial licence."
+    status_note: "QEngine 1.3 (ghcr.io/bpx03/qengine, digest-pinned with the curated engine profile), TP=2 over PCIe on 2x3090. RedHatAI W4A16 INT4 + MTP (_ft head when present). Upstream tunes for 3 cards; 2 is author-measured at 72-85% of TP=3 and 1.2-2.0x vLLM dual-fast output TPS on short prompts. fp8_e4m3 is the engine's only KV format; 32 GB host-RAM KV archive. All gates pass on the 1.3 pin (2026-10-28): verify-full 10/10, bench, stress 8/8, soak PASS (fresh mode), 8-pack both legs — kept 🐣 pending maintainer promotion review. PolyForm Noncommercial licence."
     weights_companions: []
     gateway: false
     serve_aliases: []

@@ -11,9 +11,11 @@
 #   Max ctx:   262144
 #   Genesis:   N/A — Genesis is Qwen3-Next-specific
 #   Status:    🐣 Incubating
-#   Caveats:   Not gate-passing yet: verify-full 9/9 PASS + canonical bench on the
-#              1.3-rc4 image (2026-10-27); the pin now sits on 1.3, so re-boot and re-run
-#              verify-full before trusting those numbers. stress / soak / 8-pack pending.
+#   Quality:   toolcall-15 13/15 (87%) · instructfollow-15 15/15 (100%) · structoutput-15 14/15 (93%) · dataextract-15 14/15 (93%) · reasonmath-15 15/15 (100%) · bugfind-15 15/15 (100%) · hermesagent-20 17/20 (85%) · cli-40 27/40 (68%) (--full, thinking ON, sampling=server, validity=valid, packs tc1.0.1·if2.0.0·so2.1.0·de1.2.0·rm1.1.0·bf1.0.1·hm1.0.0·cli1.0.2, 2026-10-28); thinking OFF 111/150
+#   Caveats:   All gates pass on the 1.3 pin (2026-10-28): verify-full 10/10, canonical
+#              bench, verify-stress 8/8 (91K needle), soak PASS (fresh mode; 0 growth /
+#              0 errors / 93.7% retention — continuous soak not yet run), 8-pack both
+#              legs — see Quality. Kept 🐣 pending maintainer promotion review.
 #              Upstream tunes this engine for 3× 3090; 2 cards is measured by the author
 #              (72-85% of TP=3) but not the shipped default. PolyForm Noncommercial
 #              licence on the engine. Thinking is ON by default (--think 1); toggle per

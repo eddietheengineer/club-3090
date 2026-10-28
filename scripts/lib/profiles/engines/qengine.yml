@@ -58,15 +58,10 @@ notes: >
   presence penalty on the repeated reply and a server note appended to the latest tool result
   (QE_LOOP_GUARD_TURNS=0 turns it off, QE_LOOP_GUARD_NOTE=0 drops only the note, "loop_guard": false in a
   request turns it off for that request). Engine kind `qengine`.
-  Slugs (2026-10-27): qengine/qwen38-27b-dual (TP=2, verify-full 9/9, canonical bench) and
-  qengine/qwen38-flash-next-dual (TP=2, verify-full 9/9, clean en/ja/fr output —
-  the same artifact garbled on rc1/rc2). Both boots were on the 1.3-rc4 image; the pin now
-  sits on 1.3, so re-boot and re-run verify-full on both before trusting those numbers.
-  Flash-Next long-prefill NaN (2026-10-28, 2x3090): with the engine's FLASH_COMM=auto probe
-  picking the P2P SM path, a ~76K-token prefill yields non-finite lm_head inputs — the
-  guard fails the request and, under load, exits ("shared state is likely corrupt").
-  Measured identical on 1.3 and 1.3-rc4 (same position, same 152 blocks), so it is the SM
-  path, not a pin regression; the flash-next compose ships FLASH_COMM=ce, which measured
-  clean (4x76K prefills). Both 🐣 Incubating; stress/soak/8-pack pending. The server's
+  Slugs (2026-10-27, re-validated on the 1.3 pin 2026-10-28): qengine/qwen38-27b-dual
+  (TP=2, verify-full 10/10 + bench + stress 8/8 + soak PASS + 8-pack both legs — the dense
+  libqengine.so path is bump-neutral) and qengine/qwen38-flash-next-dual (TP=2, verify-full
+  10/10 + bench + stress 8/8 on the FLASH_COMM=ce fix; the same artifact garbled on rc1/rc2).
+  Both 🐣 Incubating. The server's
   [stats] SpecDecoding lines are the vLLM-modern wording, so capture.sh's acceptance parser reads
   them unchanged; bench/health/verify-full find the container by its qengine- prefix.

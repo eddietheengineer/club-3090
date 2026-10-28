@@ -2,6 +2,17 @@
 
 Dated history for Qwen3.8-27B configs in this repo. Append-only — add a new entry, don't rewrite past ones.
 
+## 2026-10-28 — QEngine 27B slug: full gate passes on the 1.3 pin
+
+Re-validated `qengine/qwen38-27b-dual` on the 1.3 image after the pin bump: **verify-full
+10/10** (MTP accept-len 6.05), canonical bench **173.2 / 251.0** wall (decode 174.2 / 254.4;
+prefill 2332 @10K · 2075 @90K — within noise of the rc4 row), **verify-stress 8/8** (91K
+needle at 2073 t/s), **soak PASS** (fresh mode: 0 growth / 0 errors / 93.7% retention), and
+the **8-pack both legs** (thinking-OFF 111/150, thinking-ON 130/150). The dense
+`libqengine.so` path is bump-neutral — the two rc4→1.3-era defects (long-prefill NaN,
+8-slot VRAM OOM) are Flash-Next (`libqflash.so`) only. Kept 🐣 pending maintainer promotion
+review. BENCHMARKS row added.
+
 ## 2026-10-28 — QEngine pin bump: 1.3-rc4 → 1.3
 
 `qengine/qwen38-27b-dual` now runs the final `1.3` image (`ghcr.io/bpx03/qengine` digest

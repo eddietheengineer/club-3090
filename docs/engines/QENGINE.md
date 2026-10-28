@@ -22,7 +22,7 @@ What it does, from its README:
 
 ## Image
 
-The author publishes `ghcr.io/bpx03/qengine` (text only, about 0.3 GB; the `:vision` tags add the vision encoder and PyTorch, about 3 GB). Each image's `org.opencontainers.image.revision` label names its source commit. The profile pins **`1.3`** by digest (`sha256:b9d1b0af…`, source `d15a4d3a` = git tag `v1.3`), and the launchers will inject it as `QENGINE_IMAGE`. The two slugs' verify-full boots were on `1.3-rc4`; re-boot both on `1.3` before trusting those numbers.
+The author publishes `ghcr.io/bpx03/qengine` (text only, about 0.3 GB; the `:vision` tags add the vision encoder and PyTorch, about 3 GB). Each image's `org.opencontainers.image.revision` label names its source commit. The profile pins **`1.3`** by digest (`sha256:b9d1b0af…`, source `d15a4d3a` = git tag `v1.3`), and the launchers will inject it as `QENGINE_IMAGE`. Both slugs were re-booted on `1.3` (2026-10-28): the 27B slug passes the full gate (verify-full / bench / stress / soak / 8-pack both legs); the Flash-Next slug passes verify-full / bench / stress with `FLASH_COMM=ce` (see the two warnings below).
 
 ## Settings
 
