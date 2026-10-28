@@ -44,8 +44,8 @@ services:
     stop_grace_period: 60s  # the server saves live conversations to the disk cache on SIGTERM
     ports:
       - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8089}}:8080"
-      # dashboard + /metrics, host-local only (upstream publishes it on 127.0.0.1)
-      - "127.0.0.1:${QE_METRICS_PORT_HOST:-9394}:9393"
+      # dashboard + /metrics, host-local by default (upstream binds 127.0.0.1)
+      - "${QE_METRICS_BIND_HOST:-127.0.0.1}:${QE_METRICS_PORT_HOST:-9394}:9393"
     # club-3090 standard knobs -> QEngine flags (the image entrypoint appends the
     # command line to server/app.py). QE_EXTRA_ARGS naming the same flag wins.
     entrypoint:
