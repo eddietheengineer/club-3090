@@ -6,7 +6,9 @@ Dated history for Qwen3.8-27B configs in this repo. Append-only — add a new en
 
 The [Qwen3.8 dual-card vLLM benchmark row](../../BENCHMARKS.md#qwen38-27b) records
 @eddietheengineer's mixed RTX 3090 + RTX 3090 Ti comparison with GPU Unlock OFF
-versus ON ([#1755](https://github.com/noonghunna/club-3090/issues/1755)). On the
+versus ON ([#1755](https://github.com/noonghunna/club-3090/issues/1755)).
+[GPU Unlock](https://github.com/Zagitta/gpu-unlock) lifts GeForce cards' half-rate cap
+on FP16 / BF16 / TF32 tensor-core math with FP32 accumulation, at boot. On the
 reported PCIe P2P, no-NVLink rig, fp8 KV and MTP decode stayed within the stated
 noise band, while prefill improved **14.5% at 10K / 18.4% at 90K**. Peak VRAM
 was unchanged at 46,404 MiB; the 1,496 MiB first-run increase was warmup
