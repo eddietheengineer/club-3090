@@ -14,7 +14,8 @@
 #              carry CTX_SIZE) + LLAMA_ARG_MMPROJ_OFFLOAD=false (global
 #              club3090.env) — measured 1,238 MB free (series below).
 #   Vision:    YES — mmproj-Swift-1.5-Qwen3.8-27B-F16 (0.93 GB, ukisai's own tower)
-#   Template:  native (GGUF-embedded) via --jinja
+#   Template:  Swift-1.5's GGUF template plus an effort mapping (high/max -> xhigh, minimal -> low),
+#              via --jinja --chat-template-file (patches/swift15-gguf-reasoning-effort-template)
 #   Max ctx:   262144
 #   Genesis:   N/A — llama.cpp engine; Genesis is vLLM/Qwen3-Next-specific
 #   Status:    ✅ Production
@@ -122,6 +123,10 @@ services:
       - "${BIND_HOST:-0.0.0.0}:${ESTATE_PORT:-${PORT:-8023}}:8080"
     volumes:
       - "${MODEL_DIR:-../../../../../../models-cache}:/models:ro"
+      # Swift-1.5's own GGUF template plus one block that maps the efforts it rejects (high and
+      # max -> xhigh, minimal -> low); without it those efforts return HTTP 500. Not the Qwen3.8
+      # template: Swift's differs. See patches/swift15-gguf-reasoning-effort-template/.
+      - ../../../patches/swift15-gguf-reasoning-effort-template/chat_template.jinja:/etc/swift15-gguf-chat-template.jinja:ro
     environment:
       # Drafter toggle - docker forwards only what is declared here.
       # MTP_DRAFT_N_MAX is read by the entrypoint too, so the drafter ON/OFF decision and the
@@ -262,6 +267,7 @@ services:
       --spec-type draft-mtp
       --spec-draft-n-max ${SPEC_N:-${MTP_DRAFT_N_MAX:-2}}
       --jinja
+      --chat-template-file /etc/swift15-gguf-chat-template.jinja
       --reasoning-format ${REASONING_FORMAT:-deepseek}
       --top-k ${TOP_K:-20}
       --min-p ${MIN_P:-0.0}

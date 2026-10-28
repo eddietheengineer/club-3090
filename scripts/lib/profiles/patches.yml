@@ -516,6 +516,71 @@ patches:
       drop_when: "unsloth's GGUF template accepts minimal and max (or stops raising on unknown efforts), or the pinned mainline llama-server gains an effort allow-list. Re-vendor from the GGUF if unsloth re-pushes it with a changed template."
     status: verified
 
+  - id: swift15-gguf-reasoning-effort-template
+    model: [qwen3.8-27b]
+    files:
+      - models/qwen3.8-27b/llama-cpp/patches/swift15-gguf-reasoning-effort-template/chat_template.jinja
+    load_bearing_when:
+      - composes:
+          - llamacpp/qwen38-27b-swift15-iq3s-mtp
+        reason: >-
+          The chat template embedded in UkisAI's Swift-1.5 GSQ-RCO GGUF (sha256
+          c3cf9e34…81041, read from the file header 2026-10-28) raise_exception()s on any
+          reasoning effort outside xhigh / medium / low. Unlike unsloth's Qwen3.8 GGUF
+          template it rejects `high` too, and llama-server turns the raise into HTTP 500
+          while /health and /v1/models stay 200. `high`, `minimal` and `max` are what
+          OpenAI-compatible clients and llama-server's own --reasoning-effort list send.
+          The override is the GGUF's own template plus one block that maps high and max ->
+          xhigh and minimal -> low; low / medium / xhigh and no effort render exactly as
+          stock, and an unknown value is still rejected (rendered with jinja2 on both
+          templates, 2026-10-28). qwen38-gguf-reasoning-effort-template is NOT a drop-in:
+          it is unsloth's Qwen3.8 template (12827f24…aadce), which merges leading system
+          messages where Swift's reads only messages[0], so serving it would change how
+          every prompt on this slug is built. Not booted on this rig (the weights aren't
+          here); the contributor's 4090 runs used the stock template.
+        evidence: "models/qwen3.8-27b/llama-cpp/patches/swift15-gguf-reasoning-effort-template/PROVENANCE.md"
+    delivery:               # DEPRECATED/READ-ONLY (test-only) -- see header
+      dockerfile_bake: false
+      entrypoint_invoke: false
+      genesis: false
+    delivery_gaps: []
+    delivery_mechanism: chat_template
+    delivery_spec:
+      jinja: models/qwen3.8-27b/llama-cpp/patches/swift15-gguf-reasoning-effort-template/chat_template.jinja
+      mounted_at: /etc/swift15-gguf-chat-template.jinja
+      mount_mode: ro
+      invoke: --chat-template-file /etc/swift15-gguf-chat-template.jinja
+      wired_at: [volumes, command]
+      note: >-
+        Mounted read-only and selected with --chat-template-file next to --jinja, so
+        llama-server renders it instead of the GGUF's embedded copy. A GGUF_FILE override
+        still gets this template; it is Swift-1.5's, so point GGUF_FILE only at another
+        Swift-1.5 GGUF.
+    drift_guard:
+      kind: behavioral
+      check: >-
+        scripts/tests/test-swift15-gguf-template.sh is the offline half: the vendored file
+        with its club-3090 block removed must hash to the recorded GGUF template
+        (c3cf9e34…81041), so everything but the mapping is the GGUF's own; it renders high ==
+        xhigh, max == xhigh, minimal == low, low / medium / xhigh exactly as stock, and a
+        bogus value still raises; every compose that mounts the file selects it with
+        --chat-template-file; and, when MODEL_DIR is exported and the GGUF is there, its
+        embedded template must still hash to the recorded one. Live: with the template
+        mounted, GET /props must return it (the club-3090 PATCH marker present) and a
+        thinking-mode request with reasoning_effort high / minimal / max must return HTTP 200.
+        Any behavioral/TPS comparison the guard performs MUST use the SELF-CONTAINED
+        symmetric restart+settle protocol: identical docker restart on BOTH arms ->
+        healthy -> fixed 60s settle -> >=3 bench.sh runs/arm -> compare the grand mean,
+        never a single run.
+      on_fail: capability-degraded   # serves the stock GGUF template: high / minimal / max return HTTP 500
+    capability: chat-template-override
+    foundational: false
+    upstream:
+      ref: "ukisai/Swift-1.5-Qwen3.8-27B-GSQ-RCO-GGUF embedded tokenizer.chat_template (read 2026-10-28); no upstream issue filed"
+      status: local-vendored
+      drop_when: "Swift-1.5's GGUF template accepts high, minimal and max (or stops raising on unknown efforts), or the pinned mainline llama-server gains an effort allow-list. Re-vendor from the GGUF if UkisAI re-pushes it with a changed template."
+    status: unverified
+
   - id: vllm-51581-dflash-dense-kv
     # Successor to `vllm-dflash2-backport`, which bundled TWO upstream fixes.
     # vllm#52816 (the DFlash2 model classes) is native since v0.29.0; vllm#51581
