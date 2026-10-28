@@ -2,6 +2,17 @@
 
 Dated history for Qwen3.8-Flash-Next configs in this repo. Append-only — add a new entry, don't rewrite past ones.
 
+## 2026-10-28 — second flash-half defect: 8-slot VRAM OOM → ship FLASH_MAX_SEQS=4
+
+With `FLASH_COMM=ce` in place, the 8-pack still killed the engine — a *different* fault:
+`[flash] graph instantiate out of memory` then `CUDA error cudaErrorMemoryAllocation at
+gemm.cu:3456` → abort. The QE-INT4 weights + 51.8 GB pinned n-gram table leave only ~0.25 GiB
+free per card at 8 sequence slots, and the 8-pack's concurrent multi-turn load (hermesagent-20,
+136K-token prompts) exhausts it — a headroom failure, not the NaN. `FLASH_MAX_SEQS=4` passes the
+full 8-pack (117/150 thinking-OFF, restarts=0), so the compose now ships 4 as the default
+(overridable). Both flash-half defects reproduce identically on 1.3-rc4, so neither is a bump
+regression.
+
 ## 2026-10-28 — long-prefill NaN found; the slug ships FLASH_COMM=ce
 
 Re-validating this slug on the 1.3 pin, `bench.sh`'s 90K-prefill step killed the engine:

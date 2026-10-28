@@ -11,10 +11,16 @@
 #   Max ctx:   131072
 #   Genesis:   N/A — Genesis is Qwen3-Next-specific
 #   Status:    🐣 Incubating
-#   Caveats:   Not gate-passing yet. ⚠️ Long-prefill NaN: the engine's FLASH_COMM=auto
+#   Quality:   toolcall-15 15/15 (100%) · instructfollow-15 12/15 (80%) · structoutput-15 11/15 (73%) · dataextract-15 10/15 (67%) · reasonmath-15 14/15 (93%) · bugfind-15 14/15 (93%) · hermesagent-20 13/20 (65%) · cli-40 28/40 (70%) (--full, thinking OFF, sampling=server, validity=valid, packs tc1.0.1·if2.0.0·so2.1.0·de1.2.0·rm1.1.0·bf1.0.1·hm1.0.0·cli1.0.2, 2026-10-28)
+#   Caveats:   Not gate-passing yet. ⚠️ Two flash-half defects found validating on 1.3,
+#              both fixed in this compose (both reproduce identically on 1.3-rc4, so neither
+#              is a bump regression): (1) Long-prefill NaN — the engine's FLASH_COMM=auto
 #              path (P2P SM loads/stores on this PCIe rig) produces non-finite lm_head
-#              inputs at ~76K-token prefills — identical on 1.3 and 1.3-rc4, so the
-#              shipped default pins FLASH_COMM=ce (copy-engine), which measured clean.
+#              inputs at ~76K-token prefills, fail-stopping the engine under load; shipped
+#              FLASH_COMM=ce (copy-engine) measures clean through bench's 90K + stress's 91K.
+#              (2) VRAM OOM at 8 sequence slots — the n-gram + expert weights leave only
+#              ~0.25 GiB/card, and concurrent multi-turn load (the 8-pack's hermesagent-20)
+#              exhausts it; shipped FLASH_MAX_SEQS=4, which passes the full 8-pack.
 #              ⚠️ The SAME artifact produced garbled
 #              multilingual output on the 1.3-rc1/rc2 images (2026-10-26); this slug
 #              runs the 1.3 pin and MUST be output-checked on every boot (the clean
@@ -77,7 +83,7 @@ services:
     environment:
       QE_GPUS: "${QE_GPUS:-0,1}"
       QE_MODEL: /app/models/Qwen3.8-Flash-Next-QE-INT4
-      FLASH_MAX_SEQS: "${FLASH_MAX_SEQS:-8}"       # 1..16; frees VRAM for the expert cache
+      FLASH_MAX_SEQS: "${FLASH_MAX_SEQS:-4}"       # 1..16; 8 OOMs on 24 GB cards (0.25 GiB/card headroom exhausts under concurrent multi-turn load — the 8-pack's hermesagent-20 died at 8, passes at 4)
       FLASH_MAX_PREFILLS: "${FLASH_MAX_PREFILLS:-2}"
       FLASH_KV_ARCHIVE_GB: "${FLASH_KV_ARCHIVE_GB:-16}"  # upstream default 48 — too big for 92 GB
       FLASH_NGRAM_PIN: "${FLASH_NGRAM_PIN:-1}"     # 0 = disk mode (low-RAM hosts)

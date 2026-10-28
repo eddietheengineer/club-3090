@@ -45,6 +45,8 @@ Its own environment variables (the image's entrypoint passes `QE_EXTRA_ARGS` to 
 
 ⚠️ **Flash-Next long-prefill NaN (measured 2026-10-28, 2× 3090 PCIe).** With `FLASH_COMM=auto` (the default) the interconnect probe picks the P2P SM load/store path, and a ~76K-token prefill then produces non-finite `lm_head` inputs: the guard fails the request (HTTP 500) and, after 5 faults in 5 minutes, exits ("shared state is likely corrupt"). Measured **identical on 1.3 and 1.3-rc4** — same position, same block count — so it is the SM path, not a release regression. `FLASH_COMM=ce` (copy-engine transfers) measured clean (4×76K prefills, no faults); the flash-next compose ships it as the default.
 
+⚠️ **Flash-Next VRAM OOM at 8 sequence slots (measured 2026-10-28, 2× 3090).** The QE-INT4 weights + 51.8 GB pinned n-gram table leave only ~0.25 GiB free per card at `FLASH_MAX_SEQS=8`; concurrent multi-turn load (the 8-pack's hermesagent-20, 136K-token prompts) exhausts it — `graph instantiate out of memory` then `cudaErrorMemoryAllocation at gemm.cu:3456` → abort. This is a **headroom** failure, distinct from the NaN. `FLASH_MAX_SEQS=4` measured clean through the full 8-pack (117/150, restarts=0); the flash-next compose ships 4 as the default.
+
 ## What's wired
 
 - the engine profile (`scripts/lib/profiles/engines/qengine.yml`);
@@ -55,6 +57,6 @@ Its own environment variables (the image's entrypoint passes `QE_EXTRA_ARGS` to 
 - **acceptance + throughput parsing:** the server's `[stats] SpecDecoding metrics: Mean acceptance length: …` lines are the vLLM-modern wording, so `capture.sh`'s acceptance parser and `verify-full.sh`'s MTP check read them unchanged (measured: accept-len 6.39 on the 27B slug, 3.97 on Flash-Next);
 - **the launch knobs mapped onto its own names** — `ENABLE_THINKING` → `--think 1|0` and `SPEC_N` → `--mtp-k N` (0 = drafts off), both resolved in the composes' entrypoint, which validates the domain and stops the boot on a bad value; a flag already named in `QE_EXTRA_ARGS` wins. `REASONING_EFFORT` and the `THINKING_BUDGET_*` knobs are **unsupported**: QEngine has no server-side default for effort (it is a per-request `chat_template_kwargs.reasoning_effort`) and no token budgets at all (the effort levels are prompt instructions, not caps) — declared with this section as the source in `knob-conformance.json`;
 - weights variants `bpx03-qengine-int4` on both models (`RedHatAI/Qwen3.8-27B-INT4`, `bpx03/Qwen3.8-Flash-Next-QEngine`);
-- the composes, booted on this rig (two 3090s, P2P granted) with verify-full 9/9 each.
+- the composes, booted on this rig (two 3090s, P2P granted) with verify-full 10/10 each on the 1.3 pin.
 
-**Left for later:** c3's own engine-family handling, and the soak / stress / 8-pack gates for promotion past 🐣.
+**Left for later:** c3's own engine-family handling, and the Flash-Next soak / continuous-soak / promotion review past 🐣 (verify-full, bench, stress and the 8-pack both legs pass on 1.3 with the two compose fixes above).

@@ -7042,7 +7042,7 @@ entries:
     default_port: 8146
     kvcalc_key: SKIP
     status: incubating
-    status_note: "QEngine 1.3's Flash-Next half (libqflash.so) on bpx03's QE-INT4 conversion (INT8 n-gram table pinned: ~80 GB host RAM with the archive lowered to 16 GB; FLASH_NGRAM_PIN=0 for disk mode). ⚠️ The engine's FLASH_COMM=auto interconnect probe picks the P2P SM path on PCIe rigs, which produces non-finite values at ~76K-token prefills (measured identical on 1.3 and 1.3-rc4); the compose ships FLASH_COMM=ce, measured clean. ⚠️ Upstream tests this on 3 cards only; 2 is allowed but untested there. ⚠️ The same artifact garbled multilingual output on rc1/rc2 (2026-10-26) — output-check every boot. Not gate-passing. PolyForm Noncommercial licence."
+    status_note: "QEngine 1.3's Flash-Next half (libqflash.so) on bpx03's QE-INT4 conversion (INT8 n-gram table pinned: ~80 GB host RAM with the archive lowered to 16 GB; FLASH_NGRAM_PIN=0 for disk mode). Two flash-half defects fixed in the compose (both reproduce on 1.3-rc4, not bump regressions): the FLASH_COMM=auto P2P SM path NaNs at ~76K prefills (shipped FLASH_COMM=ce) and 8 sequence slots OOM on 24 GB cards (shipped FLASH_MAX_SEQS=4). ⚠️ Upstream tests this on 3 cards only; 2 is allowed but untested there. ⚠️ The same artifact garbled multilingual output on rc1/rc2 (2026-10-26) — output-check every boot. Not gate-passing. PolyForm Noncommercial licence."
     weights_companions: []
     gateway: false
     serve_aliases: []
