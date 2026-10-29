@@ -48,6 +48,8 @@ trap report_env_cleanup EXIT
 ADVISORY_PASS='  ✓ ceiling ladder: all 2 rungs passed — fillable to 120320 tok (91% of n_ctx=131072)'
 ADVISORY_WARN='    ⚠ VRAM margin thin at ceiling: 957 MB free < 1024 MB threshold'
 ADVISORY_TAIL='1 stress check(s) failed. See hints above.'
+# Since #1826 the summary names it under the count, still with ⚠ and no ✗
+ADVISORY_NAMED='  ⚠ advisory: vram_margin: 957 MB free at the ceiling, under the 1024 MB threshold (VRAM_MARGIN_MB): headroom, not correctness'
 
 all_pass() {
   report_stage_stub verify-full.sh   0 "All checks passed."
@@ -80,7 +82,7 @@ assert_contains "$REPORT_OUT" "**Overall: PASS**"
 
 # ── 2. the #619 case: advisory-only inside verify-stress → exit 2 ───────────
 all_pass
-report_stage_stub verify-stress.sh 1 "$ADVISORY_PASS" "$ADVISORY_WARN" "$ADVISORY_TAIL"
+report_stage_stub verify-stress.sh 1 "$ADVISORY_PASS" "$ADVISORY_WARN" "$ADVISORY_TAIL" "$ADVISORY_NAMED"
 report_run --full --no-redact
 assert_rc 2 "advisory-only failure must be distinguishable"
 assert_contains "$REPORT_OUT" "**Overall: ADVISORY**"
@@ -91,7 +93,7 @@ assert_not_contains "$REPORT_OUT" "**Overall: FAIL**"
 
 # ── 3. --stress alone reaches the exit too, not just --full ─────────────────
 all_pass
-report_stage_stub verify-stress.sh 1 "$ADVISORY_PASS" "$ADVISORY_WARN" "$ADVISORY_TAIL"
+report_stage_stub verify-stress.sh 1 "$ADVISORY_PASS" "$ADVISORY_WARN" "$ADVISORY_TAIL" "$ADVISORY_NAMED"
 report_run --stress --no-redact
 assert_rc 2 "--stress alone must propagate the advisory"
 
