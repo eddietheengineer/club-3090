@@ -506,7 +506,7 @@ def _validate_local_entry(spec: dict, root: Path) -> None:
     except ValueError as exc:
         raise Refusal(f"registry kwargs rejected by _entry: {exc}")
     # ── LOCAL: keep BYOM ports out of the curated band (#1142 follow-up) ──
-    # The curated catalog occupies 8010-8199. A local slug landing on one of
+    # The curated catalog occupies 8010-8299. A local slug landing on one of
     # those ports turns the repo's OWN test-compose-port-conflicts guard red
     # on the user's checkout, and its remediation text invites reassigning
     # "one side" — i.e. editing a curated entry they must never touch.

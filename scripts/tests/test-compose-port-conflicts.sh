@@ -97,7 +97,7 @@ print(f"OK: no un-allowlisted cross-model port collisions "
       f"({active} active slug-ports; ALLOW={sorted(ALLOW)} still valid).")
 PY
 
-# Gate 2: every CURATED slug's default_port is in the curated band, 8010-8199.
+# Gate 2: every CURATED slug's default_port is in the curated band, 8010-8299.
 # 20200-20299 is the local layer's: promote.py gives each local model
 # 20200 + crc32(id) % 100, so a curated slug there can land on a user's own model
 # with the next `git pull`, and gate 1 above can't see it (it checks one merged

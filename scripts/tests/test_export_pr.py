@@ -177,7 +177,7 @@ def _spec_file(root: Path) -> Path:
 
 
 _PORT_DEFAULT = re.compile(r"\$\{PORT:-(\d+)\}")
-CURATED_BAND = range(8010, 8200)
+CURATED_BAND = range(8010, 8300)
 
 
 def _curated_ports() -> set:
@@ -818,7 +818,7 @@ class TestCuratedModelSlugs:
 
 class TestCorePorts:
     """A local slug runs on the local layer's 202xx band (promote.py's); a curated
-    one on 8010-8199. The export gives every slug that isn't on a free curated
+    one on 8010-8299. The export gives every slug that isn't on a free curated
     port the lowest free one, in its entry and in its compose's ${PORT:-N} alike,
     and leaves the local layer the user keeps running untouched."""
 
@@ -924,6 +924,33 @@ def _services(root, files: dict):
         f = root / "services" / rel
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_text(text, encoding="utf-8")
+
+
+class TestCuratedBandEdge:
+    """#1839: the band was 8010-8199 until only three ports were left free; it runs to 8299 now. A
+    registry that fills 8010-8199 still exports onto 8200, and a full 8010-8299 is a gap, not a port
+    past the band."""
+
+    @staticmethod
+    def _assign(held):
+        from types import SimpleNamespace
+        from scripts.lib.profiles.export_pr import assign_core_ports
+
+        reg = SimpleNamespace(COMPOSE_REGISTRY={f"x/held-{p}": {"default_port": p} for p in held})
+        states = [{"entries": [{"slug": "x/exported", "kwargs": {"default_port": 20242}}]}]
+        notes, gaps = assign_core_ports(reg, states)
+        return states[0]["core_ports"], notes, gaps
+
+    def test_a_full_8010_8199_exports_onto_8200(self):
+        ports, notes, gaps = self._assign(range(8010, 8200))
+        assert ports == {"x/exported": 8200} and not gaps
+        assert notes == ["x/exported: port 20242 is the local layer's 202xx band; the curated slug gets 8200"]
+
+    def test_a_full_band_is_a_gap_not_a_port_past_it(self):
+        ports, _, gaps = self._assign(range(8010, 8300))
+        assert ports == {}
+        assert gaps == ["x/exported: no free port left in the curated band 8010-8299; extend CURATED_PORTS "
+                        "in export_pr.py (and the band in docs/BRING_YOUR_OWN.md)"]
 
 
 class TestServicePorts:

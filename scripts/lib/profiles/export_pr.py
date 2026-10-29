@@ -371,7 +371,8 @@ def translated_entry(state: dict, entry: dict, reg_mod=None, root: Optional[Path
 
 
 # ── curated ports ───────────────────────────────────────────────────────────
-# The curated catalog's ports are 8010-8199. 20200-20299 is the LOCAL layer's
+# The curated catalog's ports are 8010-8299 (8010-8199 until #1839, when three were left free; 8200-8299
+# held no slug or service then). 20200-20299 is the LOCAL layer's
 # band (promote.py hands every local model 20200 + crc32(id) % 100), which is what
 # lets a `git pull` of curated slugs never collide with a user's own. A local slug
 # exported as it is carries that 202xx port into core and squats the band: #1668
@@ -379,7 +380,7 @@ def translated_entry(state: dict, entry: dict, reg_mod=None, root: Optional[Path
 # on 20219/20291 until a local model hashed onto 20291 collided with one. So every
 # exported slug whose port is outside the curated band, or already taken there,
 # gets the lowest free curated port, and its compose's ${PORT:-N} moves with it.
-CURATED_PORTS = range(8010, 8200)
+CURATED_PORTS = range(8010, 8300)
 LOCAL_PORTS = range(20200, 20300)
 
 # The ports the repo's own services/ listen on are never handed out either: Open

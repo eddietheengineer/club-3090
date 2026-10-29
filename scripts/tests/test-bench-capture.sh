@@ -30,16 +30,16 @@ LIB="$ROOT_DIR/scripts/lib/capture.sh"
 FIX="$ROOT_DIR/scripts/tests/fixtures/offload-matrix"
 # ⚠️⚠️ FIXTURE PORTS LIVE ABOVE THE PRODUCT'S PORT SPACE, ON PURPOSE.
 # This test binds fake servers across PORT_BASE..PORT_BASE+24. The registry
-# allocates real slug `default_port`s across 8010-8199, so a base inside that
+# allocates real slug `default_port`s across 8010-8299, so a base inside that
 # span silently collides: any slug parked on one of these 25 ports makes this
 # guard fail WHENEVER THAT MODEL IS SERVING, and the failure reads as a broken
 # test rather than a port clash. Measured 2026-09-18: the old 8147 base overlapped
 # ELEVEN registry slugs (eight sgl/qwen38-27b-multi* on 8147-8154 plus three
 # newer ones), and three suite failures were misdiagnosed as pre-existing before
 # the cause was found. 18147+ is clear of the product space entirely.
-# ⚠️ Other fixtures still sit INSIDE 8010-8199 (test-bench-card 8171,
-# test-offload-matrix-mocked 8137, tier2/test-offload-matrix-real 8138) and carry
-# the same latent clash — not addressed here.
+# The other fixtures that used to sit inside it moved above it the same way
+# (test-bench-card 18171, test-offload-matrix-mocked 18137,
+# tier2/test-offload-matrix-real 18138).
 PORT_BASE="${TEST_PORT:-18147}"
 fail() { echo "FAIL: $1" >&2; exit 1; }
 

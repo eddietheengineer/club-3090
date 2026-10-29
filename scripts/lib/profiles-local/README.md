@@ -167,7 +167,7 @@ was ever touched.
 
 ## Ports — the 202xx band
 
-The curated catalog occupies **8010–8199** and grows over time, so a local model
+The curated catalog occupies **8010–8299** and grows over time, so a local model
 parked there can collide with a slug that lands in a later `git pull` — and it turns
 the repo's own `test-compose-port-conflicts` guard red on *your* checkout, whose fix
 text invites editing a curated entry you should never touch.
