@@ -1156,13 +1156,42 @@ cap_ram_status() {
     }' /proc/meminfo
 }
 
-# cap_swap_verdict [pid] — PASS/FAIL for the integrity panel.
+# Pages SITTING in swap are not pages being SWAPPED IN (#1846): a server that barely fits its host
+# keeps a few hundred MB of cold pages in swap for good (~400 MB of ~86 GB on a 91.9 GB host, ~50
+# swap-ins a request, the numbers unaffected), while a host that is paging (#1827: 1.5 GB of the
+# server in swap, decode -11%) swaps them back in all the time. So the run's verdict counts the host's
+# swap-ins (/proc/vmstat pswpin) between cap_swapin_mark, at the start, and the verdict, at the end.
+# CAP_PROC_STATUS / CAP_VMSTAT stand in for /proc/<pid>/status and /proc/vmstat (the tests' seam).
+cap_swapin_pages() { awk '/^pswpin /{print $2}' "${CAP_VMSTAT:-/proc/vmstat}" 2>/dev/null; }
+cap_swapin_mark() {
+  local n; n="$(cap_swapin_pages)"
+  [[ -n "$n" && -n "${CAP_WORK:-}" ]] && echo "$n" > "$CAP_WORK/pswpin0"
+  return 0
+}
+
+# cap_swap_verdict [pid] [start] — PASS / WARN / FAIL for the integrity panel. With `start` (the run's
+# first line, before cap_swapin_mark) it states what is in swap and leaves the judging to the end.
 cap_swap_verdict() {
-  local pid="${1:-$CAP_PID}"
-  if [[ -n "$pid" && -r "/proc/$pid/status" ]]; then
-    local vmswap
-    vmswap="$(command grep -m1 '^VmSwap:' "/proc/$pid/status" 2>/dev/null | awk '{print $2+0}')"
+  local pid="${1:-$CAP_PID}" phase="${2:-}"
+  local status="${CAP_PROC_STATUS:-/proc/$pid/status}"
+  if [[ -n "$pid" && -r "$status" ]]; then
+    local vmswap p0 p1 mb lim="${SWAP_IN_FAIL_MB:-64}"
+    vmswap="$(command grep -m1 '^VmSwap:' "$status" 2>/dev/null | awk '{print $2+0}')"
     if [[ -n "$vmswap" ]] && (( vmswap > 0 )); then
+      if [[ "$phase" == "start" ]]; then
+        echo "${vmswap} kB of the SERVING PROCESS is in swap; the end of the run judges it by what is swapped back in"
+        return 0
+      fi
+      p0="$(cat "${CAP_WORK:-/nonexistent}/pswpin0" 2>/dev/null || true)"; p1="$(cap_swapin_pages)"
+      if [[ "$p0" =~ ^[0-9]+$ && "$p1" =~ ^[0-9]+$ ]]; then
+        mb=$(( (p1 - p0) * $(getconf PAGESIZE 2>/dev/null || echo 4096) / 1000000 ))
+        if (( mb <= lim )); then
+          echo "WARN — ${vmswap} kB of the SERVING PROCESS sits in swap, but the host swapped in only ${mb} MB during the run (limit ${lim} MB, SWAP_IN_FAIL_MB): cold pages, not paging"
+        else
+          echo "FAIL — ${vmswap} kB of the SERVING PROCESS is in swap and the host swapped in ${mb} MB during the run: it was paging; every number in this run is suspect"
+        fi
+        return 0
+      fi
       echo "FAIL — ${vmswap} kB of the SERVING PROCESS is paged out to swap; every number in this run is suspect"
       return 0
     fi

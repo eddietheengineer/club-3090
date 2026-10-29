@@ -728,8 +728,9 @@ if [[ "$CAPTURE" == "1" && -f "${ROOT_DIR}/scripts/lib/capture.sh" ]]; then
   else
     cap_note_unavailable "system RAM" "/proc/meminfo not readable"
   fi
-  _v="$(cap_swap_verdict || true)"
+  _v="$(cap_swap_verdict "" start || true)"
   [[ -n "$_v" ]] && echo "  swap check     : ${_v}"
+  cap_swapin_mark   # the end-of-run verdict counts swap-ins from here (#1846)
 
   if [[ "$STREAM_CALIB" == "1" ]]; then
     echo ""
