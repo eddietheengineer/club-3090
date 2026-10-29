@@ -80,9 +80,21 @@ echo "  ✓ stub endpoints up (self-test)"
 SHIMDIR="$WORK/shim"; mkdir -p "$SHIMDIR"
 cat > "$SHIMDIR/docker" <<'SHIM'
 #!/usr/bin/env bash
-# docker inspect <name> --format ... -> the command line stored for <name>; anything else: benign.
+# docker inspect <name> --format '{{.Config.Image}}' -> the image stored for <name> (none: nothing);
+# docker inspect <name> --format ... -> the command line stored for <name>;
+# docker logs <name> -> the log stored for <name>; anything else: benign.
+if [[ "$1" == "inspect" && "${4:-}" == '{{.Config.Image}}' ]]; then
+  f="${STUB_CMDS_DIR}/$2.image"
+  [[ -f "$f" ]] && { cat "$f"; exit 0; }
+  exit 1
+fi
 if [[ "$1" == "inspect" ]]; then
   f="${STUB_CMDS_DIR}/$2"
+  [[ -f "$f" ]] && { cat "$f"; exit 0; }
+  exit 1
+fi
+if [[ "$1" == "logs" ]]; then
+  f="${STUB_CMDS_DIR}/$2.log"
   [[ -f "$f" ]] && { cat "$f"; exit 0; }
   exit 1
 fi
@@ -95,6 +107,24 @@ echo "vllm serve /model --max-num-seqs=6"                      > "$STUB_CMDS_DIR
 echo "llama-server -m /m.gguf -np 2 -c 32768"                  > "$STUB_CMDS_DIR/c-lcpp"
 echo "python -m sglang.launch_server --max-running-requests 5" > "$STUB_CMDS_DIR/c-sgl"
 echo "vllm serve /model --port 8000"                           > "$STUB_CMDS_DIR/c-noflag"
+# QEngine (#1846): no slot flag on its command line, none over HTTP; its boot log says it. The lines
+# are the two engines' own, from the reference rig's boots (27B; Flash-Next at FLASH_MAX_SEQS=4).
+QE_IMG="ghcr.io/bpx03/qengine@sha256:b9d1b0afe8f96547b3a05de73aff437077effcb1117c82ab2e0fe62bf000b3da"
+# Its compose sets an entrypoint and no command, so Config.Cmd is null: `{{join .Config.Cmd " "}}` is empty.
+for c in c-qe27b c-qefn c-qe-nolog c-qe-restart; do : > "$STUB_CMDS_DIR/$c"; echo "$QE_IMG" > "$STUB_CMDS_DIR/$c.image"; done
+printf '%s\n' "[thinking] default enable_thinking=true" \
+  "KV pool: 374784 tokens shared by 32 sequence slots (max context 262144)" > "$STUB_CMDS_DIR/c-qe27b.log"
+printf '%s\n' "[flash] 4 sequence slots: 103 MB of recurrent state per extra slot and card" \
+  "[qflash] 4 sequence slots over a pool of 256 periods; archive: 0.0 GB host budget" \
+  "[qflash 46s] ready, context 262144" > "$STUB_CMDS_DIR/c-qefn.log"
+echo "[qflash] loading" > "$STUB_CMDS_DIR/c-qe-nolog.log"
+# A restarted container keeps its earlier boots' lines: the last boot's count is the served one
+printf '%s\n' "[qflash] 16 sequence slots over a pool of 256 periods" "[qflash 46s] ready, context 262144" \
+  "[qflash] 8 sequence slots over a pool of 256 periods" "[qflash 51s] ready, context 262144" > "$STUB_CMDS_DIR/c-qe-restart.log"
+# Not QEngine: the same words in another engine's log must not be read as its slot count
+echo "vllm serve /model --port 8000" > "$STUB_CMDS_DIR/c-notqe"
+echo "vllm/vllm-openai:v0.32.0" > "$STUB_CMDS_DIR/c-notqe.image"
+echo "a user prompt that says 9 sequence slots" > "$STUB_CMDS_DIR/c-notqe.log"
 export PATH="$SHIMDIR:$PATH"
 
 # shellcheck source=../lib/served-slots.sh
@@ -115,6 +145,11 @@ expect "container -np"                                                          
 expect "container --max-running-requests"                                       "5${T}container max-running-requests" "$VLLM" c-sgl
 expect "container without a slot flag falls through to the endpoint"            "4${T}server max_running_requests" "$SGL" c-noflag
 expect "CONTAINER=none is ignored"                                              "3${T}server /props total_slots"   "$LCPP" none
+expect "QEngine 27B: its boot log's slot count (none over HTTP)"                "32${T}container log (QEngine)"    "$VLLM" c-qe27b
+expect "QEngine Flash-Next at FLASH_MAX_SEQS=4: the 4 its log states"           "4${T}container log (QEngine)"     "$VLLM" c-qefn
+expect "QEngine restarted: the last boot's slot count"                         "8${T}container log (QEngine)"     "$VLLM" c-qe-restart
+expect "QEngine log without a slot line falls through to the endpoint"          "3${T}server /props total_slots"   "$LCPP" c-qe-nolog
+expect "the same words in a non-QEngine container's log are not read"           ""                                 "$VLLM" c-notqe
 
 # --- the marker + summary note -------------------------------------------------
 M="$WORK/concurrency-slots.txt"

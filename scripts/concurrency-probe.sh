@@ -446,8 +446,13 @@ if [[ "$MATRIX" == "1" ]]; then
       echo "[concurrency-probe] WARNING: server has ${slots} slot(s) (${slots_src}) but N goes up to ${_max_n}." >&2
       echo "[concurrency-probe]   Streams beyond ${slots} QUEUE rather than batch — the curve above N=${slots}" >&2
       echo "[concurrency-probe]   measures queuing, NOT concurrency." >&2
-      echo "[concurrency-probe]   Fix: reboot the compose with NPARALLEL=${_max_n}. Note -np splits -c into" >&2
-      echo "[concurrency-probe]   ctx/N per slot, so pool and compute buffer change — re-measure, do not reuse rows." >&2
+      if [[ "${slots_src:-}" == "container log (QEngine)" ]]; then   # its slot knob is per model (#1846)
+        echo "[concurrency-probe]   Fix: restart with more slots: QE_MAX_SEQS (27B, up to 32) or FLASH_MAX_SEQS" >&2
+        echo "[concurrency-probe]   (Flash-Next, 1-16). Slots share VRAM with the KV pool and expert cache — re-measure." >&2
+      else
+        echo "[concurrency-probe]   Fix: reboot the compose with NPARALLEL=${_max_n}. Note -np splits -c into" >&2
+        echo "[concurrency-probe]   ctx/N per slot, so pool and compute buffer change — re-measure, do not reuse rows." >&2
+      fi
     fi
   fi
 
