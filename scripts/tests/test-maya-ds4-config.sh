@@ -118,7 +118,7 @@ shell="$(env -u OMP_NUM_THREADS -u OMP_THREAD_LIMIT nproc)"; shell=$(( shell / 2
 
 echo "== 6. verify(): the SHA-256 table stops a damaged file; a match is recorded"
 out="$(python3 - "$L" "$work" <<'PY' 2>&1
-import hashlib, sys
+import hashlib, os, sys
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
 import ds4_prepare as p
@@ -130,7 +130,9 @@ calls = []
 p.sha256 = lambda x: calls.append(x) or "never"     # a second verify must not hash again
 p.verify("t", [f], w)
 print("rehashed" if calls else "not rehashed")
-f.write_bytes(b"bad!")                               # same size, different bytes + a new mtime
+f.write_bytes(b"bad!")                               # same size, different bytes ...
+st = f.stat()                                        # ... and a later mtime, set: two writes inside one tick of
+os.utime(f, ns=(st.st_atime_ns, st.st_mtime_ns + 10**9))  # the kernel's file clock share one (2.3% of runs, 2026-10-29)
 p.sha256 = lambda x: hashlib.sha256(x.read_bytes()).hexdigest()
 p.verify("t", [f], w)
 print("NOT STOPPED")
