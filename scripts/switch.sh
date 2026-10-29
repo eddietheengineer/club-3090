@@ -1599,6 +1599,11 @@ check_variant() {
   local -a _ls_force=()
   [[ "${FORCE:-0}" == "1" ]] && _ls_force=(--force)
   _launch_settings check --slug "$v" "${_ls_force[@]}" || exit 1
+  # QE_METRICS_PORT (QEngine's own setting) publishes its metrics port on 127.0.0.1 in
+  # up_variant; a value that isn't a port is refused here, before the teardown.
+  if [[ "$(engine_kind_from_slug "$v")" == "qengine" ]]; then
+    python3 "${ROOT_DIR}/scripts/lib/qengine_metrics.py" check --port "${QE_METRICS_PORT:-}" || exit 1
+  fi
   #  - repo_drift: warn if local HEAD is behind origin/master
   #  - compose_deps: HARD error if compose mounts a model dir that doesn't exist on host
   #    (catches the "you didn't WITH_DFLASH_DRAFT=1 then tried dual-dflash-noviz" case;
@@ -1693,7 +1698,16 @@ up_variant() {
   # compose file, and measurement records / c3 need to know which one this is.
   local label_override=""
   label_override="$(club_slug_label_override "$v" "${full_dir}/${file}" "${ROOT_DIR}")"
-  (cd "${full_dir}" && ${COMPOSE_BIN} -f "${file}" ${label_override:+-f "$label_override"} up -d --remove-orphans)
+  # QEngine's metrics and dashboard port, on 127.0.0.1 only, when QE_METRICS_PORT asks for
+  # it: compose can't publish a port conditionally, so an override carries the mapping.
+  local metrics_override=""
+  if [[ "$(engine_kind_from_slug "$v")" == "qengine" ]]; then
+    metrics_override="$(python3 "${ROOT_DIR}/scripts/lib/qengine_metrics.py" override \
+      --slug "$v" --compose "${full_dir}/${file}" --port "${QE_METRICS_PORT:-}")" || exit 1
+    [[ -n "$metrics_override" ]] \
+      && echo "[switch] QEngine metrics and dashboard: http://127.0.0.1:${QE_METRICS_PORT}/ (QE_METRICS_PORT; loopback only)"
+  fi
+  (cd "${full_dir}" && ${COMPOSE_BIN} -f "${file}" ${label_override:+-f "$label_override"} ${metrics_override:+-f "$metrics_override"} up -d --remove-orphans)
 }
 
 resolve_ready_url() {

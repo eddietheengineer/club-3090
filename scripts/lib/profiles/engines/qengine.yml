@@ -55,4 +55,5 @@ notes: >
   and qengine/qwen38-flash-next-dual. They map ENABLE_THINKING to --think, SPEC_N to --mtp-k and
   REASONING_EFFORT to the default of a copy of QEngine's own template (its default is xhigh); QEngine has no
   thinking budget. bench.sh and verify-full read its [stats] lines (llama.cpp's timing format, vLLM's SpecDecoding
-  metrics format); its P2P line and its metrics port (9393) aren't read yet.
+  metrics format); health.sh and bench.sh's interconnect block read its boot log (#1854). Its metrics
+  port (9393) is unpublished; QE_METRICS_PORT=<port> publishes it on 127.0.0.1 only (switch.sh's override).

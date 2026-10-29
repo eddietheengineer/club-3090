@@ -41,6 +41,7 @@ Its own environment variables (the image's entrypoint passes `QE_EXTRA_ARGS` to 
 | `QE_MTP_FILE` | auto | the MTP head (`model_mtp_ft.safetensors` when present) |
 | `QE_MEM_MARGIN_GB` | max(8 GB, 5% of RAM) | the host RAM the archive always leaves free; the archive gives memory back before the OOM killer would end the server (from 1.3) |
 | `QE_ALLOW_SHARED_GPU` | 0 | 1 skips the one-engine-per-GPU check (from 1.3). The lock is `~/.cache/qengine/locks/gpu-<uuid>.lock` under the container's own home, so containers only see each other's when they share it |
+| `QE_METRICS_PORT` | 9393 | the port of its dashboard, `/metrics` (Prometheus) and `/api/stats` (its `qetop`), bound to 0.0.0.0 inside the container; 0 turns them off. On our slugs it also publishes them on the host, on 127.0.0.1 only (below) |
 | `QE_LOG_FILE` | auto | the server's own log, `~/.cache/qengine/logs/<served-name>.log` (64 MB × 4); 0 turns it off (from 1.3) |
 | `QE_EXTRA_ARGS` | | `server/app.py` flags, e.g. `--think 0`, `--max-ctx 131072`, `--served-name` |
 
@@ -90,6 +91,7 @@ QEngine reports neither its slot count nor its context over HTTP, so `served-slo
 
 `health.sh` has a QEngine section: slots and context from the boot log, the latest `[chat]` requests, decode rates, MTP + lookup acceptance and, on Flash-Next, the expert cache's hit rate. `bench.sh`'s interconnect block reads QEngine's own transport lines (it links no NCCL): the 27B's `P2P: decode all-reduce GPU to GPU` or its host-memory path, Flash-Next's `no peer access` line, and both slugs' `[comm] prefill transfers`. c3 classifies a `qengine-` container as QEngine, not as llama.cpp from its 8080 port, and matches a rebench REPORT.md's container line to it.
 
+The composes don't publish QEngine's metrics port: the dashboard has no auth and a write endpoint (`POST /api/reset`). `QE_METRICS_PORT=<port>` opts in. The compose passes it to QEngine, which then listens on that port, and `switch.sh` (so `launch.sh` and c3 too) adds an override at launch that publishes it on the host's loopback only, `127.0.0.1:<port>`. Compose can't publish a port conditionally, hence the override (`scripts/lib/qengine_metrics.py`); a compose you run with `docker compose` yourself gets no mapping. Set it for one launch (`QE_METRICS_PORT=9393 bash scripts/switch.sh --force <slug>`) or for every QEngine slug (`bash scripts/settings.sh set QE_METRICS_PORT=9393`); `switch.sh` refuses a value that isn't a port before it stops what is running. Two QEngine slugs running at once need two ports. Unpublished doesn't mean unreachable: inside the container the port is bound to 0.0.0.0, so the host can still reach it on the container's bridge address, as before. From another machine, use an SSH tunnel (`ssh -L 9393:127.0.0.1:9393 <rig>`).
+
 **Not wired yet** ([ADDING_ENGINES.md](../ADDING_ENGINES.md), "CONTRACT — wiring it into the tooling"):
-- the metrics and dashboard port (9393), which the composes don't publish;
 - the gateway's native `/v1/messages` passthrough. QEngine serves `/v1/messages` and `/v1/messages/count_tokens` itself, but the passthrough admits only `owned_by` vllm / sglang, so LiteLLM translates instead.

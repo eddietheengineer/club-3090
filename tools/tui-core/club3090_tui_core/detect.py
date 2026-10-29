@@ -235,13 +235,16 @@ async def detect_endpoint(
             continue
 
         # A claimed container may publish several mappings (an engine port plus
-        # metrics).  Prefer the one whose HOST port the registry recorded.
+        # metrics).  Prefer the one whose HOST port the registry recorded, then one
+        # on an engine's own internal port: a PORT= override moves the host side,
+        # and QEngine's opt-in metrics port (QE_METRICS_PORT) is not its API.
         port_re = PORT_MAP_ANY_RE if claim is not None else PORT_MAP_BROAD_RE
         matches = list(port_re.finditer(ports_str))
         if claim is not None:
             registry_port = claim[1]
             preferred_ports = [m for m in matches if int(m.group(1)) == registry_port]
-            matches = preferred_ports or matches
+            engine_ports = [m for m in matches if PORT_MAP_BROAD_RE.fullmatch(m.group(0))]
+            matches = preferred_ports or engine_ports or matches
 
         for match in matches:
             host_port = int(match.group(1))
