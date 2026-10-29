@@ -1615,8 +1615,9 @@ LAST_STAGE_RUN=""
 #
 # The advisory classifier reads the stage's own output rather than its exit
 # code, because verify-stress exits with the COUNT of failed checks and does not
-# distinguish the classes. `✗` is emitted only by fail(); the margin advisory
-# prints `⚠ VRAM margin thin at ceiling`. So: nonzero exit + no `✗` + a margin
+# distinguish the classes. `✗` marks a failed check only (fail(), and the
+# summary's `✗ failed:` lines); the margin advisory prints `⚠ VRAM margin thin at
+# ceiling`, and `⚠ advisory:` in the summary. So: nonzero exit + no `✗` + a margin
 # line == advisory-only. Read from the RAW output, before redaction.
 STAGE_ROWS=()
 STAGE_WORST=0         # 0 clean · 2 advisory · 1 hard

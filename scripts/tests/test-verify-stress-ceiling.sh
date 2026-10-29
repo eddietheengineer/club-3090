@@ -12,6 +12,9 @@
 #  10. N_CTX: wins over detection, runs the ladder where nothing is detected, a
 #      malformed one fails; a skipped check is named in the summary, which then
 #      doesn't claim "paths are sound" (#1826)
+#  11. A failed check is named under the summary's count; the VRAM margin is a
+#      boundary check, named as an advisory with no ✗ (report.sh's exit 2); the
+#      undetermined-GPU warning is said once, not on every rung (#1826)
 set -euo pipefail
 export CLUB3090_CONFIG_DIR=/nonexistent/club-3090-test-config   # tests never read your real settings (#1466)
 
@@ -170,7 +173,55 @@ out="$(bash -c 'FAILED=2; SKIPPED_CHECKS=("tool_prefill: SKIP_TOOL_PREFILL=1"); 
   | sed 's/\x1b\[[0-9;]*m//g')"
 assert_contains "$out" "2 stress check(s) failed." "summary: failures still lead"
 assert_contains "$out" "skipped (not run): tool_prefill: SKIP_TOOL_PREFILL=1" "summary: skips listed after failures too"
+# A failed check is named under the count (#1826: "1 stress check(s) failed" under two
+# all-green buckets, with nothing saying it was the VRAM margin)
+out="$(bash -c 'FAILED=1; SKIPPED_CHECKS=(); FAILED_CHECKS=(); ADVISORY_CHECKS=("vram_margin: 61 MB free at the ceiling, under the 1024 MB threshold (VRAM_MARGIN_MB): headroom, not correctness"); source "$1"' _ "$SUMMARY_FILE" \
+  | sed 's/\x1b\[[0-9;]*m//g')"
+assert_contains "$out" "1 stress check(s) failed. See hints above." "summary: the count line is unchanged (c3's FAIL_RE)"
+assert_contains "$out" "  ⚠ advisory: vram_margin: 61 MB free at the ceiling" "summary: names the margin"
+assert_not_contains "$out" "✗" "summary: a margin-only run prints no ✗ (report.sh's ADVISORY test)"
+assert_not_contains "$out" "All stress" "summary: a failure never reads 'All stress'"
+out="$(bash -c 'FAILED=2; SKIPPED_CHECKS=(); FAILED_CHECKS=("tool_prefill: no HTTP response (timeout or container died)"); ADVISORY_CHECKS=("vram_margin: 61 MB free"); source "$1"' _ "$SUMMARY_FILE" \
+  | sed 's/\x1b\[[0-9;]*m//g')"
+assert_contains "$out" "  ✗ failed: tool_prefill: no HTTP response" "summary: names a failed check"
+assert_contains "$out" "  ⚠ advisory: vram_margin: 61 MB free" "summary: and the margin beside it"
 rm -f "$SUMMARY_FILE"
+
+# ---- run_check (#1826): a failed check is counted, bucketed and named by its first fail() ----
+RUNCHECK_FILE="$(mktemp --suffix=.sh)"
+{ command grep -E '^(pass|fail)\(\)' scripts/verify-stress.sh; sed -n '/^run_check()/,/^}/p' scripts/verify-stress.sh; } > "$RUNCHECK_FILE"
+out="$(bash -c 'set -euo pipefail; FAILED=0; FAILED_CHECKS=(); SKIPPED_CHECKS=()
+  _RECALL_CHECKS=" ceiling_ladder "; RECALL_RUN=0; RECALL_FAIL=0; BOUND_RUN=0; BOUND_FAIL=0; source "$1"
+  check_dead() { fail "no HTTP response (timeout or container died)" "hint"; }
+  check_wall() { fail "ceiling ladder: wall at ~150000 tok" "hint"; fail "a second message" "hint"; }
+  check_ok() { pass "fine"; }
+  run_check tool_prefill check_dead; run_check ceiling_ladder check_wall; run_check ide_agent check_ok
+  printf "%s|%s|%s|%s\n" "$FAILED" "$BOUND_FAIL/$BOUND_RUN" "$RECALL_FAIL/$RECALL_RUN" "$(IFS=";"; echo "${FAILED_CHECKS[*]}")"' \
+  _ "$RUNCHECK_FILE" | tail -1)"
+assert_eq "run_check: failures counted, bucketed, named (label once, first message)" \
+  "2|1/2|1/1|tool_prefill: no HTTP response (timeout or container died);ceiling_ladder: wall at ~150000 tok" "$out"
+rm -f "$RUNCHECK_FILE"
+
+# ---- vram_margin_check (#1826): the VRAM ceiling is a BOUNDARY check that runs inside the
+# ladder, so it books itself there; FAILED stays the sum of the two buckets ----
+MARGIN_FILE="$(mktemp --suffix=.sh)"
+sed -n '/^vram_margin_check()/,/^}/p' scripts/verify-stress.sh > "$MARGIN_FILE"
+assert_contains "$(cat "$MARGIN_FILE")" "BOUND_RUN" "vram_margin_check extracted"
+margin_run() {   # <free before> <free at ceiling> → "FAILED|BOUND_FAIL/BOUND_RUN|FAILED_CHECKS|ADVISORY_CHECKS" + output
+  bash -c 'set -euo pipefail; FAILED=0; FAILED_CHECKS=(); ADVISORY_CHECKS=(); BOUND_RUN=5; BOUND_FAIL=0; source "$1"
+    vram_margin_check "$2" "$3" 1024 91
+    printf "%s|%s|%s|%s\n" "$FAILED" "$BOUND_FAIL/$BOUND_RUN" "${FAILED_CHECKS[*]-}" "${ADVISORY_CHECKS[*]-}"' _ "$MARGIN_FILE" "$1" "$2" \
+    | sed 's/\x1b\[[0-9;]*m//g'
+}
+out="$(margin_run 640 61)"
+assert_contains "$out" "VRAM margin thin at ceiling: 61 MB free < 1024 MB threshold" "margin thin: the warning line rebench-report parses"
+assert_eq "margin thin: a boundary failure, named as an advisory" \
+  "1|1/6||vram_margin: 61 MB free at the ceiling, under the 1024 MB threshold (VRAM_MARGIN_MB): headroom, not correctness" "$(echo "$out" | tail -1)"
+assert_not_contains "$out" "✗" "margin thin: no ✗ anywhere (report.sh's ADVISORY test)"
+out="$(margin_run 9000 5000)"
+assert_contains "$out" "VRAM: 9000 → 5000 MB (Δ -4000 MB across ladder, margin threshold=1024 MB)" "margin ok: the drop line rebench-report parses"
+assert_eq "margin ok: a boundary pass" "0|0/6||" "$(echo "$out" | tail -1)"
+rm -f "$MARGIN_FILE"
 
 # ---- Test get_vram_free_mb dual GPU (no container context — MIN, not sum) ----
 # TP OOMs on whichever card runs out first, so min per-card free is the honest
@@ -188,6 +239,15 @@ chmod +x "${tmp_dir}/nvidia-smi"
 result="$(CONTAINER=none PATH="${tmp_dir}:/usr/bin:/bin" \
   bash -c "source '$HELPERS_FILE'; get_vram_free_mb")"
 assert_eq "get_vram_free_mb dual-GPU min (no container)" "11500" "$result"
+# The undetermined-GPU warning is said once, at the ladder start, not on every rung (#1826)
+err="$(CONTAINER=none PATH="${tmp_dir}:/usr/bin:/bin" \
+  bash -c "source '$HELPERS_FILE'; get_vram_free_mb" 2>&1 >/dev/null)"
+assert_contains "$err" "[vram] WARN: could not determine model GPU(s) on 2-GPU host" "undetermined GPUs: warns"
+err="$(CONTAINER=none PATH="${tmp_dir}:/usr/bin:/bin" \
+  bash -c "source '$HELPERS_FILE'; _VRAM_GPU_WARNED=1; get_vram_free_mb" 2>&1 >/dev/null)"
+assert_eq "undetermined GPUs: quiet once warned" "" "$err"
+assert_eq "the ladder sets the flag after its first read" "1" \
+  "$(command grep -cF 'vram_before_all="$(get_vram_free_mb)"; _VRAM_GPU_WARNED=1' scripts/verify-stress.sh)"
 
 # ---- Test get_vram_free_mb single GPU ----
 cat > "${tmp_dir}/nvidia-smi" <<'EOF'
