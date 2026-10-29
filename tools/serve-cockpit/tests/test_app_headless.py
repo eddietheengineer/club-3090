@@ -4976,6 +4976,18 @@ class TestCrossRigBenchmarksViaExplain:
             assert any(r.engine == "llamacpp" for r in screen._cross_rig)
             assert all(r.engine != "vllm" for r in screen._cross_rig)
 
+    def test_report_md_engine_family_qengine(self):
+        """A rebench REPORT.md's Container line names the engine (#1846: a QEngine run). Before
+        the classifier knew `qengine-` it resolved to 'unknown', so the run matched no bar."""
+        from club3090_cockpit.app import _bench_row_matches
+        from club3090_cockpit.data import BenchRow, _engine_family_from_report_md
+
+        meta = "- **Container:** `qengine-qwen38-flash-next-dual` (port 8198)"
+        assert _engine_family_from_report_md(meta) == "qengine"
+        row = BenchRow(model="qwen3.8-flash-next", engine="qengine", topology="dual")
+        assert _bench_row_matches(row, "qwen3.8-flash-next", "qengine") is True
+        assert _bench_row_matches(row, "qwen3.8-flash-next", "vllm-stable") is False
+
     def test_bench_row_matcher_engine_family(self):
         """The (model, engine) matcher: model exact, engine by FAMILY.
 

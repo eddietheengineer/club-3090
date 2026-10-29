@@ -158,6 +158,43 @@ assert_contains "$out" "(engine: unknown)" "no evidence at all: unknown, not a g
 assert_contains "$out" "runtime details aren't parsed" "unknown engine: says so instead of parsing the wrong logs"
 
 
+# --- 7. QEngine gets its own runtime section (#1846): it fell through to the llama.cpp branch,
+# which looked for a drafter on llama-server's command line. Real lines from both slugs' logs.
+QE_IMG="ghcr.io/bpx03/qengine@sha256:b9d1b0afe8f96547b3a05de73aff437077effcb1117c82ab2e0fe62bf000b3da"
+fn_logs='[flash] 16 sequence slots: 103 MB of recurrent state per extra slot and card
+[qflash] 16 sequence slots over a pool of 256 periods; archive: 48.0 GB host budget (pinning in the background), checkpoints every 8192 tokens
+[qflash 46s] ready, context 262144
+[chat] slot 0 prompt 41 (cached 0, prefill 282 tok/s) | gen 1 @ 1585.1 tok/s | length
+[stats] SpecDecoding metrics: Mean acceptance length: 1.00, Accepted throughput: 0.00 tokens/s, Drafted throughput: 63.64 tokens/s, Accepted: 0 tokens, Drafted: 3 tokens, Avg Draft acceptance rate: 0.0% (MTP 0/3, lookup 0/0, 1 steps)
+[chat] slot 1 prompt 46 (cached 0, prefill 271 tok/s) | gen 83 @ 72.4 tok/s | stop
+[stats] prompt eval time =     145.55 ms /    41 tokens (    3.55 ms per token,   281.69 tokens per second)
+[stats]        eval time =    1796.43 ms /   128 tokens (   14.03 ms per token,    71.25 tokens per second)
+[stats] SpecDecoding metrics: Mean acceptance length: 3.61, Accepted throughput: 79.12 tokens/s, Drafted throughput: 200.34 tokens/s, Accepted: 94 tokens, Drafted: 238 tokens, Avg Draft acceptance rate: 39.5% (MTP 16/30, lookup 78/208, 36 steps)
+[stats] SpecDecoding metrics: Mean acceptance length: 3.27, Accepted throughput: 51.77 tokens/s, Drafted throughput: 129.14 tokens/s, Accepted: 93 tokens, Drafted: 232 tokens, Avg Draft acceptance rate: 40.1% (MTP 45/66, lookup 48/166, 41 steps)
+[qflash] expert cache: 1 decode steps, misses/step mean 1576.00 p50 1576 p90 1576 max 1576 (all cards), cold-group hit rate 23.9% decode (496/2072) 22.7% prefill (88/387); copies 936
+'
+out="$(PATH="${TMP_DIR}/bin:${PATH}" MOCK_PS_NAMES="qengine-qwen38-flash-next-dual" CONTAINER=qengine-qwen38-flash-next-dual MOCK_IMAGE="$QE_IMG" MOCK_LOGS="$fn_logs" bash "$HEALTH" 2>&1)"
+assert_contains     "$out" "(engine: QEngine)"                  "a QEngine image is named QEngine"
+assert_contains     "$out" "QEngine runtime"                    "QEngine gets its own runtime section"
+assert_contains     "$out" "Slots: 16 · context: 262144"        "Flash-Next: slots and context from the boot log"
+assert_contains     "$out" "[chat] slot 1 prompt 46"            "recent [chat] request lines"
+assert_contains     "$out" "71.25 tokens per second"            "decode rate from the bare 'eval time' line"
+assert_not_contains "$out" "281.69 tokens per second"           "a prompt eval (prefill) line is not a decode rate"
+assert_contains     "$out" "Spec-decode (MTP + lookup): AL last 2 = 3.44  (latest: MTP 45/66, lookup 48/166)" \
+                                                                "acceptance: the 1-step warm-up left out, the latest split shown"
+assert_contains     "$out" "Expert cache: cold-group hit rate 23.9% decode (496/2072) 22.7% prefill" "Flash-Next's expert cache"
+assert_not_contains "$out" "llama.cpp runtime"                  "no llama.cpp section for QEngine"
+assert_not_contains "$out" "llama-server"                       "no llama-server drafter lookup for QEngine"
+qe27_logs='KV pool: 374784 tokens shared by 32 sequence slots (max context 262144)
+[chat] slot 0 prompt 41 (cached 0, prefill 790 tok/s) | gen 1 @ 1316.5 tok/s | length
+[stats]        eval time =    1161.30 ms /   128 tokens (    9.07 ms per token,   110.22 tokens per second)
+[stats] SpecDecoding metrics: Mean acceptance length: 3.63, Accepted throughput: 79.22 tokens/s, Drafted throughput: 190.30 tokens/s, Accepted: 92 tokens, Drafted: 221 tokens, Avg Draft acceptance rate: 41.6% (MTP 92/221, lookup 0/0, 35 steps)
+'
+out="$(PATH="${TMP_DIR}/bin:${PATH}" MOCK_PS_NAMES="qengine-qwen38-27b-dual" CONTAINER=qengine-qwen38-27b-dual MOCK_IMAGE="$QE_IMG" MOCK_LOGS="$qe27_logs" bash "$HEALTH" 2>&1)"
+assert_contains     "$out" "Slots: 32 · context: 262144"        "27B: slots and context from its KV pool line"
+assert_contains     "$out" "AL last 1 = 3.63  (latest: MTP 92/221, lookup 0/0)" "27B: MTP acceptance"
+assert_not_contains "$out" "Expert cache:"                      "27B: no expert cache line"
+
 # --- 5. CONTAINER= is an exact match, not a prefix/substring ------------------
 out="$(run_health $'vllm-qwen36-27b' 'vllm-qwen')"
 assert_contains "$out" "No matching container running" \

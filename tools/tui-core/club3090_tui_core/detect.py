@@ -166,6 +166,10 @@ def _classify_engine_from_container(name: str) -> str:
     # win over the port map, which reads 8080 as llamacpp.
     if name.startswith("strata-"):
         return "strata"
+    # QEngine serves on 8080 too (and answers no /props): without its name the port map read it
+    # as llamacpp, and a rebench REPORT.md's container line resolved to no family (#1846's run)
+    if name.startswith("qengine-"):
+        return "qengine"
     return "unknown"
 
 
