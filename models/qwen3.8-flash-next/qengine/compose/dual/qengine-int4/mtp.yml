@@ -73,6 +73,9 @@
 #   QE_PRESENCE_PENALTY, QE_FREQUENCY_PENALTY  defaults for sampled requests that send none (0)
 #   QE_LOOP_GUARD_TURNS, QE_LOOP_GUARD_NOTE, QE_LOOP_GUARD_PENALTY  the server's cross-turn loop
 #                        guard (3, 1, 1.5; 0 turns the guard or its note off)
+#   QE_METRICS_PORT      its dashboard, /metrics and qetop's /api/stats, on 9393 in the container and
+#                        not published: <port> publishes them on 127.0.0.1:<port> only (switch.sh
+#                        adds the mapping); 0 turns the metrics server off
 #   QE_EXTRA_ARGS        more server/app.py flags (--max-ctx, --served-name, ...), after ours
 # `switch.sh --set` saves only our three knobs for this slug; it refuses QEngine's own names, because
 # they aren't catalogued launch settings. Set those for one launch, or for every QEngine slug:
@@ -124,6 +127,7 @@ services:
       - QE_LOOP_GUARD_TURNS
       - QE_LOOP_GUARD_NOTE
       - QE_LOOP_GUARD_PENALTY
+      - QE_METRICS_PORT
       - QE_EXTRA_ARGS
       # our launch knobs, mapped onto QEngine's flags by the entrypoint below
       - ENABLE_THINKING

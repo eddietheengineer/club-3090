@@ -492,6 +492,29 @@ class TestQEngineDetection:
         assert _classify_engine_from_container("qengine-qwen38-27b-dual") == "qengine"
         assert ENGINE_PREFIXES.match("qengine-qwen38-27b-dual")
 
+    # QE_METRICS_PORT publishes the metrics port on loopback beside the API port.
+    METRICS_FIRST = "127.0.0.1:9393->9393/tcp, 0.0.0.0:{api}->8080/tcp"
+    ROWS = [_row("qengine/qwen38-flash-next-dual", "qengine-qwen38-flash-next-dual", 8198, engine="qengine")]
+
+    def _detect(self, api, variants):
+        ps = f"qengine-qwen38-flash-next-dual|{self.METRICS_FIRST.format(api=api)}"
+        with patch("asyncio.create_subprocess_exec", return_value=_proc(ps)):
+            return _run(detect_endpoint(variants=variants))
+
+    def test_metrics_port_is_not_the_api_on_the_registry_port(self):
+        target = self._detect(8198, self.ROWS)
+        assert (target.host_port, target.internal_port) == (8198, 8080)
+
+    def test_metrics_port_is_not_the_api_after_a_port_override(self):
+        """PORT=8299 moves the API off the registry's 8198: the engine's own internal
+        port decides, not the first mapping docker lists."""
+        target = self._detect(8299, self.ROWS)
+        assert (target.host_port, target.internal_port) == (8299, 8080)
+
+    def test_metrics_port_is_not_the_api_unclaimed(self):
+        target = self._detect(8299, [])
+        assert (target.host_port, target.internal_port) == (8299, 8080)
+
 
 # ============================================================================
 # #1813 — SM clock + throttle reason on the GPU read
