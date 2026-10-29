@@ -86,8 +86,9 @@ QEngine has no thinking budget: no flag, variable or request field caps the thin
 
 QEngine prints `[stats]` lines for log parsers, in llama.cpp's timing format and vLLM's `SpecDecoding metrics` format, so `bench.sh`'s engine-side timings and acceptance capture and `verify-full.sh`'s MTP acceptance check read it with no QEngine-specific code (checked on the 27B slug, 2026-10-28).
 
+QEngine reports neither its slot count nor its context over HTTP, so `served-slots.sh` (the concurrency step), `verify-stress.sh` and `concurrency_probe.py` read them from its boot log, when the container can be read (#1850). A host-run QEngine (`CONTAINER=none`) is recognised by `/v1/models`' `owned_by`. `verify-stress.sh` doesn't apply its absolute VRAM-margin check to QEngine, as it doesn't to Strata: QEngine allocates its KV pool (and, on Flash-Next, its expert cache) at load, so free VRAM is set at start and doesn't move with the context (763 → 763 MB across a 120K ladder on the 27B, 3 → 3 MB across 240K on Flash-Next, 2026-10-29). It prints the ladder's drop instead (#1826).
+
 **Not wired yet** ([ADDING_ENGINES.md](../ADDING_ENGINES.md), "CONTRACT — wiring it into the tooling"):
 - `bench.sh`'s interconnect report doesn't read QEngine's `P2P:` line, so it says it sees no P2P engagement; `health.sh` isn't checked against QEngine;
 - the metrics and dashboard port (9393), which the composes don't publish;
-- a boot of the Flash-Next slug;
 - c3's own engine-family handling.

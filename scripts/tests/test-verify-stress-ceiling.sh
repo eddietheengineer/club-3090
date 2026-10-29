@@ -448,6 +448,16 @@ out="$(PATH="${tmp_dir}:$PATH" PREFLIGHT_NO_AUTODETECT=1 URL=http://mock MODEL=m
   bash scripts/verify-stress.sh 2>&1 | sed 's/\x1b\[[0-9;]*m//g')" || true
 assert_contains "$out" "N_CTX='128k' is not a positive whole number" "a malformed N_CTX fails the ladder"
 
+# A host-run QEngine (CONTAINER=none): no fingerprint, no /props, no container; /v1/models' owned_by
+# names it, so its VRAM margin is read as Strata's is (#1826)
+make_curl_mock '
+  */v1/models*) printf '"'"'{"object":"list","data":[{"id":"qwen3.8-27b","object":"model","owned_by":"qengine"}]}'"'"'; exit 0 ;;
+  */v1/chat/completions*) printf '"'"'{"choices":[{"message":{"content":"mock response"},"finish_reason":"stop"}],"usage":{"prompt_tokens":100,"completion_tokens":10}}'"'"'; exit 0 ;;'
+out="$(PATH="${tmp_dir}:$PATH" PREFLIGHT_NO_AUTODETECT=1 URL=http://mock MODEL=qwen3.8-27b \
+  CONTAINER=none SKIP_TOOL_PREFILL=1 SKIP_LONGCTX=1 \
+  bash scripts/verify-stress.sh 2>&1 | sed 's/\x1b\[[0-9;]*m//g')" || true
+assert_contains "$out" "container=none  engine=qengine" "a host-run QEngine is named by /v1/models owned_by"
+
 # A small context is covered by probe 7: skipped, but not listed as a gap
 make_curl_mock '
   */v1/models*) printf '"'"'{"data":[{"id":"mock-model","max_model_len":65536}]}'"'"'; exit 0 ;;
