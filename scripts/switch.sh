@@ -1174,10 +1174,11 @@ explain_variant() {
   exit 0
 }
 
-# The log of a stopped managed container, saved before teardown removes it: it is
-# what a user reads after a crash. <data dir>/logs/stopped-containers/<name>-<finished
-# at>.log; the newest 10 are kept. Prints the path. Fails when it can't be written, and
-# the caller then keeps the container.
+# The log of a stopped managed container, or of a running one that has restarted, saved
+# before teardown removes it: it is what a user reads after a crash. <data dir>/logs/
+# stopped-containers/<name>-<finished at>.log (for a restarted one, when its last run ended);
+# the newest 10 are kept. Prints the path. Fails when it can't be written: the caller then
+# keeps a stopped container, and only warns for a running one (the switch goes on).
 _save_stopped_container_log() {
   local c="$1" dir finished file
   dir="$(club_config_data_dir)/logs/stopped-containers"
@@ -1248,7 +1249,20 @@ down_running() {
         fi
         echo "[switch] removing stopped container: ${c} (${state}); its log: ${saved}" ;;
       *)
-        echo "[switch] bringing down: ${c}" ;;
+        # A running container that has restarted crashed at least once, and its log, kept across
+        # the restarts, is the only record of why. #1846: an engine that died mid-8-pack and came
+        # back lost its log when the user switched slugs. So it is saved first, like a stopped one's.
+        local restarts
+        restarts="$(docker inspect --format '{{.RestartCount}}' "$c" 2>/dev/null || true)"
+        if [[ "$restarts" =~ ^[1-9][0-9]*$ ]]; then
+          if saved="$(_save_stopped_container_log "$c")"; then
+            echo "[switch] bringing down: ${c} (it restarted ${restarts} time(s); its log: ${saved})"
+          else
+            echo "[switch] bringing down: ${c} (it restarted ${restarts} time(s); its log could not be saved to $(club_config_data_dir)/logs)" >&2
+          fi
+        else
+          echo "[switch] bringing down: ${c}"
+        fi ;;
     esac
     brought_down=1
     # derive the compose dir/file from the container's labels — project-label fallback
