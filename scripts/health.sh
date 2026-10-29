@@ -61,6 +61,9 @@ fi
 # llamacpp_spec_args / llamacpp_draft_rate: the llama.cpp drafter, as verify-full's step 9 reads it
 # shellcheck source=lib/llamacpp-spec.sh
 source "${ROOT_DIR}/scripts/lib/llamacpp-spec.sh"
+# _slots_qengine_log: QEngine states its slot count only in its boot log (#1850)
+# shellcheck source=lib/served-slots.sh
+source "${ROOT_DIR}/scripts/lib/served-slots.sh"
 URL="${URL:-http://localhost:${_DEFAULT_ENDPOINT_PORT:-8020}}"
 CONTAINER="${CONTAINER:-}"
 LOG_LINES="${LOG_LINES:-200}"
@@ -271,6 +274,48 @@ else: print(f'{s//3600}h{(s%3600)//60:02d}m')
       else
         fail "could not read ${URL}/metrics: ${sm}"
       fi
+    elif [[ "$engine" == "QEngine" ]]; then
+      # QEngine prints [stats] lines in llama.cpp's timing format and vLLM's SpecDecoding format, plus a
+      # [chat] line per request. Its slots and context are said only at boot, so those come from the
+      # whole log (the latest boot's); the rest from the last ${LOG_LINES} lines. Until #1846 it fell
+      # through to the llama.cpp branch below, which looked for a drafter on llama-server's command line.
+      echo "QEngine runtime (last ${LOG_LINES} log lines; slots and context from the boot log):"
+      local qe_slots qe_ctx qe_chat qe_tps qe_spec qe_al qe_last qe_ec
+      qe_slots="$(_slots_qengine_log "$container")"
+      qe_ctx="$(docker logs "$container" 2>&1 | command grep -oE '(max context|ready, context) [0-9]+' | tail -1 \
+        | command grep -oE '[0-9]+$' || true)"
+      if [[ -n "${qe_slots}${qe_ctx}" ]]; then
+        ok "Slots: ${qe_slots:-?} · context: ${qe_ctx:-?}"
+      else
+        dim "Slots / context: no boot line in the log"
+      fi
+      qe_chat=$(echo "$logs" | command grep -E '^\[chat\] slot' | tail -3 || true)
+      if [[ -n "$qe_chat" ]]; then
+        ok "Recent requests:"
+        echo "$qe_chat" | sed 's/^/      /'
+      else
+        dim "No requests in the last ${LOG_LINES} lines (server may be idle)"
+      fi
+      # The bare `eval time` line is DECODE; `prompt eval time` is PREFILL (as on llama.cpp below)
+      qe_tps=$(echo "$logs" | command grep -v 'prompt eval time' | command grep -oE 'eval time =[^,]*\(.*tokens per second\)' | tail -3 || true)
+      if [[ -n "$qe_tps" ]]; then
+        echo "  Recent decode rates:"
+        echo "$qe_tps" | sed 's/^/      /'
+      fi
+      # Draft acceptance counts MTP and lookup drafts together (Flash-Next drafts mostly by lookup), so the
+      # latest line's split is shown beside it. One-step lines (a 1-token request: AL 1.00) are left out
+      # of the average: they are warm-ups, not a rate.
+      qe_spec=$(echo "$logs" | command grep -E '\[stats\] SpecDecoding metrics:' | command grep -vE ', 1 steps\)' | tail -5 || true)
+      if [[ -n "$qe_spec" ]]; then
+        qe_al=$(echo "$qe_spec" | command grep -oE 'Mean acceptance length: [0-9.]+' | awk '{ s += $4; n++ } END { if (n) printf "%.2f", s/n }')
+        qe_last=$(echo "$qe_spec" | tail -1 | command grep -oE 'MTP [0-9]+/[0-9]+, lookup [0-9]+/[0-9]+' || true)
+        ok "Spec-decode (MTP + lookup): AL last $(echo "$qe_spec" | wc -l) = ${qe_al}${qe_last:+  (latest: ${qe_last})}"
+      else
+        dim "Spec-decode: no recent acceptance line in logs (server idle, or SPEC_N=0)"
+      fi
+      # Flash-Next's expert cache (the 27B has none)
+      qe_ec=$(echo "$logs" | command grep -oE 'cold-group hit rate [0-9.]+% decode \([0-9/]+\) [0-9.]+% prefill' | tail -1 || true)
+      [[ -n "$qe_ec" ]] && ok "Expert cache: ${qe_ec}"
     elif [[ "$engine" == "ExLlamaV3" || "$engine" == "unknown" ]]; then
       echo "${engine} runtime:"
       dim "runtime details aren't parsed for this engine — see: docker logs --tail ${LOG_LINES} ${container}"

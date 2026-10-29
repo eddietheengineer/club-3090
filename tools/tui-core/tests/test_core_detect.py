@@ -474,6 +474,25 @@ class TestStrataDetection:
         assert _classify_engine("8080") == "llamacpp"
 
 
+class TestQEngineDetection:
+    """QEngine serves on 8080 as well and answers no /props, so, like Strata, only its
+    ``qengine-`` container name keeps the port map from reading it as llamacpp."""
+
+    QENGINE_PS = "qengine-qwen38-flash-next-dual|0.0.0.0:8198->8080/tcp"
+
+    def test_found_and_classified_by_name_not_port(self):
+        with patch("asyncio.create_subprocess_exec", return_value=_proc(self.QENGINE_PS)):
+            target = _run(detect_endpoint())
+        assert target.container == "qengine-qwen38-flash-next-dual"
+        assert target.internal_port == 8080
+        assert target.engine == "qengine"
+        assert target.url == "http://localhost:8198"
+
+    def test_engine_classifiers(self):
+        assert _classify_engine_from_container("qengine-qwen38-27b-dual") == "qengine"
+        assert ENGINE_PREFIXES.match("qengine-qwen38-27b-dual")
+
+
 # ============================================================================
 # #1813 — SM clock + throttle reason on the GPU read
 # ============================================================================

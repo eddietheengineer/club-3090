@@ -88,7 +88,8 @@ QEngine prints `[stats]` lines for log parsers, in llama.cpp's timing format and
 
 QEngine reports neither its slot count nor its context over HTTP, so `served-slots.sh` (the concurrency step), `verify-stress.sh` and `concurrency_probe.py` read them from its boot log, when the container can be read (#1850). A host-run QEngine (`CONTAINER=none`) is recognised by `/v1/models`' `owned_by`. `verify-stress.sh` doesn't apply its absolute VRAM-margin check to QEngine, as it doesn't to Strata: QEngine allocates its KV pool (and, on Flash-Next, its expert cache) at load, so free VRAM is set at start and doesn't move with the context (763 → 763 MB across a 120K ladder on the 27B, 3 → 3 MB across 240K on Flash-Next, 2026-10-29). It prints the ladder's drop instead (#1826).
 
+`health.sh` has a QEngine section: slots and context from the boot log, the latest `[chat]` requests, decode rates, MTP + lookup acceptance and, on Flash-Next, the expert cache's hit rate. `bench.sh`'s interconnect block reads QEngine's own transport lines (it links no NCCL): the 27B's `P2P: decode all-reduce GPU to GPU` or its host-memory path, Flash-Next's `no peer access` line, and both slugs' `[comm] prefill transfers`. c3 classifies a `qengine-` container as QEngine, not as llama.cpp from its 8080 port, and matches a rebench REPORT.md's container line to it.
+
 **Not wired yet** ([ADDING_ENGINES.md](../ADDING_ENGINES.md), "CONTRACT — wiring it into the tooling"):
-- `bench.sh`'s interconnect report doesn't read QEngine's `P2P:` line, so it says it sees no P2P engagement; `health.sh` isn't checked against QEngine;
 - the metrics and dashboard port (9393), which the composes don't publish;
-- c3's own engine-family handling.
+- the gateway's native `/v1/messages` passthrough. QEngine serves `/v1/messages` and `/v1/messages/count_tokens` itself, but the passthrough admits only `owned_by` vllm / sglang, so LiteLLM translates instead.
