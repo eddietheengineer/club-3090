@@ -13,8 +13,10 @@
 #       1. container --max-num-seqs          (vLLM)
 #       2. container -np                     (llama.cpp)
 #       3. container --max-running-requests  (SGLang)
-#       4. GET /get_server_info max_running_requests  (SGLang, set via env)
-#       5. GET /props total_slots            (llama.cpp family)
+#       4. container log "N sequence slots"  (QEngine: an env setting, QE_MAX_SEQS on the 27B and
+#          FLASH_MAX_SEQS on Flash-Next, and none over HTTP; only its boot log says what it set, #1846)
+#       5. GET /get_server_info max_running_requests  (SGLang, set via env)
+#       6. GET /props total_slots            (llama.cpp family)
 #     vLLM reports no slot count over HTTP outside dev mode (/server_info needs
 #     VLLM_SERVER_DEV_MODE=1), so a vLLM endpoint reached by --url with no container
 #     prints nothing. Callers must SAY so rather than run a short ladder silently.
@@ -36,6 +38,18 @@ _slots_container_cmd() {
 # _slots_flag PATTERN CMD — the integer after a flag (space- or =-separated).
 _slots_flag() {
   command grep -oE -- "$1[ =]+[0-9]+" <<<"$2" | command grep -oE '[0-9]+$' | head -1 || true
+}
+
+# _slots_qengine_log CONTAINER — the slot count a QEngine container's boot log states, or nothing.
+# The 27B engine says "KV pool: N tokens shared by 32 sequence slots (max context …)", Flash-Next
+# "[qflash] 16 sequence slots over a pool …". Read only for a QEngine image: the words are its own. The
+# last boot's line wins: a restarted container keeps its earlier boots' lines.
+_slots_qengine_log() {
+  local c="${1:-}"
+  [[ -n "$c" && "$c" != "none" ]] || return 0
+  command -v docker >/dev/null 2>&1 || return 0
+  [[ "$(docker inspect "$c" --format '{{.Config.Image}}' 2>/dev/null || true)" == *qengine* ]] || return 0
+  docker logs "$c" 2>&1 | command grep -oE '[0-9]+ sequence slots' | tail -1 | command grep -oE '^[0-9]+' || true
 }
 
 # _slots_json_int URL KEY — a top-level integer (booleans don't count) or nothing.
@@ -61,6 +75,9 @@ served_slots() {
     n="$(_slots_flag 'max-running-requests' "$cmd")"
     [[ -n "$n" ]] && { printf '%s\t%s\n' "$n" "container max-running-requests"; return 0; }
   fi
+  # Outside the block above: QEngine's compose sets an entrypoint and no command, so its Cmd is empty
+  n="$(_slots_qengine_log "$container")"
+  [[ -n "$n" ]] && { printf '%s\t%s\n' "$n" "container log (QEngine)"; return 0; }
   [[ -n "$url" ]] || return 0
   n="$(_slots_json_int "${url}/get_server_info" max_running_requests)"
   [[ -n "$n" ]] && { printf '%s\t%s\n' "$n" "server max_running_requests"; return 0; }

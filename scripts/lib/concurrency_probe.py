@@ -530,9 +530,20 @@ def _sglang_info(url):
     return None
 
 
+def _container_image(container):
+    """The image a container runs, or "" when docker can't say."""
+    try:
+        r = subprocess.run(["docker", "inspect", container, "--format", "{{.Config.Image}}"],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
+    except Exception:
+        return ""
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
 def served_max_len(url, container=""):
     """The context one request may use, as the ENGINE reports it: SGLang's server-info
-    context_length, vLLM's /v1/models max_model_len, else vLLM's max_seq_len boot line. None
+    context_length, vLLM's /v1/models max_model_len, else vLLM's max_seq_len boot line, or a
+    QEngine container's own boot line (its HTTP API reports none, #1846). None
     when none of them answers (the caller falls back to the container's flags). #1537: a Cmd
     grep for `max-model-len N` read "?" for vLLM auto-fit (`--max-model-len -1`) and for every
     SGLang compose (`--context-length`, set from CONTEXT_LENGTH in the entrypoint)."""
@@ -550,9 +561,16 @@ def served_max_len(url, container=""):
         except Exception:
             pass
     if container:
-        found = list(re.finditer(r"max_seq_len=(\d+)", _docker_logs_head(container)))
+        head = _docker_logs_head(container)
+        found = list(re.finditer(r"max_seq_len=(\d+)", head))
         if found:
             return int(found[-1].group(1))
+        # QEngine: "KV pool: … (max context N)" (27B), "[qflash Ns] ready, context N" (Flash-Next).
+        # Read only for a QEngine image: the words are its own.
+        if "qengine" in _container_image(container):
+            found = list(re.finditer(r"(?:max context|ready, context) (\d+)", head))
+            if found:
+                return int(found[-1].group(1))
     return None
 
 

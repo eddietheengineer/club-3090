@@ -1450,6 +1450,16 @@ except Exception:
 " 2>/dev/null || echo 0)"
   fi
 
+  # QEngine reports its context neither in /props nor in /v1/models, and the compose passes no
+  # flag for it (server/app.py's --max-ctx defaults to 262144), so only its boot log says it (#1846):
+  # "KV pool: … (max context N)" (27B) or "[qflash Ns] ready, context N" (Flash-Next); the last boot's.
+  if [[ "${n_ctx:-0}" -le 0 && -n "${CONTAINER:-}" && "${CONTAINER:-}" != "none" ]] \
+     && command -v docker >/dev/null 2>&1 \
+     && [[ "$(docker inspect "$CONTAINER" --format '{{.Config.Image}}' 2>/dev/null || true)" == *qengine* ]]; then
+    n_ctx="$(docker logs "$CONTAINER" 2>&1 | command grep -oE '(max context|ready, context) [0-9]+' | tail -1 \
+      | command grep -oE '[0-9]+$' || true)"
+  fi
+
   echo "${n_ctx:-0}"
 }
 
@@ -1592,7 +1602,7 @@ check_ceiling_ladder() {
   local n_ctx
   n_ctx="$(get_n_ctx)"
   if [[ "${n_ctx:-0}" -le 0 ]]; then
-    skip "could not detect n_ctx from endpoint (no /props, no /v1/models max_model_len, no docker inspect); set N_CTX=<the server's context length> to run it"
+    skip "could not detect n_ctx from endpoint (no /props, no /v1/models max_model_len, no docker inspect, no QEngine boot log); set N_CTX=<the server's context length> to run it (a QEngine container's log is read when it isn't CONTAINER=none, which rebench-full.sh --url sets)"
     return 0
   fi
   [[ -z "${N_CTX:-}" ]] || echo "    n_ctx from N_CTX=${N_CTX} (not detected from the server)"

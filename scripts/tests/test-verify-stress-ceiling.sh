@@ -15,6 +15,7 @@
 #  11. A failed check is named under the summary's count; the VRAM margin is a
 #      boundary check, named as an advisory with no ✗ (report.sh's exit 2); the
 #      undetermined-GPU warning is said once, not on every rung (#1826)
+#  12. get_n_ctx() reads a QEngine container's context from its boot log, and only a QEngine's (#1846)
 set -euo pipefail
 export CLUB3090_CONFIG_DIR=/nonexistent/club-3090-test-config   # tests never read your real settings (#1466)
 
@@ -154,6 +155,36 @@ result="$(ENGINE_KIND=llamacpp URL=http://mock CONTAINER=none N_CTX=lots \
   PATH="${tmp_dir}:$PATH" \
   bash -c "source '$HELPERS_FILE'; get_n_ctx")"
 assert_eq "get_n_ctx: a malformed N_CTX falls through to detection" "262144" "$result"
+
+# ---- QEngine (#1846): its context is only in its boot log (no /props, no max_model_len, no flag) ----
+qe_dir="$(mktemp -d)"
+cat > "${qe_dir}/docker" <<'MOCK_DOCKER'
+#!/usr/bin/env bash
+# inspect <c> --format '{{.Config.Image}}' -> $QE_IMAGE; inspect <c> -> JSON with no context flag; logs <c> -> $QE_LOG
+case "$1" in
+  inspect) if [[ "${4:-}" == '{{.Config.Image}}' ]]; then echo "${QE_IMAGE:-}"
+           else printf '[{"Config":{"Image":"%s","Cmd":["bash","-c","exec /usr/local/bin/qengine-entrypoint"]}}]' "${QE_IMAGE:-}"; fi ;;
+  logs) printf '%b' "${QE_LOG:-}" ;;
+esac
+MOCK_DOCKER
+chmod +x "${qe_dir}/docker"
+make_curl_mock '  */v1/models*) printf '"'"'{"object":"list","data":[{"id":"qwen3.8-flash-next","object":"model","owned_by":"qengine"}]}'"'"'; exit 0 ;;'
+QE_IMG="ghcr.io/bpx03/qengine@sha256:b9d1b0afe8f96547b3a05de73aff437077effcb1117c82ab2e0fe62bf000b3da"
+qe_ctx() {  # <image> <log> <container>
+  QE_IMAGE="$1" QE_LOG="$2" ENGINE_KIND=qengine URL=http://mock CONTAINER="$3" PATH="${qe_dir}:${tmp_dir}:$PATH" \
+    bash -c "source '$HELPERS_FILE'; get_n_ctx"
+}
+assert_eq "get_n_ctx: QEngine 27B's boot log (max context)" "262144" \
+  "$(qe_ctx "$QE_IMG" 'KV pool: 374784 tokens shared by 32 sequence slots (max context 262144)\n' qengine-qwen38-27b-dual)"
+assert_eq "get_n_ctx: QEngine Flash-Next's boot log (ready, context)" "131072" \
+  "$(qe_ctx "$QE_IMG" '[qflash] 16 sequence slots over a pool of 256 periods\n[qflash 46s] ready, context 131072\n' qengine-qwen38-flash-next-dual)"
+assert_eq "get_n_ctx: a restarted QEngine container: the last boot's context" "65536" \
+  "$(qe_ctx "$QE_IMG" '[qflash 46s] ready, context 262144\n[qflash 51s] ready, context 65536\n' qengine-qwen38-flash-next-dual)"
+assert_eq "get_n_ctx: the same words in a non-QEngine container's log are not read" "0" \
+  "$(qe_ctx "vllm/vllm-openai:v0.32.0" 'ready, context 131072\n' some-vllm)"
+assert_eq "get_n_ctx: CONTAINER=none reads no container log" "0" \
+  "$(qe_ctx "$QE_IMG" '[qflash 46s] ready, context 262144\n' none)"
+rm -rf "$qe_dir"
 
 # ---- The summary (#1826): a skipped check is named, and the run isn't called sound ----
 SUMMARY_FILE="$(mktemp --suffix=.sh)"

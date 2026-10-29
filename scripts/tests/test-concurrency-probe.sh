@@ -539,6 +539,25 @@ chmod +x "$CTX_STUB/docker"
 got="$(PATH="$CTX_STUB:$PATH" CONTAINER=vllm-x URL=http://127.0.0.1:9 python3 "$LIB" --served-max-len)"
 rm -rf "$CTX_STUB"
 [[ "$got" == "81920" ]] || fail "--served-max-len should fall back to vLLM's max_seq_len boot line: got '$got'"
-echo "  ✓ served context from the engine (vLLM /v1/models, SGLang context_length, vLLM boot line)"
+
+# QEngine (#1846): no context over HTTP, no max_seq_len line; its own boot line, only for its image
+CTX_STUB="$(mktemp -d)"
+cat > "$CTX_STUB/docker" <<'DOCK'
+#!/usr/bin/env bash
+if [ "$1" = inspect ]; then echo "${STUB_IMAGE:-}"; exit 0; fi
+if [ "$1" = logs ]; then
+  echo "[qflash] 4 sequence slots over a pool of 256 periods; archive: 0.0 GB host budget"
+  echo "[qflash 46s] ready, context 131072"
+fi
+exit 0
+DOCK
+chmod +x "$CTX_STUB/docker"
+got_q="$(PATH="$CTX_STUB:$PATH" STUB_IMAGE="ghcr.io/bpx03/qengine@sha256:b9d1b0afe8f96547b3a05de73aff437077effcb1117c82ab2e0fe62bf000b3da" \
+  CONTAINER=qengine-qwen38-flash-next-dual URL=http://127.0.0.1:9 python3 "$LIB" --served-max-len)"
+got_n="$(PATH="$CTX_STUB:$PATH" STUB_IMAGE="vllm/vllm-openai:v0.32.0" CONTAINER=vllm-x URL=http://127.0.0.1:9 python3 "$LIB" --served-max-len)"
+rm -rf "$CTX_STUB"
+[[ "$got_q" == "131072" ]] || fail "--served-max-len should read a QEngine container's 'ready, context N' line: got '$got_q'"
+[[ -z "$got_n" ]] || fail "--served-max-len must not read QEngine's words in another engine's log: got '$got_n'"
+echo "  ✓ served context from the engine (vLLM /v1/models, SGLang context_length, vLLM boot line, QEngine boot line)"
 
 echo "test-concurrency-probe: ok"
