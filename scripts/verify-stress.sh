@@ -546,7 +546,12 @@ detect_engine() {
   # Container-name fallback. sglang-*/sgl-* added club-3090#1261; the arms
   # themselves now live in scripts/lib/engine-kind.sh (club-3090#1282) so a new
   # engine is added in ONE place — see the long note in verify-full.sh.
-  engine_kind_from_container "$CONTAINER"
+  k="$(engine_kind_from_container "$CONTAINER")"
+  [[ "$k" != "unknown" ]] && { echo "$k"; return 0; }
+  # Last, /v1/models' owned_by, which needs no container: a host-run QEngine (CONTAINER=none) sends
+  # no fingerprint and serves no /props, and only this names it (#1826).
+  engine_kind_from_owned_by "$(curl -sf -m 5 "${URL}/v1/models" 2>/dev/null \
+    | python3 -c "import sys,json; print(((json.load(sys.stdin).get('data') or [{}])[0] or {}).get('owned_by','') or '')" 2>/dev/null)"
   return 0
 }
 ENGINE_KIND="$(detect_engine)"
@@ -1910,6 +1915,16 @@ with open('${cal_req}', 'w') as f:
         echo "    VRAM: ${vram_before_all} → ${vram_after_all} MB (Δ -$(( vram_before_all - vram_after_all )) MB across ladder). Strata keeps only its --vram-reserve-mib free by design (its expert cache takes the rest), so the ${vram_margin_mb} MB margin check doesn't apply"
       else
         echo "    VRAM: ${vram_after_all} MB free at ceiling. Strata keeps only its --vram-reserve-mib free by design (its expert cache takes the rest), so the ${vram_margin_mb} MB margin check doesn't apply"
+      fi
+    elif [[ "${ENGINE_KIND:-}" == "qengine" && "$vram_after_all" -gt 0 ]]; then
+      # QEngine allocates its KV pool (and, on Flash-Next, its expert cache) at load, so free VRAM is set
+      # at start and doesn't move with the context: measured 763 -> 763 MB across a 120K ladder (27B) and
+      # 3 -> 3 MB across 240K (Flash-Next, 4 slots), 2026-10-29. The absolute check would measure that
+      # allocation, not context headroom (#1826); the ladder's own drop is the number that means something.
+      if [[ "$vram_before_all" -gt 0 ]]; then
+        echo "    VRAM: ${vram_before_all} → ${vram_after_all} MB (Δ -$(( vram_before_all - vram_after_all )) MB across ladder). QEngine allocates its KV pool and expert cache at load, so the ${vram_margin_mb} MB margin check doesn't apply"
+      else
+        echo "    VRAM: ${vram_after_all} MB free at ceiling. QEngine allocates its KV pool and expert cache at load, so the ${vram_margin_mb} MB margin check doesn't apply"
       fi
     elif [[ "$vram_after_all" -gt 0 ]]; then
       vram_margin_check "$vram_before_all" "$vram_after_all" "$vram_margin_mb" "$last_pass_pct"

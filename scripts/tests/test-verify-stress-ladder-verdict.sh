@@ -98,6 +98,8 @@ expect_margin "vLLM, 600 MB free           " "1 1 1 0" vllm 600
 expect_margin "llama.cpp, 600 MB free      " "1 1 1 0" llamacpp 600
 expect_margin "vLLM, 2000 MB free          " "0 0 0 0" vllm 2000
 expect_margin "Strata / Maya, 300 MB free  " "0 0 0 0" strata 300
+# QEngine allocates its KV pool / expert cache at load: free VRAM doesn't move with the context (#1826)
+expect_margin "QEngine, 3 MB free          " "0 0 0 0" qengine 3
 
 [[ "$rc" == "0" ]] && echo "PASS: all ladder verdict states classified" || echo "FAIL: ladder verdict regression"
 exit "$rc"
