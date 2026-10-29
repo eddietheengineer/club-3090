@@ -553,7 +553,8 @@ def integrity_block(rec):
                                                "(fill / dispatch / collect)", h))
     s = rec.get("integrity.swap", "")
     if s:
-        out.append(check(s.startswith("PASS"), "swap check", s))
+        # WARN: pages sit in swap but were not swapped back in during the run, so the numbers stand (#1846)
+        out.append(check(s.startswith(("PASS", "WARN")), "swap check", s))
     us = []
     bad = False
     for name in shape_names(rec, "shape"):

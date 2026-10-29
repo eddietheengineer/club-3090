@@ -147,6 +147,11 @@ command grep -q 'skips.*= admission throttling' <<<"$snap" \
 # auto-verified integrity items carry evidence, not just a tick
 command grep -q '\[x\] capture status: OK' <<<"$snap" || fail "status not on the integrity panel"
 command grep -q '\[x\] swap check — PASS' <<<"$snap" || fail "swap check not on the integrity panel"
+# #1846: WARN (cold pages sit in swap, nothing paged back in during the run) passes; FAIL doesn't
+sed 's/^integrity.swap=.*/integrity.swap=WARN — 401336 kB of the SERVING PROCESS sits in swap, but the host swapped in only 6 MB during the run/' "$REC" > "$TMP/rec-warn.kv"
+sed 's/^integrity.swap=.*/integrity.swap=FAIL — 1572864 kB of the SERVING PROCESS is in swap and the host swapped in 1638 MB during the run/' "$REC" > "$TMP/rec-fail.kv"
+command grep -q '\[x\] swap check — WARN' <<<"$(card_render snapshot "$TMP/rec-warn.kv")" || fail "a WARN swap check must pass on the card"
+command grep -q '\[ \] swap check — FAIL' <<<"$(card_render snapshot "$TMP/rec-fail.kv")" || fail "a FAIL swap check must not pass on the card"
 command grep -q '\[x\] cache hard-failure counters zero' <<<"$snap" || fail "health counters missing"
 command grep -q '\[x\] n-usable == n for every shape — narrative 5/5' <<<"$snap" || fail "n-usable missing"
 command grep -q '\[x\] VRAM returned after the run — leak delta 0 MiB' <<<"$snap" || fail "leak delta missing"
