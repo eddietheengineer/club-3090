@@ -32,6 +32,9 @@
 #      next launch of that slug failed with "network ... not found". If the log can't be
 #      saved, the container is left as it is. A stopped container we don't manage is
 #      never touched.
+#  11. A RUNNING managed container that has restarted (RestartCount > 0: it crashed and came
+#      back, or is crash-looping) has its log saved before the down too (#1846); one that
+#      never restarted doesn't; a save that fails only warns, the down goes on.
 #
 # Harness: extract down_running() via sed, source it, inject a VARIANT_CONTAINER
 # managed set + a mock `docker` on PATH that records compose-down / stop calls.
@@ -114,6 +117,8 @@ case "$sub" in
       printf '%s\n' "${DOCKER_MOCK_PROJECT-proj-${cname}}"
     elif [[ "$fmt" == *FinishedAt* ]]; then
       printf '%s\n' "2026-10-16T12:03:04.123456789Z"
+    elif [[ "$fmt" == *RestartCount* ]]; then
+      printf '%s\n' "${DOCKER_MOCK_RESTARTS:-0}"
     fi
     ;;
   logs)
@@ -149,10 +154,12 @@ declare -A VARIANT_CONTAINER=(
   ["ik-llama/iq4ks-mtp"]="ik-llama-qwen36-27b"
   ["beellama/dflash"]="beellama-qwen36-27b"
   ["llamacpp/default"]="llama-cpp-qwen36-27b"
+  ["qengine/qwen38-flash-next-dual"]="qengine-qwen38-flash-next-dual"
 )
 
 # The compose files a label names exist on a real rig; teardown now skips a missing one.
-touch "${tmp_dir}/compose-vllm-qwen36-27b.yml" "${tmp_dir}/compose-ik-llama-qwen36-27b.yml"
+touch "${tmp_dir}/compose-vllm-qwen36-27b.yml" "${tmp_dir}/compose-ik-llama-qwen36-27b.yml" \
+  "${tmp_dir}/compose-qengine-qwen38-flash-next-dual.yml"
 
 # shellcheck source=/dev/null
 source "$HELPERS_FILE"
@@ -257,14 +264,40 @@ export DOCKER_MOCK_STOPPED="ik-llama-qwen36-27b:Created"
 log="$(cat "$DOCKER_MOCK_LOG")"
 assert_contains     "$log" "compose-ik-llama-qwen36-27b.yml down --remove-orphans" "never-started managed container torn down"
 
-# --- Scenario 10: a crash-looping (Restarting) one is brought down like a running one -
+# --- Scenario 10: a crash-looping (Restarting) one is brought down like a running one,
+# its log saved first: it has restarted, and the log says why (#1846) ---
 : > "$DOCKER_MOCK_LOG"
-export DOCKER_MOCK_STOPPED="ik-llama-qwen36-27b:Restarting_(1)_5_seconds_ago"
+export DOCKER_MOCK_STOPPED="ik-llama-qwen36-27b:Restarting_(1)_5_seconds_ago" DOCKER_MOCK_RESTARTS=3
 out="$( set +u; down_running 2>&1 )" || true
 log="$(cat "$DOCKER_MOCK_LOG")"
-assert_contains     "$out" "bringing down: ik-llama-qwen36-27b" "restarting: brought down as a running container"
-assert_not_contains "$log" "LOGS ik-llama-qwen36-27b"           "restarting: no log save (it isn't stopped)"
-unset DOCKER_MOCK_STOPPED
+assert_contains     "$out" "bringing down: ik-llama-qwen36-27b (it restarted 3 time(s); its log: ${logdir}/ik-llama-qwen36-27b-20261016T120304.log)" \
+                                                                "restarting: brought down, its log saved first"
+assert_contains     "$log" "compose-ik-llama-qwen36-27b.yml down --remove-orphans" "restarting: still brought down"
+unset DOCKER_MOCK_STOPPED DOCKER_MOCK_RESTARTS
+
+# --- Scenario 11: a RUNNING container that restarted (crashed, came back) keeps its log (#1846) ---
+: > "$DOCKER_MOCK_LOG"
+export DOCKER_MOCK_RUNNING="qengine-qwen38-flash-next-dual litellm" DOCKER_MOCK_RESTARTS=1
+out="$( set +u; down_running 2>&1 )" || true
+log="$(cat "$DOCKER_MOCK_LOG")"
+saved="${logdir}/qengine-qwen38-flash-next-dual-20261016T120304.log"
+assert_contains     "$(cat "$saved" 2>/dev/null)" "LOG-OF-qengine-qwen38-flash-next-dual" "restarted running: log saved"
+assert_contains     "$out" "it restarted 1 time(s); its log: ${saved}" "restarted running: says where the log went"
+assert_contains     "$log" "compose-qengine-qwen38-flash-next-dual.yml down --remove-orphans" "restarted running: brought down"
+assert_not_contains "$log" "LOGS litellm"                        "restarted running: an unmanaged container's log isn't read"
+# never restarted: no log save, as before
+: > "$DOCKER_MOCK_LOG"; export DOCKER_MOCK_RESTARTS=0
+out="$( set +u; down_running 2>&1 )" || true
+log="$(cat "$DOCKER_MOCK_LOG")"
+assert_not_contains "$log" "LOGS qengine-qwen38-flash-next-dual" "never restarted: no log save"
+assert_contains     "$out" "bringing down: qengine-qwen38-flash-next-dual" "never restarted: brought down"
+# its log can't be saved: a warning, and the down still runs (the user asked for the switch)
+: > "$DOCKER_MOCK_LOG"; export DOCKER_MOCK_RESTARTS=2 DOCKER_MOCK_LOGS_FAIL=1
+out="$( set +u; down_running 2>&1 )" || true
+log="$(cat "$DOCKER_MOCK_LOG")"
+assert_contains     "$out" "it restarted 2 time(s); its log could not be saved" "restarted, log not saved: warns"
+assert_contains     "$log" "compose-qengine-qwen38-flash-next-dual.yml down --remove-orphans" "restarted, log not saved: still brought down"
+unset DOCKER_MOCK_RESTARTS DOCKER_MOCK_LOGS_FAIL
 
 # --- Summary ------------------------------------------------------------------
 echo "----------------------------------------"
