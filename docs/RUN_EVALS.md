@@ -162,9 +162,19 @@ bash scripts/quality-test.sh --full --no-thinking \
   the server advertises an effort control (Project Maya), benchlocal then sends `high`, not the
   served `max` (GLM) or `auto` (MiniMax).
 - **Leave it unset on every instruct leg.** With it set, benchlocal turns thinking off by sending
-  `reasoning_effort: "none"`, which ExLlamaV3's template rejects.
+  `reasoning_effort: "none"`, which ExLlamaV3's template and Swift-1.5's (below) reject.
 - **Explicit sampler flags turn server sampling off** for that run, as on SGLang. Say which row you
   sent when you post.
+
+### Models that differ on the same engines
+
+Nanbeige4.3-33B (vLLM and SGLang) and Swift-1.5 (mainline llama.cpp) run on engines the tables above
+cover, but their templates and cards differ from Qwen3.8's:
+
+| Model (slugs) | Thinking leg | Instruct leg | Sampler | Also |
+|---|---|---|---|---|
+| Nanbeige4.3-33B (`vllm/nanbeige43-33b-dual`, `sgl/nanbeige43-33b-dual`) | thinking on by default. **No effort control**: its template reads `enable_thinking`, not `reasoning_effort`, so leave `REASONING_EFFORT` unset on both legs | `ENABLE_THINKING=false` at boot | the card's two rows are by scenario, not by mode: agentic and tool use 1.0 / 0.95 (what the vLLM compose serves), reasoning and chat 0.6 / 0.95 (`TEMP=0.6`); it names no top_k or min_p. **SGLang serves 1.0 / 1.0 to a request that sends none**, so send the row you choose from the client, and on vLLM too for the same row on both engines | no reasoning budget |
+| Swift-1.5 (`llamacpp/qwen38-27b-swift15-iq3s-mtp`) | `medium` (the compose's default; Swift's own template defaults to xhigh): set `REASONING_EFFORT=medium` | `INSTRUCT=1` (or `ENABLE_THINKING=false`) at boot, which moves the sampler to the instruct row too | the Qwen3.8 card's rows: thinking 1.0 / 0.95 / 20 / 0 as served, instruct 0.7 / 0.80 / 20 / 0 with presence_penalty 1.5 after `INSTRUCT=1` | low, medium and xhigh (`high` and `max` mean xhigh, `minimal` means low, through the compose's template patch); **anything else, `none` included, is HTTP 500**, so never set `REASONING_EFFORT` on its instruct leg. A 32,768-token boot reasoning budget, which quality-test reads and raises its cap for |
 
 ### Why each flag
 
@@ -173,7 +183,7 @@ Each of these exists because leaving it out produced a wrong number for us.
 | Flag | Why |
 |---|---|
 | *(no sampling flag)* | The server's sampler is the default (since 2026-10-09): it scores the compose's shipped sampler, not the packs' fixed one. `--pack-sampling` gives the reproducible baseline instead (a greedy instruct leg). On an SGLang instruct leg, send the row yourself (above). |
-| `REASONING_EFFORT=low` | Forwarded per request on the thinking leg. Set it to the effort the slug serves, so the run records what it measured: `low` on the Qwen3.8 vLLM and SGLang composes, and the [table above](#engines-with-their-own-defaults) for the newer engines. Effort changes both cost and score, so results at different efforts aren't comparable. Qwen3.8 and GLM-5.3-Flash honour it; a model whose template has no effort control ignores it. Leave it unset on an instruct leg. |
+| `REASONING_EFFORT=low` | Forwarded per request on the thinking leg. Set it to the effort the slug serves, so the run records what it measured: `low` on the Qwen3.8 vLLM and SGLang composes, and the [table above](#engines-with-their-own-defaults) for the newer engines. Effort changes both cost and score, so results at different efforts aren't comparable. Qwen3.8 and GLM-5.3-Flash honour it; a model whose template has no effort control ignores it (Nanbeige4.3-33B: [below](#models-that-differ-on-the-same-engines)). Leave it unset on an instruct leg. |
 | `--repeat 3` | For anything you'll quote: under the server's sampler (the default) every answer is sampled, so one draw isn't enough. |
 | `URL=http://localhost:<port>` | Optional. The endpoint is auto-detected, but naming it avoids picking up something else you have running. |
 
