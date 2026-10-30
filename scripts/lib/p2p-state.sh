@@ -131,6 +131,31 @@ p2p_engine_log_evidence() {
     index($0, "Registering ") && index($0, " cuda graph addresses") { print }
   '
 }
+# QEngine's transport, as its own log states it — PURE (the engine log on stdin).
+# QEngine runs its own collectives and links no NCCL, so the classifier below
+# finds no evidence in its log, and bench.sh and report.sh both read these lines
+# instead (#1862). Its two libraries word it differently, and the summary must not
+# claim more than a line says: the 27B's (libqengine) prints "P2P: decode
+# all-reduce GPU to GPU (…)" or "QE_COMM: collectives through pinned host memory
+# (no peer access)"; Flash-Next's (libqflash) prints no decode line with peer
+# access, only "[flash] no peer access: …" without it. Both print "[comm] prefill
+# transfers: <mode> (…)", and "P2P: enabling peer access … failed (…), host path"
+# when a pair is refused.
+# Prints one line: "<decode path>[; prefill transfers: <mode> (QE_COMM=…)][; ⚠ <refusal>]".
+p2p_qengine_transport() {
+  local log dec="" pre="" fail=""
+  log="$(command grep -E '^P2P: |^QE_COMM: |no peer access|^\[comm\] prefill transfers: ' || true)"
+  if printf '%s\n' "$log" | command grep -qE '^P2P: decode all-reduce GPU to GPU'; then
+    dec="decode all-reduce GPU to GPU (peer access)"
+  elif printf '%s\n' "$log" | command grep -qE 'no peer access'; then
+    dec="no peer access: collectives through pinned host memory"
+  fi
+  pre="$(printf '%s\n' "$log" | command grep -E '^\[comm\] prefill transfers: ' | tail -n 1 \
+    | sed -E 's/^\[comm\] prefill transfers: ([^(,]*[^(, ]).*\(((QE|FLASH)_COMM=[a-z]+).*/\1 (\2)/' || true)"
+  fail="$(printf '%s\n' "$log" | command grep -m1 -E '^P2P: enabling peer access .* failed' || true)"
+  printf '%s\n' "${dec:-decode path not stated in the log}${pre:+; prefill transfers: ${pre}}${fail:+; ⚠ ${fail}}"
+}
+
 # Engagement classifier — PURE (takes the boot-trail/env text on stdin so the
 # caller decides where it comes from and tests can feed fixtures).
 # report.sh and bench.sh gather exactly this normalized text: the container's

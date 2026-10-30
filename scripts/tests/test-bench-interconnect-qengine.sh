@@ -8,7 +8,9 @@
 #   3. Flash-Next (libqflash) with peer access prints no decode line: the block says it isn't stated
 #   4. without peer access (both libraries' own format strings) and a refused pair: said, with a ⚠
 #   5. CONTAINER=none: n/a, no log to read
-# Hermetic: the function is extracted from bench.sh; p2p_* helpers and docker are stubs.
+# Hermetic: the function is extracted from bench.sh. The log reader is the real p2p_qengine_transport
+# from lib/p2p-state.sh (report.sh reads QEngine through it too, #1862); the other p2p_* helpers and
+# docker are stubs.
 set -euo pipefail
 export CLUB3090_CONFIG_DIR=/nonexistent/club-3090-test-config   # tests never read your real settings (#1466)
 export PYTHONUTF8="${PYTHONUTF8:-1}"   # #779
@@ -32,8 +34,9 @@ chmod +x "$TMP/bin/docker"
 
 block() {  # <container> <log> -> the block's output
   QE_LOG="$2" CONTAINER="$1" PATH="$TMP/bin:$PATH" bash -c '
+    source "$2"
     p2p_gpu_count() { echo 2; }; p2p_host_capability() { echo pcie_p2p; }; p2p_driver_flavor() { echo open; }
-    ENGINE_KIND=qengine; source "$1"; bench_interconnect_block' _ "$TMP/block.sh" 2>&1
+    ENGINE_KIND=qengine; source "$1"; bench_interconnect_block' _ "$TMP/block.sh" "$ROOT_DIR/scripts/lib/p2p-state.sh" 2>&1
 }
 
 out="$(block qengine-qwen38-27b-dual 'P2P: decode all-reduce GPU to GPU (peer access between all 2 GPUs)\n[comm] prefill transfers: copy engine (QE_COMM=auto, auto)\n')"
