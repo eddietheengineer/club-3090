@@ -182,7 +182,7 @@ Both `🐣 Incubating` (`exllamav3/qwen38-flash-next-dual-exl3-305-cpumoe`, `-40
 
 | Flag | Upstream status | Used by us | Hardware-gated? |
 |---|---|---|---|
-| `--cpu-moe-split-experts` | Routed experts per MoE layer to run on CPU (default 0); splits *every* MoE layer. `[tabby-help]` | 2/2 — `${MOE_SPLIT:-144}` (3.05 bpw), `${MOE_SPLIT:-256}` (4.05 bpw) | `bare 24 GB` ⚠⚠ — the value *is* a VRAM fit; nothing computes it (#1360 / #1366). Not in any injector (#1361). |
+| `--cpu-moe-split-experts` | Routed experts per MoE layer to run on CPU (default 0); splits *every* MoE layer. `[tabby-help]` | 2/2 — `${MOE_SPLIT:-120}` (3.05 bpw), `${MOE_SPLIT:-256}` (4.05 bpw) | `bare 24 GB` ⚠⚠ — the value *is* a VRAM fit; nothing computes it (#1360 / #1366). Not in any injector (#1361). |
 | `--cpu-moe-threads` | Worker threads for CPU MoE; unset = library default. `[tabby-help]` | 2/2 — from `THREADS`, else `nproc/2` computed in the entrypoint | `launcher-bash:resolve_offload_threads` exports `THREADS=nproc/2` (compose matches `--cpu-moe`); the entrypoint computes the same floor. Measured good zone is an absolute ~24-32 (`docs/engines/EXLLAMAV3.md`) — CPU-keyed, not VRAM-keyed. |
 | `--gpu-split-auto` | Auto-allocate across GPUs (default True); ignored on 1 GPU. `[tabby-help]` | 2/2 — `LIT true` | `engine-auto` |
 | `--autosplit-reserve` | VRAM reserved for autosplit, one MB value per GPU (default 96 on GPU 0). `[tabby-help]` | 2/2 — `${RESERVE:-512}` `${RESERVE:-512}` (two entries) | `bare 24 GB` ⚠ — **two** list entries hard-codes a 2-card rig; a 4-card rig gets no reserve on cards 2-3. |

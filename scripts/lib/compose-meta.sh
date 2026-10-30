@@ -576,8 +576,9 @@ _offload_rule_layer_count() {
 # expert: non-expert weights, KV at the shipped ctx, activations, and the
 # headroom autosplit refuses to use. It also absorbs the ENGINE-PIN PACKING TERM,
 # which is real and measured -- exl3 1.5.0 fits at split 144 where 1.5.1 needs
-# 160 at the SAME total VRAM (44,214 vs 44,112 MiB), so the fit is not a pure
-# function of bytes and the constant must be re-calibrated on a pin bump.
+# 160 at the SAME total VRAM (44,214 vs 44,112 MiB), and 1.6.5 fits at 104, so
+# the fit is not a pure function of bytes and the constant must be re-calibrated
+# on a pin bump.
 #
 # ⚠️ A BAD FIT IS INVISIBLE. "Insufficient VRAM in split" crash-loops while
 # TabbyAPI's port binds during load, so the endpoint answers the whole time.

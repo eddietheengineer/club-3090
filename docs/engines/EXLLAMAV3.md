@@ -111,8 +111,10 @@ file, 4.05 factors the vision tower into `vision_k6.safetensors`).
 | `…-305-cpumoe` (3.05bpw) | **57.37** (CV 1.8%) | **74.51** (CV 2.3%) | **1566.0** (CV 0.9%) | 310 / 315 ms |
 | `…-405-cpumoe` (4.05bpw) | 48.53 | 62.94 | 1335.7 | — |
 
-The shipped container at its own config (3.05bpw, 204800 ctx, Q4 KV, split 144,
-`THREADS=28`), 2026-09-18:
+The shipped container at its own config then (3.05bpw, 204800 ctx, Q4 KV, split 144 on
+exllamav3 1.5.0, `THREADS=28`), 2026-09-18. Since 2026-10-30 the pin is exllamav3 1.6.5, which
+fits this tier at split 104 on two 24 GB cards. It ships split 120 (23% of experts on the CPU,
+from 28%), which kept more VRAM free at a 195K-token prompt; that split hasn't been benched:
 
 | | narrative | code | TTFT |
 |---|---|---|---|
@@ -218,11 +220,13 @@ On a RAM-constrained box, drop it and accept the latency.
 
 ## What's in this image
 
-**Nothing of ours.** `ghcr.io/noonghunna/tabbyapi-club3090` is stock
-[theroyallab/tabbyAPI](https://github.com/theroyallab/tabbyAPI) @ `53da791`, built with
-**upstream's own** `docker/Dockerfile.cu13`, which resolves to `torch 2.11.0+cu130` and
-`exllamav3 1.5.0+cu132.torch2.11.0`. Zero patches, zero vendored overlays. The digest
-pin exists for reproducibility, not to protect patch hooks.
+**Nothing of ours.** The pin is TabbyAPI's own image, `ghcr.io/theroyallab/tabbyapi:cu13`,
+which [theroyallab/tabbyAPI](https://github.com/theroyallab/tabbyAPI)'s CI builds from
+`docker/Dockerfile.cu13` on every push to main. The pinned digest is from `b1c2253`
+(2026-10-30) and carries `torch 2.11.0+cu130` and `exllamav3 1.6.5+cu132.torch2.11.0`.
+Zero patches, zero vendored overlays. The digest pin exists for reproducibility, not to
+protect patch hooks. Until 2026-10-30 we built `ghcr.io/noonghunna/tabbyapi-club3090`
+ourselves from the same Dockerfile (TabbyAPI @ `53da791`, exllamav3 1.5.0).
 
 ⚠️ **ATTRIBUTION:** ExLlamaV3 and the official quants are
 [turboderp's](https://github.com/turboderp-org/exllamav3) work; TabbyAPI is
