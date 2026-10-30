@@ -11,15 +11,24 @@ lineage:
   base: "llama.cpp"
   base_version: null
   source: "https://github.com/PrismML-Eng/llama.cpp"
-  source_ref: "a15369706017f177cae8aa40b6b8592259a48806"
+  source_ref: "9d9efeadbdd1d77458d98717a96fbfa3a016e159"
   chain: []
-  delta: "PrismML's fork with ternary (PQ2_0) kernels, release prism-b10828-a153697. Our image wraps their release tarball unmodified (predates the maintainer-published-image rule)"
+  delta: "PrismML's fork with ternary (PQ2_0) kernels, release prism-b10831-9d9efea. Our image wraps their release tarball unmodified (predates the maintainer-published-image rule)"
 install:
   method: docker_image
   # Digest-pinned, not tag-pinned: tags move, digests do not (#940 precedent).
   # Built by WRAPPING upstream's own release tarball — NOT from source. Recipe:
   # models/qwen3.8-27b/llama-cpp-prism/image/Dockerfile (checked in 2026-09-24;
   # the b10685 image's recipe existed only in its layers).
+  #   2026-10-30  prism-b10831-9d9efea  `llama-prism-b10831-9d9efea-bin-linux-cuda-12.8-x64.tar.gz`
+  #               sha256 c55d8224…568a122d (= the release asset's published digest).
+  #               Image tag b10831-9d9efea, registry digest sha256:e2adf9c9…caee0f9e.
+  #               SASS sm_86/89/120a, PTX to sm_90 (cuobjdump), as b10828. 3 commits past b10828, none on
+  #               a path our slugs run: #413 a Hopper-only mat-vec and folded Gemma 4 weights, #414 a Gemma 4
+  #               MoE fusion (off by default), #415 a PTQ1_0 MUL_MAT_ID (MoE) mat-vec; both slugs are dense
+  #               PQ2_0. The MTP slug boots on it, verify-full 9/9 (vision 4/4); greedy output at SPEC_N 0, 2
+  #               and 4 is byte-identical to b10828 on both prompts, draft counts too. pq2 not booted
+  #               (one-slug bump rule).
   #   2026-10-29  prism-b10828-a153697  `llama-prism-b10828-a153697-bin-linux-cuda-12.8-x64.tar.gz`
   #               sha256 3ac984cb…9c71fa7c (= the release asset's published digest).
   #               Image tag b10828-a153697, registry digest sha256:6ea99567…4a9dbb4c.
@@ -107,9 +116,9 @@ install:
   # The pin's record: pin-current is what spec pins now; pin-earlier lists earlier pins, newest first (the first
   # is the rollback). docs/UPSTREAM.md's Pinned images table holds why it's pinned, not these.
   # The dated notes above are each pin's detail.
-  # pin-current: prism-b10828-a153697 · image tag b10828-a153697 · pinned 2026-10-29
-  # pin-earlier: prism-b10826-c9c34bc `65e3fd2a…` (2026-10-28); prism-b10822-bf8c069 `7724902b…` (2026-10-25); prism-b10819-909f0ca `ae963910…` (2026-10-25); prism-b10787-73bfe6c `8426b957…` (2026-10-20); prism-b10776-d00e252 `e4ad4998…` (2026-10-14, ships PrismML #355); prism-b10770-6684606 `8dbbd2a6…` (2026-10-10); prism-b10754-2459f68 (2026-10-06); prism-b10735-842b188 (2026-09-24); prism-b10685-7dffb15 `919ee810…` (2026-09-18)
-  spec: ghcr.io/noonghunna/llamacpp-prism@sha256:6ea995671fca3003046d56a2bbf7253512e2b878cb3384a951de7bac4a9dbb4c
+  # pin-current: prism-b10831-9d9efea · image tag b10831-9d9efea · pinned 2026-10-30
+  # pin-earlier: prism-b10828-a153697 `6ea99567…` (2026-10-29); prism-b10826-c9c34bc `65e3fd2a…` (2026-10-28); prism-b10822-bf8c069 `7724902b…` (2026-10-25); prism-b10819-909f0ca `ae963910…` (2026-10-25); prism-b10787-73bfe6c `8426b957…` (2026-10-20); prism-b10776-d00e252 `e4ad4998…` (2026-10-14, ships PrismML #355); prism-b10770-6684606 `8dbbd2a6…` (2026-10-10); prism-b10754-2459f68 (2026-10-06); prism-b10735-842b188 (2026-09-24); prism-b10685-7dffb15 `919ee810…` (2026-09-18)
+  spec: ghcr.io/noonghunna/llamacpp-prism@sha256:e2adf9c9f32b034abf43b2f72042ed17febaf3d41caf602c904c3921caee0f9e
 
 # ---------------------------------------------------------------------------
 # WHY A SEPARATE ENGINE RATHER THAN A FLAG ON AN EXISTING ONE
