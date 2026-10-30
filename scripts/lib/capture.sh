@@ -1434,3 +1434,44 @@ cap_divergence_pct() {
     printf "%.1f\n", d * 100 / m
   }'
 }
+
+# cap_decode_crosscheck <summary.json> — the client-vs-engine decode cross-check, one line per
+# shape, then the >5% WARN when any shape exceeds it (#1862). It compares the SAME requests on
+# both sides: each shape's measured runs (bench.sh's `decode_runs`) against the engine's
+# timings between the log positions bench.sh recorded around them (`log_lines`). The whole-run
+# scrape pools every request in its window: warm-ups, both shapes and the prefill probes' short
+# decodes at depth. Its median against the mean of the shapes' means read 163.72 vs 184.72
+# (11.4%) on a healthy QEngine run whose code decodes ~35% faster than its prose. Medians on
+# both sides, and the client keeps only runs at or over CAP_MIN_DECODE_TOKENS, the floor the
+# engine scrape applies. Prints nothing when no shape has a window with engine timings in it.
+cap_decode_crosscheck() {
+  local summary="$1" xs xa xb xcli xn xeng eng en div max=""
+  [[ -r "$summary" ]] || return 0
+  while IFS='|' read -r xs xa xb xcli xn; do
+    [[ -n "$xs" ]] || continue
+    xeng="$(CAP_LINE_OFFSET="$xa" CAP_LINE_LIMIT="$(( xb - xa ))" cap_moe_parse timings 2>/dev/null \
+      | command grep -m1 '^decode ' || true)"
+    eng="$(printf '%s\n' "$xeng" | command grep -oE 'median=[0-9.]+' | cut -d= -f2 || true)"
+    en="$(printf '%s\n' "$xeng" | command grep -oE ' n=[0-9]+' | cut -d= -f2 || true)"
+    [[ -n "$eng" && "${en:-0}" -gt 0 ]] || continue
+    div="$(cap_divergence_pct "$eng" "$xcli" || true)"
+    [[ -n "$div" ]] || continue
+    echo "  cross-check: client-observed ${xcli} vs engine-side ${eng} tok/s -> ${div}% divergence (${xs}: medians over its ${xn} measured runs; engine n=${en})"
+    max="$(awk -v a="${max:-0}" -v b="$div" 'BEGIN{ print (b+0 > a+0 ? b : a) }')"
+  done < <(python3 -c '
+import json, statistics, sys
+try:
+    d = json.load(open(sys.argv[1], encoding="utf-8"))
+except Exception:
+    sys.exit(0)
+floor = int(sys.argv[2] or 0)
+for name, v in d.get("shapes", {}).items():
+    a, b = (v.get("log_lines") or [None, None])[:2]
+    runs = [r for r in v.get("decode_runs") or [] if len(r) == 2 and r[1] >= floor]
+    if v.get("decode_derived") or not runs or a is None or b is None or b <= a:
+        continue
+    print(f"{name}|{a}|{b}|{statistics.median(r[0] for r in runs):.2f}|{len(runs)}")
+' "$summary" "${CAP_MIN_DECODE_TOKENS:-0}" 2>/dev/null)
+  [[ -n "$max" ]] && awk -v d="$max" 'BEGIN{ if (d+0 > 5) print "  ⚠ WARN: >5% divergence. One of these two is not measuring what its label\n          says. State WHICH number a card quotes, and why." }'
+  return 0
+}

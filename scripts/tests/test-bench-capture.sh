@@ -496,6 +496,49 @@ command grep -q 'dropped_short_decode n=1 floor=32' <<<"$tim2" \
   || fail "dropping a short completion must be REPORTED, not silent: $tim2"
 echo "  ✓ timings split prefill/decode and report (not hide) short-completion filtering"
 
+# --- the decode cross-check compares the SAME requests, per shape (#1862) -----
+# The #1862 shape: prose decodes at ~156, code at ~212 (MTP drafts code better), and the
+# log also holds a warm-up and two prefill probes' decodes at depth. Line 1 is the warm-up;
+# narrative's measured runs are lines 2-6, code's 7-11; the probes come after.
+{
+  echo "       eval time =  5000.00 ms /  1000 tokens (    5.00 ms per token,   175.00 tokens per second)"
+  for v in 151.6 163.5 149.6 164.0 154.1; do
+    echo "       eval time =  6400.00 ms /  1000 tokens (    6.40 ms per token,   ${v} tokens per second)"
+  done
+  for v in 203.1 236.8 209.2 208.0 207.5; do
+    echo "       eval time =  3600.00 ms /   800 tokens (    4.50 ms per token,   ${v} tokens per second)"
+  done
+  echo "       eval time =   128.00 ms /    16 tokens (    8.00 ms per token,   125.00 tokens per second)"
+  echo "       eval time =   300.00 ms /    40 tokens (    7.50 ms per token,   124.00 tokens per second)"
+  echo "       eval time =   300.00 ms /    40 tokens (    7.50 ms per token,   133.00 tokens per second)"
+} > "$TMP/xc.log"
+xc_summary() {  # $1=path $2=code's client runs (JSON list of [tps, tokens])
+  cat > "$1" <<EOF
+{"shapes": {
+ "narrative": {"decode_tps_mean": 156.6, "decode_runs": [[151.58,986],[163.48,1000],[149.55,1000],[163.95,1000],[154.06,1000]], "log_lines": [1, 6]},
+ "code": {"decode_tps_mean": 212.9, "decode_runs": $2, "log_lines": [6, 11]},
+ "no_window": {"decode_tps_mean": 99.0, "decode_runs": [[99.0,500]], "log_lines": [null, null]}}}
+EOF
+}
+xc_summary "$TMP/xc.json" '[[203.06,372],[236.80,742],[209.23,800],[207.97,800],[207.49,622]]'
+xc="$(CAP_LOG="$TMP/xc.log" CAP_LINE_OFFSET=0 CAP_MIN_DECODE_TOKENS=32 cap_decode_crosscheck "$TMP/xc.json")"
+command grep -q 'divergence (narrative: medians over its 5 measured runs; engine n=5)' <<<"$xc" \
+  || fail "narrative must be compared over its own 5 runs on both sides: $xc"
+command grep -q 'divergence (code: medians over its 5 measured runs; engine n=5)' <<<"$xc" \
+  || fail "code must be compared over its own 5 runs on both sides: $xc"
+command grep -q 'no_window' <<<"$xc" && fail "a shape without a log window must be skipped, not compared: $xc"
+command grep -q 'WARN' <<<"$xc" && fail "the same requests on both sides must not WARN on this healthy run: $xc"
+# Positive control: the fixture IS the trap. The old comparison (the whole window's pooled
+# median against the mean of the shapes' means) warns on these same numbers.
+pooled="$(CAP_LOG="$TMP/xc.log" CAP_LINE_OFFSET=0 CAP_MIN_DECODE_TOKENS=32 cap_moe_parse timings | command grep -m1 '^decode ' | command grep -oE 'median=[0-9.]+' | cut -d= -f2)"
+old_div="$(cap_divergence_pct "$pooled" "$(awk 'BEGIN{ printf "%.2f", (156.6 + 212.9) / 2 }')")"
+awk -v d="$old_div" 'BEGIN{ exit !(d + 0 > 5) }' || fail "fixture no longer reproduces #1862 (old comparison read ${old_div}%)"
+# Negative control: an engine that genuinely disagrees on one shape still WARNs.
+xc_summary "$TMP/xc-bad.json" '[[290.0,800],[300.0,800],[295.0,800],[310.0,800],[305.0,800]]'
+xc="$(CAP_LOG="$TMP/xc.log" CAP_LINE_OFFSET=0 CAP_MIN_DECODE_TOKENS=32 cap_decode_crosscheck "$TMP/xc-bad.json")"
+command grep -q '⚠ WARN: >5% divergence' <<<"$xc" || fail "a real per-shape disagreement must WARN: $xc"
+echo "  ✓ decode cross-check: per shape over the same requests (old pooled form read ${old_div}%), a real gap still WARNs"
+
 # --- always-on fingerprint pieces -------------------------------------------
 ARGV="python3 /x/llama-server -m /models/m.gguf -ot blk.(1|2).ffn_up_exps.weight=CPU -t 24 -ub 2048 -ct q8_0 -ngl 99 -ts 1,1 --moe-cache 8192"
 fp=$(cap_argv_fingerprint "$ARGV") || fail "argv fingerprint returned nothing"
