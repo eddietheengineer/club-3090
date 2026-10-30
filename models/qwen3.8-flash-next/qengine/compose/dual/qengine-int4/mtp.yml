@@ -3,7 +3,7 @@
 #   Model:     Qwen3.8-Flash-Next — bpx03's QEngine layout of Intel's W4A16 AutoRound (routed
 #              experts INT4 bit-exact; shared expert and DeltaNet INT4 RTN; attention and lm_head
 #              INT8 at load), the INT8 n-gram table, its INT4 MTP head (128 GB)
-#   Engine:    QEngine 1.3 (bpx03): its second engine, libqflash.so, in the author's own image
+#   Engine:    QEngine 1.3.1 (bpx03): its second engine, libqflash.so, in the author's own image
 #              ghcr.io/bpx03/qengine (source d15a4d3a, text only)
 #   Topology:  Dual 3090 PCIe (experts split evenly over the two cards; GPU-to-GPU P2P when the
 #              driver grants it)
@@ -29,6 +29,12 @@
 #              out-of-memory (#1846: `graph instantiate out of memory, other graphs dropped`, then
 #              `flash_seq.cu:298: out of memory`); FLASH_EC_MARGIN_MB=1024 fixed it, for ~10% of
 #              decode there. The first line shows here too, at 16 slots as well, with no crash so far.
+#              QEngine 1.3.1 (pinned 2026-10-30) addresses these upstream: it checks at start that P2P
+#              data really arrives and picks the copy engine on a corrupt transport or a narrow link
+#              (a GPU under 8 lanes), and a CUDA-graph out-of-memory now drops the cached graphs and
+#              retries instead of aborting. Upstream ran a 240K ladder, agent traffic and 8 concurrent
+#              agents at FLASH_COMM=ce FLASH_MAX_SEQS=4 and the default 256 MB margin without an abort.
+#              Not re-run on a rig that hit them.
 #              Measured 2026-10-28 on two 3090s at 230 W (bench.sh on its own boot): 164.0 / 170.6
 #              decode, 1,921 prefill @10K (CV 15%), 2,373 @90K, MTP acceptance length 2.8, 24.1 GB
 #              a card. First start 113 s with the weights already in the page cache (a cold start
@@ -47,7 +53,7 @@
 # Requires-min-gpu-count: 2
 # Tensor-parallel: 2
 #
-# QEngine 1.3's Flash-Next engine (README "Qwen3.8-Flash-Next"): the 512 routed experts split over
+# QEngine's Flash-Next engine (from 1.3; README "Qwen3.8-Flash-Next"): the 512 routed experts split over
 # the cards in 128-wide groups, an expert cache that copies hot host-resident groups into part of
 # the KV pool, FP8 attention KV split by position with the indexer's top-512 block selection past
 # 2K tokens, MTP (k = 3) plus lookup drafts, 16 slots with batched decode. Two cards measured by
@@ -87,7 +93,7 @@
 #   bash scripts/settings.sh set FLASH_MAX_SEQS=8
 services:
   qengine-qwen38-flash-next-dual:
-    image: ${QENGINE_IMAGE:-ghcr.io/bpx03/qengine@sha256:b9d1b0afe8f96547b3a05de73aff437077effcb1117c82ab2e0fe62bf000b3da}
+    image: ${QENGINE_IMAGE:-ghcr.io/bpx03/qengine@sha256:849b059d4c5658393a83c3ec8dbfdfd6036d2590278f10c8e7faa7981653d719}
     # qengine- is the container prefix our tooling discovers the engine by
     container_name: "${ESTATE_CONTAINER:-qengine-qwen38-flash-next-dual}"
     user: "0:${DOCKER_GID:-1000}"

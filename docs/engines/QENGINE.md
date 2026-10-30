@@ -22,7 +22,7 @@ What it does, from its README:
 
 ## Image
 
-The author publishes `ghcr.io/bpx03/qengine` (text only, about 0.3 GB; the `:vision` tags add the vision encoder and PyTorch, about 3 GB). Each image's `org.opencontainers.image.revision` label names its source commit. The profile pins **`1.3`** by digest (`sha256:b9d1b0af…`, source `d15a4d3a` = git tag `v1.3`), and the launchers will inject it as `QENGINE_IMAGE`.
+The author publishes `ghcr.io/bpx03/qengine` (text only, about 0.3 GB; the `:vision` tags add the vision encoder and PyTorch, about 3 GB). Each image's `org.opencontainers.image.revision` label names its source commit. The profile pins **`1.3.1`** by digest (`sha256:849b059d…`, source `016c9249` = git tag `v1.3.1`), and the launchers will inject it as `QENGINE_IMAGE`.
 
 ## Settings
 
