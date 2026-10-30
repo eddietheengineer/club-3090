@@ -51,7 +51,7 @@ run_env() {  # stdout = export lines, stderr = diagnostics
 }
 
 echo "== 1. TabbyAPI (exllamav3)"
-out="$(FAKE_PS='tabbyapi-qwen38-flash-next-exl3-305|0.0.0.0:8180->5000/tcp, [::]:8180->5000/tcp|ghcr.io/noonghunna/tabbyapi-club3090@sha256:87490d21a61ad0bc74093411ea431bcaacaeae748fa7d109df0a07217651ca0c' \
+out="$(FAKE_PS='tabbyapi-qwen38-flash-next-exl3-305|0.0.0.0:8180->5000/tcp, [::]:8180->5000/tcp|ghcr.io/theroyallab/tabbyapi@sha256:40635baf5a4117a706bc0da6252c74af888b2f11854e0863d4d8c2dfb763a1b7' \
        FAKE_CARD='{"object":"model","id":"Qwen3.8-Flash-Next-exl3-3.05bpw"}' \
        FAKE_MODELS='{"data":[{"id":"modules"},{"id":"Qwen3.8-Flash-Next-exl3-3.05bpw"},{"id":"an-unrelated-folder-with-a-much-longer-name"}]}' \
        run_env)"

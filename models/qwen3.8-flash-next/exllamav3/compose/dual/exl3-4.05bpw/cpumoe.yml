@@ -10,7 +10,7 @@
 #              `_h5_ng5`, and it ships a DIFFERENT file set (this branch factors
 #              the vision tower into `vision_k6.safetensors` and carries no MTP
 #              patch file). The layouts are not interchangeable.
-#   Engine:    ExLlamaV3 1.5.0 + TabbyAPI (stock upstream @ 53da791, ZERO patches)
+#   Engine:    ExLlamaV3 1.6.5 + TabbyAPI (TabbyAPI's own :cu13 image @ b1c2253, ZERO patches)
 #   Topology:  Dual 3090 PCIe (exl3 autosplit layer-split, NOT tensor-parallel)
 #   Spec-dec:  ✅ Built-in MTP, ON by default. draft_num_tokens=4 as a CEILING
 #              with dynamic_draft — NOT a fixed depth. Needs NO drafter file:
@@ -71,6 +71,9 @@
 #     anchored to ctx 204800 + cache-mode Q4 on exl3 1.5.0.
 #   • Calibration anchor reproduced by `scripts/tests/test-cpu-moe-split-fit.sh`:
 #     256 @ 2x24 GB free 24,123 MiB/card, exl3 1.5.0, ctx 204800, Q4
+#     ⚠️ NOT re-calibrated on exl3 1.6.5 (the pin since 2026-10-30): this tier wasn't
+#     booted for that bump. Its 3.05 sibling's fit moved 144 → 104 on 1.6.5, so 256
+#     is likely conservative here, but 1.5.1 showed the packing term can go either way.
 # CPU-Offload-Host-RAM-GB: 118
 #   ⤷ 67.7 GB of model shards, of which ~44% of experts are CPU-resident and
 #     computed there, plus the 39.0 GB n-gram table held in RAM (`ngram_ram: true`).
@@ -141,9 +144,9 @@ services:
   tabbyapi-qwen38-flash-next-exl3-405:
     # Digest-pinned, not tag-pinned: tags move, digests do not (#940 precedent).
     # The engine profile (engines/exllamav3.yml) is authoritative; keep in step.
-    # Built 2026-09-17 from theroyallab/tabbyAPI @ 53da791 via UPSTREAM's own
-    # docker/Dockerfile.cu13, from a `git archive` clean context.
-    image: ${EXLLAMAV3_IMAGE:-ghcr.io/noonghunna/tabbyapi-club3090@sha256:87490d21a61ad0bc74093411ea431bcaacaeae748fa7d109df0a07217651ca0c}
+    # TabbyAPI's own :cu13 image (their CI builds docker/Dockerfile.cu13 per push to
+    # main), from b1c2253, 2026-10-30. Until then: our build of the same Dockerfile.
+    image: ${EXLLAMAV3_IMAGE:-ghcr.io/theroyallab/tabbyapi@sha256:40635baf5a4117a706bc0da6252c74af888b2f11854e0863d4d8c2dfb763a1b7}
     container_name: ${ESTATE_CONTAINER:-tabbyapi-qwen38-flash-next-exl3-405}
     restart: ${CLUB3090_RESTART:-unless-stopped}
     # Reap orphaned children — without it a wedged server becomes a <defunct>

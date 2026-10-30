@@ -43,25 +43,26 @@ warn_for() { # warn_for <compose> <free-list> [PIN]
 }
 
 # --- 1. the calibration anchors -----------------------------------------------
-# 2x24 GB, free 24,123 MiB/card, exl3 1.5.0, ctx 204800, cache-mode Q4.
-# 3.05@144 and 4.05@256 are BOOT-VERIFIED fit points, not preferences:
-# learnings/exllamav3-engine.md has the ladder (144 fits on 1.5.0, 1.5.1 needs
-# 160) and the per-card VRAM at each.
+# 2x24 GB, free 24,123 MiB/card, ctx 204800, cache-mode Q4.
+# 3.05@120 (exl3 1.6.5, 2026-10-30: the 104 boot fit plus full-context margin) and 4.05@256 (exl3 1.5.0, not re-checked on
+# 1.6.5) are BOOT-VERIFIED fit points, not preferences: learnings/exllamav3-engine.md
+# has the ladders (3.05: 144 fits on 1.5.0, 1.5.1 needs 160, 1.6.5 fits at 104, ships 120)
+# and the per-card VRAM at each.
 ANCHOR="24123 24123"
 got="$(split_for "$C305" "$ANCHOR")"
-[[ "$got" == "144" ]] && ok "3.05 tier reproduces the 2x24 GB anchor (144)" \
-                      || bad "3.05 anchor: want 144, got ${got}"
+[[ "$got" == "120" ]] && ok "3.05 tier reproduces the 2x24 GB anchor (120)" \
+                      || bad "3.05 anchor: want 120, got ${got}"
 got="$(split_for "$C405" "$ANCHOR")"
 [[ "$got" == "256" ]] && ok "4.05 tier reproduces the 2x24 GB anchor (256)" \
                       || bad "4.05 anchor: want 256, got ${got}"
 
 # --- 2. NEGATIVE CONTROL ------------------------------------------------------
-# A guard that only asserts "144" proves nothing unless a wrong input changes it.
+# A guard that only asserts "120" proves nothing unless a wrong input changes it.
 # Shrink the rig by one card's worth and the split MUST rise.
 got="$(split_for "$C305" "24123")"
-[[ "$got" =~ ^[0-9]+$ && "$got" -gt 144 ]] \
-  && ok "negative control: one card instead of two raises the split (${got} > 144)" \
-  || bad "negative control: one card gave '${got}', expected >144 — the fit is not reading free VRAM"
+[[ "$got" =~ ^[0-9]+$ && "$got" -gt 120 ]] \
+  && ok "negative control: one card instead of two raises the split (${got} > 120)" \
+  || bad "negative control: one card gave '${got}', expected >120 — the fit is not reading free VRAM"
 
 # --- 3. the #1360 defect ------------------------------------------------------
 # The bug that started this: a 2x32 GB rig ran the 2x24 GB expert count. A larger
@@ -78,7 +79,7 @@ big="$(split_for "$C405" "32100 32100")"
 got="$(split_for "$C305" "$ANCHOR" 300)"
 [[ "$got" == "300" ]] && ok "explicit MOE_SPLIT=300 is kept, not clobbered" \
                       || bad "explicit pin: want 300, got ${got}"
-warn_for "$C305" "$ANCHOR" 300 | grep -q "would be 144" \
+warn_for "$C305" "$ANCHOR" 300 | grep -q "would be 120" \
   && ok "a pin still reports the fit it overrode (the actual diagnostic)" \
   || bad "a pin hid the fit — 'my pin vs what the rig holds' is the whole question"
 
@@ -94,7 +95,7 @@ warn_for "$C405" "$ANCHOR" | grep -q "exactly 50%" \
   || bad "the 4.05 anchor is 256/512 = exactly 50% and must say so"
 warn_for "$C305" "$ANCHOR" | grep -q "REAL EXPERT CACHE" \
   && bad "the >50% warning fired at 28% — it is not reading the fraction" \
-  || ok "no >50% warning at the 28% anchor (the warning discriminates)"
+  || ok "no >50% warning at the 3.05 anchor (the warning discriminates)"
 
 # --- 6. extrapolation honesty -------------------------------------------------
 # One calibration point per tier means every other rig is an extrapolation, and
@@ -120,7 +121,7 @@ fi
 
 # --- 8. the value has somewhere to land ---------------------------------------
 # Exporting a var the compose never reads is a silent no-op. Verified live once
-# with `docker compose config` (unset -> 144, MOE_SPLIT=137 -> 137); this keeps
+# with `docker compose config` (unset -> 144 then, 120 since 2026-10-30; MOE_SPLIT=137 -> 137); this keeps
 # the wiring from being deleted.
 for c in "$C305" "$C405"; do
   env_name="$(compose_meta_get "$c" cpu-moe-split-env)"

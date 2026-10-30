@@ -7,7 +7,7 @@
 #              (read from quantization_config.json, not a card).
 #              ⚠️ The HF branch is `3.05bpw_h5_ng5` — the 4.05 sibling is
 #              `_h6_ng6`. The suffixes differ; do not copy one onto the other.
-#   Engine:    ExLlamaV3 1.5.0 + TabbyAPI (stock upstream @ 53da791, ZERO patches)
+#   Engine:    ExLlamaV3 1.6.5 + TabbyAPI (TabbyAPI's own :cu13 image @ b1c2253, ZERO patches)
 #   Topology:  Dual 3090 PCIe (exl3 autosplit layer-split, NOT tensor-parallel)
 #   Spec-dec:  ✅ Built-in MTP, ON by default. draft_num_tokens=4 as a CEILING
 #              with dynamic_draft — NOT a fixed depth. MEASURED: acceptance
@@ -46,7 +46,7 @@
 # CPU-MoE-Experts-Per-Layer: 512
 # CPU-MoE-Layers: 48
 # CPU-MoE-Expert-KiB: 1857
-# CPU-MoE-GPU-Reserve-MiB: 7758
+# CPU-MoE-GPU-Reserve-MiB: 6713
 # CPU-MoE-Split-Safety-Experts: 8
 # CPU-MoE-Calibrated-Free-MiB: 24123
 # CPU-MoE-Calibrated-Cards: 2
@@ -63,11 +63,19 @@
 #     (512) — autosplit does not obey that number and leaves far more idle. It is
 #     a CALIBRATED constant covering non-expert weights, KV at the shipped ctx,
 #     activations, autosplit headroom, AND the engine-pin packing term (1.5.0
-#     fits at 144 where 1.5.1 needs 160 at the same total VRAM).
+#     fits at 144 where 1.5.1 needs 160 at the same total VRAM; 1.6.5 fits at
+#     104, 2026-10-30).
 #     ⚠️ RE-CALIBRATE IT ON AN ENGINE-PIN BUMP or on a CTX/KV_TYPE change — it is
-#     anchored to ctx 204800 + cache-mode Q4 on exl3 1.5.0.
+#     anchored to ctx 204800 + cache-mode Q4 on exl3 1.6.5. It was 7758 on 1.5.0.
+#     The 1.6.5 ladder (pass = a generated token, RestartCount flat): 136, 128,
+#     120, 112 and 104 fit; 96 gave `Insufficient VRAM in split` and a restart.
+#     ⚠️ Calibrated to 120, NOT the 104 boot fit (maintainer, 2026-10-30): on 1.6.5
+#     a long prompt adds ~0.9 GB on one card (VRAM was flat on 1.5.0), so the boot
+#     fit understates the need. Free on the tighter card at a 195,001-token prompt:
+#     104 → 463 MiB, 112 → 647, 120 → 827, 128 → 385 (autosplit packs whole layers,
+#     so the margin isn't monotonic). 120 kept the most; all recalled, 0 restarts.
 #   • Calibration anchor reproduced by `scripts/tests/test-cpu-moe-split-fit.sh`:
-#     144 @ 2x24 GB free 24,123 MiB/card, exl3 1.5.0, ctx 204800, Q4
+#     120 @ 2x24 GB free 24,123 MiB/card, exl3 1.6.5, ctx 204800, Q4
 # CPU-Offload-Host-RAM-GB: 96
 #   ⤷ 52.3 GB of model shards, of which ~25% of experts are CPU-resident and
 #     computed there, plus the 32.6 GB n-gram table held in RAM (`ngram_ram: true`).
@@ -130,9 +138,9 @@ services:
   tabbyapi-qwen38-flash-next-exl3-305:
     # Digest-pinned, not tag-pinned: tags move, digests do not (#940 precedent).
     # The engine profile (engines/exllamav3.yml) is authoritative; keep in step.
-    # Built 2026-09-17 from theroyallab/tabbyAPI @ 53da791 via UPSTREAM's own
-    # docker/Dockerfile.cu13, from a `git archive` clean context.
-    image: ${EXLLAMAV3_IMAGE:-ghcr.io/noonghunna/tabbyapi-club3090@sha256:87490d21a61ad0bc74093411ea431bcaacaeae748fa7d109df0a07217651ca0c}
+    # TabbyAPI's own :cu13 image (their CI builds docker/Dockerfile.cu13 per push to
+    # main), from b1c2253, 2026-10-30. Until then: our build of the same Dockerfile.
+    image: ${EXLLAMAV3_IMAGE:-ghcr.io/theroyallab/tabbyapi@sha256:40635baf5a4117a706bc0da6252c74af888b2f11854e0863d4d8c2dfb763a1b7}
     container_name: ${ESTATE_CONTAINER:-tabbyapi-qwen38-flash-next-exl3-305}
     restart: ${CLUB3090_RESTART:-unless-stopped}
     # Reap orphaned children — without it a wedged server becomes a <defunct>
@@ -337,15 +345,17 @@ services:
       - '--autosplit-reserve'
       - '${RESERVE:-512}'
       - '${RESERVE:-512}'
-      # ⭐ TIER choice, not a tuning knob — see Caveats. 144 of 512 = 28% of
-      # experts CPU-resident — the low share is why this tier is the fast one.
+      # ⭐ TIER choice, not a tuning knob — see Caveats. 120 of 512 = 23% of
+      # experts CPU-resident on exl3 1.6.5 (the 2x24 GB default since 2026-10-30,
+      # chosen above the 104 boot fit for full-context margin; it was 144 = 28% on
+      # 1.5.0) — the low share is why this tier is the fast one.
       # ⚠️ This read "128 of 512 = 25%" until 2026-09-21 while the shipped default
       # was already 144 (raised from 128 to reach 204800 ctx). Same staleness the
       # 4.05 sibling had; both comments lagged a default that moved. Read the VALUE.
       # ⚠️ The measured anchors in engines/exllamav3.yml ("25% -> 57.37 TPS") were
       # taken at the OLD split/ctx pairing, so they describe 128, not the shipped 144.
       - '--cpu-moe-split-experts'
-      - '${MOE_SPLIT:-144}'
+      - '${MOE_SPLIT:-120}'
       # 32.6 GB n-gram/PLE table into system RAM. Upstream default is to stream it
       # from disk; it is NEVER in VRAM either way.
       - '--ngram-ram'
