@@ -5,7 +5,7 @@
 ## What it is
 
 [HyperQwen](https://github.com/syv-ai/HyperQwen) (Apache-2.0, syv-ai) is a vLLM derivative for Qwen3.8-27B. It has three parts:
-- **a patch series on a pinned vLLM** (0.31.0 at our pin; its `patches/series` lists 50, one line each in `PATCHES.md`), among them int8 Marlin GEMM layer selection, the MTP draft vocabulary, GDN spec-decode bounds (vllm#50021) and a hybrid-KV CUDA-graph fix, plus the KVarN 4/2-bit KV cache;
+- **a patch series on a pinned vLLM** (0.32.0 at our pin; its `patches/series` lists 56, one line each in `PATCHES.md`), among them int8 Marlin GEMM layer selection, the MTP draft vocabulary, GDN spec-decode bounds (vllm#50021) and a hybrid-KV CUDA-graph fix, plus the KVarN 4/2-bit KV cache;
 - **its own launchers**, `single-user/` (speculative decoding, for one or a few users) and `batch/` (throughput), with their own env names (`SPEC`, `CTX`, `DFLASH_TOKENS`, `GPU_UTIL`, `EXTRA_ARGS`);
 - **a model-preparation step** (`prepare/`) that runs at every container start. The first time, it rewrites the W4A16 checkpoint's `lm_head`, embeddings and MTP module to int8 in place, builds a draft vocabulary, and assembles the single-user "fast" variant from syv-ai's own Hugging Face repo. After that it takes seconds.
 
@@ -13,7 +13,7 @@ The image runs prepare, then HyperQwen's own `verify.sh --no-server`, then the l
 
 ## Image
 
-syv-ai's CI builds `ghcr.io/syv-ai/hyperqwen` on every push to main and tags it `:sha-<7>`; there are no versioned releases. The profile pins a digest (`:sha-ce9615c`, commit `ce9615c4`, 2026-10-21) and the launchers inject it as `VLLM_IMAGE`, as they do for `vllm-lmcache`. It pulls without credentials.
+syv-ai's CI builds `ghcr.io/syv-ai/hyperqwen` on every push to main and tags it `:sha-<7>`; there are no versioned releases. The profile pins a digest (`:sha-6cd7265`, commit `6cd7265d`, 2026-10-30) and the launchers inject it as `VLLM_IMAGE`, as they do for `vllm-lmcache`. It pulls without credentials.
 
 **Bumping:** boot the slug on the new digest through `switch.sh`, run `verify-full`, then `scripts/engine-pin-bump.sh vllm-hyperqwen ghcr.io/syv-ai/hyperqwen@sha256:<digest>`. Update `lineage.source_ref` and `base_version`. [NIGHTLY_BUMP_RUNBOOK.md](../NIGHTLY_BUMP_RUNBOOK.md) lists the HyperQwen interfaces the compose leans on, which are what can move.
 

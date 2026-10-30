@@ -2,6 +2,21 @@
 
 Dated history for Qwen3.8-27B configs in this repo. Append-only — add a new entry, don't rewrite past ones.
 
+## 2026-10-30 — HyperQwen moves to commit 6cd7265d, on vLLM 0.32.0
+
+`vllm-hyperqwen/qwen38-27b-single-ultrafast` now runs syv-ai's `:sha-6cd7265` (commit
+`6cd7265d`; was `ce9615c4`). HyperQwen moved its base from vLLM 0.31.0 to 0.32.0 and re-cut
+its patch series against it: 56 patches, up from 51. Five are new: the 0.32 re-cuts, a
+FlashInfer async barrier, a DFlash context-capacity check, Mamba-state KV sizing and
+streamed-usage updates. One fix now ships in vLLM 0.32 and was dropped.
+The image also builds xgrammar with a fix for tool string parameters that carry a
+`maxLength`. HyperQwen's default `TOOL_STRICT=parameter` reaches that path, where syv-ai
+measured decode falling to ~7 tok/s on the released xgrammar.
+The default setup is unchanged: on the reference rig it boots in 295 s (a cold first start
+on the new image) on the same backend (FLASH_ATTN, bf16 KV, 64K, prefix caching on), with
+`reasoning_effort` low, and passes verify-full with a DFlash2 acceptance length of 3.84.
+Boot test only: no new throughput numbers.
+
 ## 2026-10-28 — GPU Unlock comparison on `dual-max`
 
 The [Qwen3.8 dual-card vLLM benchmark row](../../BENCHMARKS.md#qwen38-27b) records

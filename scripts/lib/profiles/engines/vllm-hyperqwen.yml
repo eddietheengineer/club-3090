@@ -1,6 +1,6 @@
 schema_version: 1
 id: vllm-hyperqwen
-display_name: HyperQwen (syv-ai's vLLM 0.31.0 + patch series for Qwen3.8-27B on one 24 GB card)
+display_name: HyperQwen (syv-ai's vLLM 0.32.0 + patch series for Qwen3.8-27B on one 24 GB card)
 type: vllm
 # The compose env var this engine's image is injected as. Shared with the other vLLM
 # profiles, as vllm-lmcache does: each launch injects its own engine's pin, so no
@@ -11,22 +11,22 @@ min_sm: 8.6
 lineage:
   relation: derivative
   base: vllm
-  base_version: "0.31.0"
+  base_version: "0.32.0"
   source: https://github.com/syv-ai/HyperQwen
-  source_ref: ce9615c4f2309be727407918a6c979bd67968069
+  source_ref: 6cd7265d629f5582e5631b37e11557ce2f52392e
   chain: []
-  delta: "syv-ai's patch series on vLLM 0.31.0 (PATCHES.md) plus its own launchers (single-user/, batch/) and a first-start model preparation (prepare/: int8 lm_head / embeddings / MTP, a calibrated draft vocabulary, the single-user fast variant). Shipped as syv-ai's own CI image"
+  delta: "syv-ai's patch series on vLLM 0.32.0 (PATCHES.md) plus its own launchers (single-user/, batch/) and a first-start model preparation (prepare/: int8 lm_head / embeddings / MTP, a calibrated draft vocabulary, the single-user fast variant). Shipped as syv-ai's own CI image"
 install:
   method: docker_image
   # syv-ai's official image, built on every main push by their .github/workflows/docker-image.yml
-  # and tagged ghcr.io/syv-ai/hyperqwen:sha-<7>. This is :sha-ce9615c (commit ce9615c4, 2026-10-21),
+  # and tagged ghcr.io/syv-ai/hyperqwen:sha-<7>. This is :sha-6cd7265 (commit 6cd7265d, 2026-10-30),
   # the OCI index digest; it pulls without credentials. syv-ai publishes no versioned releases,
   # so a bump moves to a newer :sha-<7> digest after a rig boot and verify-full.
   # The pin's record: pin-current is what spec pins now; pin-earlier lists earlier pins, newest first (the first
   # is the rollback). docs/UPSTREAM.md's Pinned images table holds why it's pinned, not these.
-  # pin-current: :sha-ce9615c · commit ce9615c4 (2026-10-21) · vLLM 0.31.0 + their patch series · pinned 2026-10-28 · booted vllm-hyperqwen/qwen38-27b-single-ultrafast (verify-full)
-  # pin-earlier: :sha-95ee3b6 `e99df7e6…` (commit 95ee3b64, 2026-10-11, pinned 2026-10-14)
-  spec: ghcr.io/syv-ai/hyperqwen@sha256:57d8c7846f6681e24bdf5cbf44ac4901ce46b790e82f2a415dc5e175e07611fc
+  # pin-current: :sha-6cd7265 · commit 6cd7265d (2026-10-30) · vLLM 0.32.0 + their patch series · pinned 2026-10-30 · booted vllm-hyperqwen/qwen38-27b-single-ultrafast (verify-full)
+  # pin-earlier: :sha-ce9615c `57d8c784…` (commit ce9615c4, 2026-10-21, vLLM 0.31.0, pinned 2026-10-28); :sha-95ee3b6 `e99df7e6…` (commit 95ee3b64, 2026-10-11, pinned 2026-10-14)
+  spec: ghcr.io/syv-ai/hyperqwen@sha256:ae2bedce272967281cfb95dbdf6920d4fc3e6fc76f59618bbecde52d6229f16d
 supported_model_families:
   - qwen35-dense          # Qwen3.8-27B. HyperQwen is written and measured for this checkpoint
 supported_weight_formats:
@@ -37,7 +37,7 @@ supported_drafters:
   - dflash                # syvai/Qwen3.8-27B-DFlash2-W4A16, SPEC=dflash2 (the single-user default here)
 notes: >
   HyperQwen (github.com/syv-ai/HyperQwen, Apache-2.0) by syv-ai: a vLLM derivative for Qwen3.8-27B
-  on one 24 GB card. It is a patch series on a pinned vLLM (0.31.0 at this pin), its own
+  on one 24 GB card. It is a patch series on a pinned vLLM (0.32.0 at this pin), its own
   launchers with their own env names (SPEC, CTX, DFLASH_TOKENS, GPU_UTIL, EXTRA_ARGS), and a
   model-preparation step that runs at every container start (idempotent: minutes the first time,
   seconds after). The image entrypoint runs prepare, then its own verify.sh --no-server, then
