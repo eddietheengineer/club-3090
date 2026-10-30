@@ -6454,7 +6454,7 @@ entries:
     act8_capable: false
     offload: engine
     moe_cache: false
-    host_ram_gb: 84
+    host_ram_gb: 93
     kv_offload: null
     chat_template: native
     tp: 2
@@ -6485,7 +6485,7 @@ entries:
     act8_capable: false
     offload: engine
     moe_cache: false
-    host_ram_gb: 84
+    host_ram_gb: 93
     kv_offload: null
     chat_template: native
     tp: 1
@@ -6516,7 +6516,7 @@ entries:
     act8_capable: false
     offload: engine
     moe_cache: false
-    host_ram_gb: 84
+    host_ram_gb: 93
     kv_offload: null
     chat_template: native
     tp: 2
@@ -6547,7 +6547,7 @@ entries:
     act8_capable: false
     offload: engine
     moe_cache: false
-    host_ram_gb: 84
+    host_ram_gb: 93
     kv_offload: null
     chat_template: native
     tp: 1
@@ -6578,7 +6578,7 @@ entries:
     act8_capable: false
     offload: engine
     moe_cache: false
-    host_ram_gb: 84
+    host_ram_gb: 93
     kv_offload: null
     chat_template: native
     tp: 4
