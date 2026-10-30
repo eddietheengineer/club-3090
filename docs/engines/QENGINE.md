@@ -64,15 +64,15 @@ The composes give the container only the two chosen cards (`device_ids`, so `lau
 
 ## Thinking and effort
 
-Our knobs reach QEngine's server flags through `QE_EXTRA_ARGS`:
+Our knobs reach QEngine through its server flags (in `QE_EXTRA_ARGS`) or its own variables:
 
 | Knob | QEngine | |
 |---|---|---|
 | `ENABLE_THINKING` | `--think 1` / `0` | the default for requests that set none; `true` unless set |
 | `SPEC_N` | `--mtp-k <n>` | the most MTP drafts a step (the engine adapts below it); 0 turns MTP off, lookup drafts stay on |
-| `REASONING_EFFORT` | a copy of the template | `low` unless set; `low`, `medium` or `xhigh` |
+| `REASONING_EFFORT` | `QE_REASONING_EFFORT` | `low` unless set; `low`, `medium` or `xhigh` |
 
-QEngine serves its own copy of the Qwen3.8 chat template (`server/templates/qwen38_syssafe.jinja`), whose default effort is `xhigh`, and its server has no flag for that default. So the compose copies the template at boot with its one `reasoning_effort|default('xhigh')` replaced by the chosen effort, and serves the copy with `--template`. It refuses to start if that literal isn't there exactly once, so a future image can't quietly go back to `xhigh`. A request's own effort still goes to QEngine's template, which maps `high` to `xhigh` and anything else outside the three, `minimal` and `max` included, to `medium` (our patched template on the vLLM and SGLang slugs maps `minimal` to `low` and `max` to `xhigh`).
+QEngine serves its own copy of the Qwen3.8 chat template (`server/templates/qwen38_syssafe.jinja`), whose default effort is `xhigh`. From 1.3.1 its server takes a default for requests that send none, `QE_REASONING_EFFORT` (or `--reasoning-effort`; #1842), on chat completions, messages and count_tokens alike, and the compose sets it from `REASONING_EFFORT`. It refuses to start on an image whose `server/app.py` doesn't read that variable, so an older image can't quietly go back to `xhigh`. Until 2026-10-30 the compose copied the template at boot with its one `reasoning_effort|default('xhigh')` replaced, and served the copy with `--template`. A request's own effort still goes to QEngine's template, which maps `high` to `xhigh` and anything else outside the three, `minimal` and `max` included, to `medium` (our patched template on the vLLM and SGLang slugs maps `minimal` to `low` and `max` to `xhigh`).
 
 QEngine has no thinking budget: no flag, variable or request field caps the thinking, so `THINKING_BUDGET_*` and `THINKING_BUDGETS` don't apply to these slugs (`knob-conformance.json`).
 

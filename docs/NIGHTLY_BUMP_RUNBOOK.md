@@ -299,12 +299,12 @@ does, and what to do by hand when it refuses.
   `qengine/qwen38-flash-next-dual` too when the release changes the Flash-Next engine).
 - The volatile parts are QEngine's own interfaces: the image's entrypoint and its `QE_*` variables (`QE_GPUS`,
   `QE_MODEL`, `QE_MAX_SEQS`, `QE_RESERVE_GB`, `QE_EXTRA_ARGS`) and Flash-Next's `FLASH_*` ones, `server/app.py`'s flags
-  (`--think`, `--mtp-k`, `--template`), the model directories it expects (`Qwen3.8-27B-INT4`, RedHatAI's layout, plus
+  (`--think`, `--mtp-k`) and `QE_REASONING_EFFORT`, the model directories it expects (`Qwen3.8-27B-INT4`, RedHatAI's layout, plus
   the `token_rank.bin` and `model_mtp_ft.safetensors` release assets; `Qwen3.8-Flash-Next-QE-INT4`, the author's HF
   folder, which a new release may re-convert), and `/v1/models` `owned_by: "qengine"`, which engine-kind.sh reads.
-- The composes copy `server/templates/qwen38_syssafe.jinja` at boot with its one `reasoning_effort|default('xhigh')`
-  replaced by the default effort, and refuse to start if that literal isn't there exactly once: a new image that
-  rewrites the template stops the boot there, on purpose. Read the new template before adapting the compose.
+- The composes set the default effort with `QE_REASONING_EFFORT` (from 1.3.1) and refuse to start on an image whose
+  `server/app.py` doesn't read it: a new image that drops or renames it stops the boot there, on purpose. Read its
+  `--reasoning-effort` help before adapting the compose; the template's own default is `xhigh`.
   ⚠️ PolyForm Noncommercial license.
 
 ### Luce DFlash / xtransformers / future engines

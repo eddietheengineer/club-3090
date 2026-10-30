@@ -1648,12 +1648,12 @@
      "default": "low",
      "every_consumer_contains": [
       "case \"$$_reff\" in low|medium|xhigh) : ;;",
-      "_lit=\"reasoning_effort|default('xhigh')\"",
-      "_args+=(--template \"$$_tmpl\")"
+      "grep -qF QE_REASONING_EFFORT /app/server/app.py",
+      "export QE_REASONING_EFFORT=\"$$_reff\""
      ],
      "source": {
       "file": "models/qwen3.8-27b/qengine/compose/dual/redhat-int4/mtp.yml",
-      "what": "`case \"$$_reff\" in low|medium|xhigh) : ;; *) exit 1`; QEngine's server has no default-effort flag, so the entrypoint copies the image's server/templates/qwen38_syssafe.jinja with its one reasoning_effort|default('xhigh') replaced by the value (exit 1 when that literal isn't there exactly once) and serves the copy with --template. Stricter than the template on purpose, as on HyperQwen: the boot takes the three efforts it acts on. A request's own effort goes to QEngine's template, which maps high -> xhigh and anything else outside the three (minimal, max) -> medium; the Flash-Next compose carries the same lines"
+      "what": "`case \"$$_reff\" in low|medium|xhigh) : ;; *) exit 1`; the entrypoint exports the value as QE_REASONING_EFFORT, QEngine's own default effort for requests that send none (from 1.3.1; exit 1 when the image's server/app.py doesn't read it, so an older image can't quietly serve its template's xhigh). Stricter than the template on purpose, as on HyperQwen: the boot takes the three efforts it acts on. A request's own effort goes to QEngine's template, which maps high -> xhigh and anything else outside the three (minimal, max) -> medium; the Flash-Next compose carries the same lines"
      },
      "checks": [
       {

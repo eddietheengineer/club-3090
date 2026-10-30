@@ -4,7 +4,7 @@
 #              its MTP head, plus QEngine's fine-tuned MTP head and draft vocabulary (the v1.0
 #              release assets, optional)
 #   Engine:    QEngine 1.3.1 (bpx03): its own C++/CUDA engine and server, the author's own image
-#              ghcr.io/bpx03/qengine (source d15a4d3a, text only)
+#              ghcr.io/bpx03/qengine (source 016c9249, text only)
 #   Topology:  Dual 3090 PCIe (tensor parallel 2; GPU-to-GPU P2P when the driver grants it)
 #   Drafter:   MTP, up to 7 drafts a step (adaptive; SPEC_N sets the most, 0 turns MTP off) + lookup
 #              drafts from the token history
@@ -16,10 +16,10 @@
 #   Caveats:   ⚠️ QEngine is PolyForm Noncommercial 1.0.0: free for non-commercial use only.
 #              New engine; quality not validated here (no 8-pack, verify-stress or soak). No
 #              thinking-budget cap (THINKING_BUDGET_* are not wired: QEngine has
-#              none). The default effort is low, as on the other Qwen3.8 slugs, by a copy of
-#              QEngine's own template made at boot (its default is xhigh); a request's own
-#              effort still goes to QEngine's template, which maps high -> xhigh but minimal and
-#              max -> medium.
+#              none). The default effort is low, as on the other Qwen3.8 slugs, through QEngine's
+#              QE_REASONING_EFFORT (its template's own default is xhigh); a request's own effort
+#              still wins, and QEngine's template maps high -> xhigh but minimal and max ->
+#              medium.
 #              Measured 2026-10-28 on two 3090s at 230 W (bench.sh on its own boot): 147.2 / 216.3
 #              decode, 2,430 prefill @10K, 1,786 @90K, MTP acceptance length 3.4, 23.4 GB a card
 #              (BENCHMARKS.md, Qwen3.8-27B); KV pool 374,784 tokens, P2P for the decode all-reduce.
@@ -46,9 +46,10 @@
 #   gh release download v1.0 -R bpx03/QEngine -p token_rank.bin -p model_mtp_ft.safetensors -p SHA256SUMS
 #   sha256sum -c SHA256SUMS
 #
-# Knobs (ours, mapped onto QEngine's flags by the entrypoint below):
+# Knobs (ours, mapped onto QEngine's flags and variables by the entrypoint below):
 #   ENABLE_THINKING   true (default) | false: --think 1 | 0, the default for requests that set none
-#   REASONING_EFFORT  low (default) | medium | xhigh: the default effort for requests that send none
+#   REASONING_EFFORT  low (default) | medium | xhigh: QE_REASONING_EFFORT, the default effort for requests
+#                     that send none
 #   SPEC_N=<n>        --mtp-k, the most MTP drafts a step (default 7; the engine adapts below it);
 #                     0 = no MTP (lookup drafts stay on; QE_LOOKUP=0 turns them off)
 # QEngine's own settings, passed through when set (its defaults otherwise):
@@ -59,6 +60,9 @@
 #   QE_MEM_MARGIN_GB  host RAM the archive always leaves free (max(8 GB, 5% of RAM))
 #   QE_P2P            0 forces the host-memory path (auto)
 #   QE_COMM           prefill transfer path: auto (startup probe), p2p, ce, host
+#   QE_COMM_CHECK     rounds of the start-up P2P data check per pair and transport (4; 0 = off)
+#   QE_COMM_TAX_SEVERE, QE_COMM_TAX_1NODE  the P2P co-run tax at which QE_COMM=auto takes the copy
+#                     engine (3.0 on any layout; 1.90 on one NUMA node over a narrow link)
 #   QE_LOOKUP         0 turns lookup drafts off (1)
 #   QE_PRESENCE_PENALTY, QE_FREQUENCY_PENALTY  defaults for sampled requests that send none (0)
 #   QE_LOOP_GUARD_TURNS, QE_LOOP_GUARD_NOTE, QE_LOOP_GUARD_PENALTY  the cross-turn loop guard
@@ -110,6 +114,9 @@ services:
       - QE_MEM_MARGIN_GB
       - QE_P2P
       - QE_COMM
+      - QE_COMM_CHECK
+      - QE_COMM_TAX_SEVERE
+      - QE_COMM_TAX_1NODE
       - QE_LOOKUP
       - QE_PRESENCE_PENALTY
       - QE_FREQUENCY_PENALTY
@@ -154,21 +161,17 @@ services:
             echo "[spec] MTP ON, at most $$SPEC_N drafts a step (SPEC_N)" >&2
           fi
         fi
-        # REASONING_EFFORT -> the default effort of QEngine's own template, which is xhigh. The
-        # server has no flag for it, so a copy of the template with the default replaced is served.
+        # REASONING_EFFORT (our knob) -> QE_REASONING_EFFORT, QEngine's default effort for requests that
+        # send none (1.3.1 on). Unset, it is its template's own default, xhigh.
         _reff="$${REASONING_EFFORT:-low}"
         case "$$_reff" in low|medium|xhigh) : ;; *) echo "[reasoning] REASONING_EFFORT='$$_reff' must be low|medium|xhigh" >&2; exit 1 ;; esac
-        _src=/app/server/templates/qwen38_syssafe.jinja
-        _tmpl=/tmp/club3090-qwen38-syssafe.jinja
-        _lit="reasoning_effort|default('xhigh')"
-        if [ "$$(grep -cF "$$_lit" "$$_src" || true)" != 1 ]; then
-          echo "[reasoning] $$_src no longer has exactly one $$_lit, so the default effort can't be set." >&2
-          echo "[reasoning] Fix: this image's template changed; see docs/engines/QENGINE.md." >&2
+        if ! grep -qF QE_REASONING_EFFORT /app/server/app.py; then
+          echo "[reasoning] this image's server/app.py doesn't read QE_REASONING_EFFORT, so the default effort can't be set." >&2
+          echo "[reasoning] Fix: QEngine 1.3.1 or later; see docs/engines/QENGINE.md." >&2
           exit 1
         fi
-        sed "s/reasoning_effort|default('xhigh')/reasoning_effort|default('$$_reff')/" "$$_src" > "$$_tmpl"
-        _args+=(--template "$$_tmpl")
-        echo "[reasoning] default reasoning_effort=$$_reff (a request's own effort wins)" >&2
+        export QE_REASONING_EFFORT="$$_reff"
+        echo "[reasoning] default reasoning_effort=$$_reff (QE_REASONING_EFFORT; a request's own effort wins)" >&2
         # The engine library makes ~/.cache/qengine/locks 0755 whatever the umask; group-writable, the
         # lock files it leaves in the shared engine cache stay removable by the user.
         mkdir -p /root/.cache/qengine/locks && chmod g+w /root/.cache/qengine/locks
