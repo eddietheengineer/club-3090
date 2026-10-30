@@ -2274,26 +2274,14 @@ bench_interconnect_block() {
     echo "  verdict  : ℹ interconnect capability is reported above; ExLlamaV3's layer-split transport is engine-specific and is not measured by the NCCL/custom-AR probes"
     return 0
   fi
-  # QEngine runs its own collectives and links no NCCL; its log says what it chose. The 27B's library
-  # prints "P2P: decode all-reduce GPU to GPU (…)" or "QE_COMM: collectives through pinned host memory
-  # (no peer access)"; Flash-Next's prints no decode line with peer access, only "[flash] no peer access: …"
-  # without it. Both print "[comm] prefill transfers: <mode> (…)", and "P2P: enabling peer access … failed
-  # (…), host path" when a pair is refused. The classifier below reads vLLM / SGLang lines and found none.
+  # QEngine runs its own collectives and links no NCCL; its log says what it chose, and
+  # p2p_qengine_transport (lib/p2p-state.sh, shared with report.sh) reads it. The classifier below
+  # reads vLLM / SGLang lines and finds none.
   if [[ "$ENGINE_KIND" == "qengine" ]]; then
     echo "  layer 2  NCCL use         : n/a — QEngine runs its own collectives (no NCCL)"
-    local qe_log="" qe_dec="" qe_pre="" qe_fail=""
     if [[ "${CONTAINER:-}" != "none" ]] && command -v docker >/dev/null 2>&1 \
        && docker inspect "${CONTAINER}" >/dev/null 2>&1; then
-      qe_log="$(docker logs "$CONTAINER" 2>&1 | command grep -E '^P2P: |^QE_COMM: |no peer access|^\[comm\] prefill transfers: ' || true)"
-      if printf '%s\n' "$qe_log" | command grep -qE '^P2P: decode all-reduce GPU to GPU'; then
-        qe_dec="decode all-reduce GPU to GPU (peer access)"
-      elif printf '%s\n' "$qe_log" | command grep -qE 'no peer access'; then
-        qe_dec="no peer access: collectives through pinned host memory"
-      fi
-      qe_pre="$(printf '%s\n' "$qe_log" | command grep -E '^\[comm\] prefill transfers: ' | tail -n 1 \
-        | sed -E 's/^\[comm\] prefill transfers: ([^(,]*[^(, ]).*\(((QE|FLASH)_COMM=[a-z]+).*/\1 (\2)/' || true)"
-      qe_fail="$(printf '%s\n' "$qe_log" | command grep -m1 -E '^P2P: enabling peer access .* failed' || true)"
-      echo "  layer 3  engine transport : ${qe_dec:-decode path not stated in the log}${qe_pre:+; prefill transfers: ${qe_pre}}${qe_fail:+; ⚠ ${qe_fail}}"
+      echo "  layer 3  engine transport : $(docker logs "$CONTAINER" 2>&1 | p2p_qengine_transport)"
     else
       echo "  layer 3  engine transport : n/a — no container to read QEngine's log from"
     fi
