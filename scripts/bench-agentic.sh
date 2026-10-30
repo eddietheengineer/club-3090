@@ -327,6 +327,7 @@ def run_turn(messages, fixture_turn, session_id, turn_idx):
     ttft = None
     completion_tokens = 0
     sse_chunks = 0            # chunks carrying `choices` — see chunks_per_token below
+    out_chunks = 0            # of those, the ones that carry output (the TTFT rule below)
     prompt_tokens = 0
     content_parts = []
     tool_calls_acc = {}
@@ -370,8 +371,10 @@ def run_turn(messages, fixture_turn, session_id, turn_idx):
                 # whole prompt read as decode: 3-27 tok/s on #1752. So a delta
                 # counts once any field other than `role` is non-empty, whatever
                 # its kind. Same rule in scripts/lib/deep_context_probe.py.
-                if ttft is None and any(v not in (None, "", [], {}) for k, v in delta.items() if k != "role"):
-                    ttft = time.time() - t_send
+                if any(v not in (None, "", [], {}) for k, v in delta.items() if k != "role"):
+                    out_chunks += 1
+                    if ttft is None:
+                        ttft = time.time() - t_send
                 if delta.get("content"):
                     content_parts.append(delta["content"])
                 for tc in (delta.get("tool_calls") or []):
@@ -488,13 +491,23 @@ def run_turn(messages, fixture_turn, session_id, turn_idx):
     # an interval from one sample. That is the dLLM/canvas case (#809), and it is
     # a statement about what was observed, not a threshold on how fast it was.
     degenerate = wall <= 0 or decode_s <= 0 or sse_chunks <= 1
+    # ...but `sse_chunks` also counts chunks that carry NOTHING: the opening
+    # `{"role": "assistant", "content": ""}` and the closing `finish_reason`
+    # chunk. An engine that sends a tool call WHOLE once it is complete (QEngine
+    # does, #1862) streams role, one tool_calls chunk, finish: three chunks, one
+    # sample. TTFT then lands on the finished call, the window is the ~0.1 ms to
+    # the finish chunk, and 28 tokens over it read 280,000 tok/s — every turn of
+    # #1862's table. Count the chunks that carry output: one is no interval.
+    # Kept apart from `degenerate`, which votes on canvas granularity below: an
+    # autoregressive engine that buffers its tool calls is not a dLLM.
+    single_output = bool(not degenerate and completion_tokens > 0 and out_chunks <= 1)
     chunks_per_token = (sse_chunks / completion_tokens) if completion_tokens > 0 else 0.0
-    frontend_bound = bool(completion_tokens >= 50 and chunks_per_token < 0.10)
+    frontend_bound = bool(not single_output and completion_tokens >= 50 and chunks_per_token < 0.10)
     if completion_tokens <= 0:
         # The genuine silent-empty turn. It has always reported 0 and that
         # discriminator must not regress into an "unmeasurable" n/a.
         decode_tps = 0.0
-    elif degenerate:
+    elif degenerate or single_output:
         decode_tps = None
     else:
         decode_tps = completion_tokens / decode_s
@@ -509,6 +522,8 @@ def run_turn(messages, fixture_turn, session_id, turn_idx):
         "sse_chunks": sse_chunks,
         "chunks_per_token": chunks_per_token,
         "frontend_bound": frontend_bound,
+        "single_output": single_output,
+        "out_chunks": out_chunks,
         "completion_tokens": completion_tokens,
         "prompt_tokens": prompt_tokens,
         "tool_calls": len(tool_calls_response),
@@ -559,7 +574,11 @@ for session in range(1, SESSIONS + 1):
                 miss = "  ⚠ tool-call miss (synthetic result injected)" if m.get("tool_call_missed") else ""
                 # Never a number for an unmeasurable window — that divide is the
                 # defect (#809). wall_TPS is the honest figure for such a turn.
-                if m["decode_tps"] is None:
+                if m["decode_tps"] is None and m.get("single_output"):
+                    dcol = f"{'n/a':>11}"
+                    miss = (f"  (whole reply in one output chunk: no decode window, and TTFT "
+                            f"includes its decode; wall {m['wall_tps']:.1f} tok/s){miss}")
+                elif m["decode_tps"] is None:
                     dcol = f"{'n/a':>11}"
                     miss = (f"  (zero-width decode window; wall "
                             f"{m['wall_tps']:.1f} tok/s){miss}")
@@ -624,6 +643,11 @@ cold_idx = contiguous[0] if (contiguous and anchor_pos > 0) else None
 # divide-by-epsilon is how eleven turns read 409,726 -> 1,808,323 TPS.
 degen_total = sum(1 for ti in contiguous for m in per_turn_metrics[ti]
                   if m.get("decode_degenerate"))
+# #1862: replies that arrived whole (one output chunk). Counted apart from
+# degen_total, which decides canvas granularity: these come from autoregressive
+# engines that send a tool call once it is complete.
+single_total = sum(1 for ti in contiguous for m in per_turn_metrics[ti]
+                   if m.get("single_output"))
 turns_total = sum(len(per_turn_metrics[ti]) for ti in contiguous)
 gran, gran_why = classify_granularity(turns_total, degen_total)
 
@@ -633,7 +657,7 @@ for turn_idx in contiguous:
     # Exclude BOTH the unmeasurable turns (None) and the silent-empty ones (0).
     tpss  = [m["decode_tps"] for m in ms_list
              if m["decode_tps"] is not None and m["decode_tps"] > 0]
-    degen = sum(1 for m in ms_list if m.get("decode_degenerate"))
+    degen = sum(1 for m in ms_list if m.get("decode_degenerate") or m.get("single_output"))
     ptoks = [m["prompt_tokens"] for m in ms_list]
     mean_ttft = s.mean(ttfts)
     std_ttft  = s.stdev(ttfts) if len(ttfts) > 1 else 0
@@ -678,6 +702,13 @@ if degen_total:
     print("                 'window < 5% of wall' rule was RETIRED — it encoded answer length")
     print("                 and context size, so a healthy short answer after a long prefill")
     print("                 tripped it and read as a decode collapse.")
+if single_total:
+    print(f"\n  whole replies  {single_total}/{turns_total} turn(s) arrived in ONE output chunk (the engine")
+    print("                 sent the reply, a tool call, whole once it was complete). Their decode")
+    print("                 is unmeasurable from the client and EXCLUDED above, and their TTFT is")
+    print("                 the time to the WHOLE reply, decode included, so the TTFT growth below")
+    print("                 also carries how long each reply was, not just the prompt read. For the")
+    print("                 decode rate, read the engine's own counters (bench.sh's engine-side timings).")
 if gran == "canvas":
     print(f"\n  ⚠ CANVAS GRANULARITY ({gran_why})")
     print("    dLLM: block emission, decode window undefined. decode_TPS is NOT a decode rate")
@@ -715,6 +746,9 @@ if baseline_idx is not None and contiguous[-1] != baseline_idx:
     else:
         print(f"    ⚠  TTFT grew near-linearly — O(n)-like accumulated-context cost for this cell.")
     print(f"    (Full-context O(n) growth would approach {token_growth:.1f}× with context)")
+    if single_total:
+        print(f"    ⚠  {single_total}/{turns_total} turn(s) arrived whole: their TTFT includes the reply's decode")
+        print(f"       (see 'whole replies' above), so this growth is not prompt-read cost alone.")
     print(f"")
     print(f"  Note — on vLLM, Qwen3-Next-family (DeltaNet/SSM hybrid) prefix hits are block-")
     print(f"  granular: with prefix caching on, vLLM runs these models in mamba-cache 'align'")
@@ -749,6 +783,7 @@ if _curve_path:
         "turns_active": active_turns,
         "tool_call_misses": tool_call_misses,
         "granularity": gran,
+        "single_output_turns": single_total,
         "curve": curve,
     }
     try:
