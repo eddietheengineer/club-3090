@@ -904,6 +904,43 @@ def _log_lines():
         return 0
 
 
+def _engine_log_lines():
+    """Line count of the engine's log, docker included, or None without one (#1862).
+
+    The decode cross-check compares each shape's measured runs with the engine's
+    own per-request timings over EXACTLY those requests, so it needs the log
+    position before and after them. `_log_lines` above reads only SERVER_LOG (its
+    phase windows feed the moe-cache counters, kept as they are); this one also
+    counts `docker logs`, merged as capture.sh's snapshot merges it, so a position
+    here is a line number in that snapshot. The engine prints a request's timing
+    line as the request finishes, so the count is read once it stops moving."""
+    path = os.environ.get("SERVER_LOG", "")
+
+    def count():
+        if path:
+            with open(path, "rb") as fh:
+                return sum(1 for _ in fh)
+        if CONTAINER and CONTAINER != "none":
+            out = subprocess.run(["docker", "logs", CONTAINER], stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT, timeout=30, check=False).stdout
+            return out.count(b"\n") + (1 if out and not out.endswith(b"\n") else 0)
+        return None
+
+    try:
+        n = count()
+        for _ in range(8):           # settle: up to ~2 s for the last timing line
+            if n is None:
+                break
+            time.sleep(0.25)
+            m = count()
+            if m == n:
+                break
+            n = m
+        return n
+    except Exception:
+        return None
+
+
 def phase_start():
     return time.time(), _log_lines()
 
@@ -1220,6 +1257,8 @@ def run_set(label, prompt, max_tokens):
     print(f"\n=== measured ({RUNS}) ===")
     walls, decodes, ttfts, toks_seen = [], [], [], []
     ptoks_seen = []          # prompt size per run — the #817 plausibility gate needs it
+    decode_runs = []         # [decode_tps, tokens] per measured run, for the cross-check (#1862)
+    xc_lines = [_engine_log_lines(), None] if SUMMARY_JSON else [None, None]
     degen_runs = 0           # runs with a zero-width decode window (#809)
     errors = 0
     mt = FORCE if FORCE > 0 else max_tokens
@@ -1241,12 +1280,15 @@ def run_set(label, prompt, max_tokens):
                 degen_runs += 1
             else:
                 decodes.append(dtps)
+                decode_runs.append([dtps, k])
             toks_seen.append(k); ptoks_seen.append(ptk)
         except Exception as e:
             errors += 1
             print(f"  run-{i+1}  FAIL: {e}")
             progress(f"[bench] {label} run {i+1}/{RUNS}: FAIL: {e}")
     mark_phase("decode", phase_t0)
+    if SUMMARY_JSON:
+        xc_lines[1] = _engine_log_lines()
     # Item 2: a chat-tuned model answers briefly and EOSes. The per-shape stats
     # then silently describe whichever one or two runs happened to run long — a
     # 5-run shape degenerates to n=1 while still printing "n=5". Count the runs
@@ -1276,6 +1318,8 @@ def run_set(label, prompt, max_tokens):
         "decode_granularity": gran,
         "ttft_mean_ms": (s.mean(ttfts) * 1000 if ttfts else 0.0),
         "ttft_std_ms": (s.stdev(ttfts) * 1000 if len(ttfts) > 1 else 0.0),
+        "decode_runs": decode_runs,
+        "log_lines": xc_lines,
     }
     if walls:
         print(f"\n=== summary [{label}] (n={len(walls)}) ===")
@@ -1730,7 +1774,10 @@ if (( CAP_ENABLED )); then
           *)  echo "  ${_l}  (tok/s, from the server's own print_timing)" ;;
         esac
       done <<< "$_tim"
-      _eng="$(printf '%s\n' "$_tim" | command grep -m1 '^decode ' | command grep -oE 'median=[0-9.]+' | cut -d= -f2 || true)"
+      # The cross-check compares the SAME requests on both sides, one shape at a time:
+      # cap_decode_crosscheck (lib/capture.sh, #1862).
+      # `_cli` is the run's client-side decode figure for the status enum below (CAP_TPS), the
+      # mean of the shapes' means as before; the cross-check no longer compares against it.
       _cli="$(python3 -c '
 import json, sys
 try:
@@ -1742,13 +1789,11 @@ xs = [v.get("decode_tps_mean", 0) for v in shapes
       if v.get("decode_tps_mean") and not v.get("decode_derived")]
 print(f"{sum(xs)/len(xs):.2f}" if xs else "")
 ' "$CAP_WORK/summary.json" 2>/dev/null || true)"
-      if [[ -n "$_eng" && -n "$_cli" ]]; then
-        _div="$(cap_divergence_pct "$_eng" "$_cli" || true)"
-        if [[ -n "$_div" ]]; then
-          echo "  cross-check: client-observed ${_cli} vs engine-side ${_eng} tok/s -> ${_div}% divergence"
-          awk -v d="$_div" 'BEGIN{ if (d+0 > 5) print "  ⚠ WARN: >5% divergence. One of these two is not measuring what its label\n          says. State WHICH number a card quotes, and why." }'
-        fi
-      fi
+      _xc="$(cap_decode_crosscheck "$CAP_WORK/summary.json")"
+      [[ -n "$_xc" ]] && printf '%s\n' "$_xc"
+      # the card's integrity.divergence: the worst shape
+      _div="$(printf '%s\n' "$_xc" | command grep -oE -- '-> [0-9.]+% divergence' \
+        | awk '{ v = $2; sub(/%/, "", v); if (v + 0 > m + 0) m = v } END { if (NR) print m }' || true)"
     else
       echo "  no print_timing lines in the log (engine may not emit them at this verbosity)"
     fi
