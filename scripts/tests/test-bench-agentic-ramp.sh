@@ -38,6 +38,9 @@ trap cleanup EXIT
 #                       the decode window is zero-width. This is the dLLM shape
 #                       that made the old `max(wall - ttft, 1e-6)` print eleven
 #                       turns at 409,726 → 1,808,323 TPS (#809).
+# MOCK_MODE=whole_toolcall → QEngine's shape (#1862): an empty role chunk, the
+#                       decode, then the WHOLE tool call in one chunk and a
+#                       finish chunk. Three chunks, one of them output.
 cat > "$tmp/mock.py" <<'PY'
 import json, os, sys, time
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -78,6 +81,17 @@ class H(BaseHTTPRequestHandler):
             if EMIT_TC:
                 delta["tool_calls"] = TC
             ev({"choices": [{"delta": delta}], "usage": USAGE})
+        elif MODE == "whole_toolcall":
+            # QEngine sends a tool call once it is complete: role chunk, then the
+            # decode (0.2 s here), then the call in ONE chunk, the finish chunk a
+            # fraction of a millisecond later. 28 tokens over that gap read
+            # 280,000 tok/s on #1862. Three `choices` chunks, one carrying output.
+            ev({"choices": [{"delta": {"role": "assistant", "content": ""}}]})
+            time.sleep(0.2)
+            ev({"choices": [{"delta": {"tool_calls": TC}}]})
+            ev({"choices": [{"delta": {}, "finish_reason": "tool_calls"}]})
+            # A realistic call length, so master's divide reads absurd, not merely high.
+            ev({"choices": [], "usage": {"prompt_tokens": 100, "completion_tokens": 280}})
         elif MODE == "role_first":
             # STRATA / PROJECT MAYA SHAPE. An empty role chunk goes out the moment
             # the request is accepted, THEN the prompt is read (0.6 s here), THEN
@@ -249,5 +263,21 @@ if min(ttfts) < 550:
 PY
 assert_no_absurd_decode "$out" "role-first ramp"
 echo "  ✓ TTFT includes the prompt read after an early empty role chunk (#1752)"
+
+echo "── a tool call sent whole: one output chunk, no decode window (#1862) ──"
+run_bench 1 whole_toolcall QUIET=0
+assert_no_absurd_decode "$out" "whole-tool-call ramp"
+assert_contains "$out" "whole reply in one output chunk"   # the per-turn reason
+assert_contains "$out" "whole replies  3/3 turn(s)"        # the summary says so once
+assert_contains "$out" "arrived whole: their TTFT includes the reply's decode"
+# An autoregressive engine buffering its tool calls is not a dLLM, and it is not
+# client-side coalescing either.
+assert_absent "$out" "CANVAS GRANULARITY"
+assert_absent "$out" "frontend-bound"
+echo "$out" | grep -qE "^\s*3\s" || { echo "ASSERT FAIL: whole-tool-call ramp did not reach turn 3"; echo "$out"; exit 1; }
+for unwanted in "whole reply in one output chunk" "whole replies"; do
+  assert_absent "$ar_out" "$unwanted"
+done
+echo "  ✓ whole tool call: n/a with the reason, TTFT flagged, not canvas, AR runs unaffected"
 
 echo "test-bench-agentic-ramp: ok"
