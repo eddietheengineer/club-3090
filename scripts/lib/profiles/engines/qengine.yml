@@ -9,18 +9,18 @@ lineage:
   base: null
   base_version: null
   source: "https://github.com/bpx03/QEngine"
-  source_ref: "d15a4d3aaa0c5c7e1e0d4fde0cc07fbb491b6cd0"
+  source_ref: "016c924928bd0234e70a3356bd8da3a95991db62"
   chain: []
   delta: "Independent C++/CUDA engine (libqengine.so, about 26k lines) for one model, Qwen3.8-27B INT4 (RedHatAI's compressed-tensors W4A16 checkpoint and its MTP head), tuned for RTX 3090s with tensor parallel over PCIe, with its own Python server (OpenAI- and Anthropic-compatible APIs). Pinned to the image its author publishes (ghcr.io/bpx03/qengine)"
 image_env: QENGINE_IMAGE
 install:
   method: docker_image
   # The author's own image, ghcr.io/bpx03/qengine:<release> (text only; the :vision tags add the vision encoder and
-  # PyTorch, ~3 GB). Its org.opencontainers.image.revision label is the source commit: 1.3 is git tag v1.3, a single
-  # squashed release commit on main (the rc tags were a branch of their own, so diff rc4 → 1.3 by tree).
-  # pin-current: 1.3 · source d15a4d3a · pinned 2026-10-28 · booted 2026-10-28 on both slugs (verify-full 8 + 2 n/a each, bench.sh)
-  # pin-earlier: 1.3-rc4 `18b3c4bb…` (source 116bd8d9, 2026-10-27)
-  spec: ghcr.io/bpx03/qengine@sha256:b9d1b0afe8f96547b3a05de73aff437077effcb1117c82ab2e0fe62bf000b3da
+  # PyTorch, ~3 GB). Its org.opencontainers.image.revision label is the source commit: 1.3.1 is git tag v1.3.1, one
+  # squashed release commit on top of v1.3 (the rc tags were a branch of their own, so diff rc4 → 1.3 by tree).
+  # pin-current: 1.3.1 · source 016c9249 · pinned 2026-10-30 · booted 2026-10-30 on both slugs (verify-full 8 + 2 n/a each)
+  # pin-earlier: 1.3 `b9d1b0af…` (source d15a4d3a, 2026-10-28); 1.3-rc4 `18b3c4bb…` (source 116bd8d9, 2026-10-27)
+  spec: ghcr.io/bpx03/qengine@sha256:849b059d4c5658393a83c3ec8dbfdfd6036d2590278f10c8e7faa7981653d719
 supported_model_families:
   - qwen35-dense          # Qwen3.8-27B, RedHatAI's INT4 only (libqengine.so)
   - qwen4exp              # Qwen3.8-Flash-Next, the author's own INT4 layout (libqflash.so, from 1.3; upstream calls it a
