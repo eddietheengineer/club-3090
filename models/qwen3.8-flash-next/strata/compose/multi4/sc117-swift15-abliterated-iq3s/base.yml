@@ -22,7 +22,7 @@
 #              62.5% vs 66.8% with the base draft layer). Not gate-passing yet: quality unmeasured
 #              (8-pack pending). NEVER BOOTED on the reference rig (2 GPUs): multi4 is community-
 #              validated by design; Strata's layer split takes any number of cards (its
-#              docs/MULTI_GPU.md shows a 4-card split). Up to 3 requests at once (Strata's pick here). Needs ~86 GB of free
+#              docs/MULTI_GPU.md shows a 4-card split). Up to 3 requests at once (Strata's pick here). Needs ~93 GB of free
 #              host RAM when the model disk is rotational (setup then keeps the 28.8 GB n-gram table in RAM; on an SSD it stays
 #              on disk), NVIDIA driver >= 580 (CUDA 13) and an AVX2 CPU; x86-64 only. Strata reasons by
 #              default, at the template's xhigh (what SC117 recommends; as the bucko-vllm Flash-Next slugs).
@@ -32,11 +32,15 @@
 #              there; setup serves on an unpublished port until it is done).
 #              Not measured: the dual sibling's 125.7 / 161.7 decode (0.1.44.1, 2026-10-14) is the
 #              nearest reference, not a number for four cards.
-# CPU-Offload-Host-RAM-GB: 86
+# CPU-Offload-Host-RAM-GB: 93
 #   ⤷ The dual sibling's MEASURED figure (2026-10-14, 0.1.44.1, a rotational model disk): Strata
 #     page-locks every expert in host RAM whatever the card count, plus the 28.8 GB n-gram table on a
-#     rotational disk (--ple-io ram). Not measured on four cards. Registry `host_ram_gb` (84) must
+#     rotational disk (--ple-io ram). Not measured on four cards. Registry `host_ram_gb` (93) must
 #     stay <= this.
+#   ⤷ RE-MEASURED 2026-10-30 (0.2.8, the Swift dual, sampled every 2 s): MemAvailable fell 92.8 GB at its
+#     lowest, during verify-full rather than at ready. Since 0.2.3 (engine 0.1.48, Niko1221/Strata#3493)
+#     Strata also sizes a conversation cache from free RAM (8192 MiB here, for up to 4 parked
+#     conversations; --conversation-cache-mib N sets it), which the 2026-10-14 figure predates.
 #   Best for:  Swift 1.5's shorter thinking, abliterated, on 4 cards
 # ---------------------------------------------------------------------------
 # Strata (github.com/Niko1221/Strata) is its own engine for this model: see docs/engines/STRATA.md.

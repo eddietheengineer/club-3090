@@ -19,7 +19,7 @@
 #              only below US$1M annual revenue) on top of the Qwen licence. Upstream documents the
 #              IQ3_S tier only in passing (its measured costs are IQ2_XS: decode -2%, MTP acceptance
 #              62.5% vs 66.8% with the base draft layer). Not gate-passing yet: quality unmeasured
-#              (8-pack pending). Up to 3 requests at once (Strata's pick here). Needs ~86 GB of free host RAM when the model
+#              (8-pack pending). Up to 3 requests at once (Strata's pick here). Needs ~93 GB of free host RAM when the model
 #              disk is rotational (setup then keeps the 28.8 GB n-gram table in RAM; on an SSD it stays
 #              on disk), NVIDIA driver >= 580 (CUDA 13) and an AVX2 CPU; x86-64 only. Strata reasons by
 #              default, at the template's xhigh (what SC117 recommends; as the bucko-vllm Flash-Next slugs).
@@ -29,11 +29,15 @@
 #              there; setup serves on an unpublished port until it is done).
 #              Measured 2026-10-14 on 0.1.44.1 at 370 W: 93.9 / 105.8 decode, 1,952 / 2,302 prefill
 #              @10K/@90K, MTP acceptance 65.7% (BENCHMARKS.md, Qwen3.8-Flash-Next / Strata).
-# CPU-Offload-Host-RAM-GB: 86
+# CPU-Offload-Host-RAM-GB: 93
 #   ⤷ MEASURED 2026-10-14 (0.1.44.1, this rig's rotational model disk): MemAvailable fell 84 GB at
 #     ready on one card and ~80 GiB on two: 46.8 GiB of experts page-locked plus the 28.8 GB n-gram
 #     table, which setup keeps in RAM on a rotational disk (--ple-io ram). Strata page-locks every
-#     expert in host RAM whatever the card count. Registry `host_ram_gb` (84) must stay <= this.
+#     expert in host RAM whatever the card count. Registry `host_ram_gb` (93) must stay <= this.
+#   ⤷ RE-MEASURED 2026-10-30 (0.2.8, the Swift dual, sampled every 2 s): MemAvailable fell 92.8 GB at its
+#     lowest, during verify-full rather than at ready. Since 0.2.3 (engine 0.1.48, Niko1221/Strata#3493)
+#     Strata also sizes a conversation cache from free RAM (8192 MiB here, for up to 4 parked
+#     conversations; --conversation-cache-mib N sets it), which the 2026-10-14 figure predates.
 #   Best for:  Swift 1.5's shorter thinking, abliterated, on ONE 3090 + ~96 GB RAM (less with the model on an SSD)
 # ---------------------------------------------------------------------------
 # Strata (github.com/Niko1221/Strata) is its own engine for this model: see docs/engines/STRATA.md.
