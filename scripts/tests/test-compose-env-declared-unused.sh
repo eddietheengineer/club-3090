@@ -58,7 +58,12 @@ ENGINE_EXACT = {"PATH", "HOME", "HOSTNAME", "LD_LIBRARY_PATH", "PWD", "IFS",
                 "FLASH_EC_MARGIN_MB", "FLASH_LOOKUP", "FLASH_COMM",
                 # from 1.3.1
                 "FLASH_KV", "FLASH_KV_RAM_TOKENS", "FLASH_PFB_BIG", "FLASH_EC_RECLAIM_S",
-                "FLASH_MAX_PREFILLS", "FLASH_GUARD_MAX"}
+                "FLASH_MAX_PREFILLS", "FLASH_GUARD_MAX",
+                # Strata's engine (components/engine/<version>/strata) reads these; named one by one, because a
+                # STRATA_ prefix would also excuse our own STRATA_START_GPUS / STRATA_API_KEY settings
+                "STRATA_GDN_TC", "STRATA_GDN_CONVL2",
+                # from 1.3.2
+                "FLASH_PFB_ALIAS", "FLASH_PREFIX_GB", "FLASH_YARN", "FLASH_LEND_CHECK"}
 
 # DEBT REGISTER — each entry must name WHY the dead knob is deliberate.
 # Shrink it; never grow it silently. An entry here means a documented knob is

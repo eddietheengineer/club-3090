@@ -9,7 +9,7 @@ lineage:
   base: null
   base_version: null
   source: "https://github.com/Niko1221/Strata"
-  source_ref: "870aedd9e1ebe1c91f94da93b59af17729f6c5c0"
+  source_ref: "c62d5e3a15b40ea51c96aae9e8d36928965f53ab"
   chain: []
   delta: "Independent C++/CUDA engine for Qwen3.8-Flash-Next with its own Python server and Terminal; uses ggml's CPU backend and llama.cpp's mtmd/gguf-py as libraries. Pinned to the image upstream publishes (ghcr.io/niko1221/strata:<release>-cuda13, from 0.2.1 on), built from its signed engine packages"
 image_env: STRATA_IMAGE
@@ -18,9 +18,9 @@ install:
   # Upstream's own image `<release>-cuda13` (RTX 20-50, driver >= 580), built by their docker-images
   # workflow from the signed engine packages; the engine version is its com.strata.engine label.
   # scripts/strata-pin-bump.sh writes the two pin- lines (the first earlier pin is the rollback).
-  # pin-current: 0.2.8 · upstream 870aedd9 · engine 0.1.54 · pinned 2026-10-30 · booted strata/qwen3.8-flash-next-swift15-abliterated-iq3s-dual (verify-full)
-  # pin-earlier: 0.2.7 `db96cd9b…` (upstream 5e8a4cca, engine 0.1.52, 2026-10-27); 0.2.3 `d39ca9fc…` (upstream 5c8dd322, engine 0.1.48, 2026-10-23); 0.2.2 `17e96f76…` (upstream 011c9e60, engine 0.1.47, 2026-10-22); 0.2.1 `a0398afb…` (upstream 90767252, engine 0.1.46, #1764, 2026-10-20); club-3090's own builds of upstream's Dockerfile (strata-club3090): v0.1.45 `75deea40…` (2026-10-17), v0.1.44.1 `fb97d83b…` (2026-10-14), v0.1.43.1 `7f8643c8…` (2026-10-13, the one that also carried sm_90)
-  spec: ghcr.io/niko1221/strata@sha256:27f04a7437c7d2940d067331ead66e3942826c55b57334908c8767625bbdbb04
+  # pin-current: 0.2.9 · upstream c62d5e3a · engine 0.1.55 · pinned 2026-10-31 · booted strata/qwen3.8-flash-next-swift15-abliterated-iq3s-dual (verify-full)
+  # pin-earlier: 0.2.8 `27f04a74…` (upstream 870aedd9, engine 0.1.54, 2026-10-30); 0.2.7 `db96cd9b…` (upstream 5e8a4cca, engine 0.1.52, 2026-10-27); 0.2.3 `d39ca9fc…` (upstream 5c8dd322, engine 0.1.48, 2026-10-23); 0.2.2 `17e96f76…` (upstream 011c9e60, engine 0.1.47, 2026-10-22); 0.2.1 `a0398afb…` (upstream 90767252, engine 0.1.46, #1764, 2026-10-20); club-3090's own builds of upstream's Dockerfile (strata-club3090): v0.1.45 `75deea40…` (2026-10-17), v0.1.44.1 `fb97d83b…` (2026-10-14), v0.1.43.1 `7f8643c8…` (2026-10-13, the one that also carried sm_90)
+  spec: ghcr.io/niko1221/strata@sha256:83e37db8625c67b61c579fd7c0f9068f2d831037a937f139c569502b54290998
 supported_model_families:
   - qwen4exp              # Qwen3.8-Flash-Next family: Strata is written for this model only
 supported_weight_formats:
