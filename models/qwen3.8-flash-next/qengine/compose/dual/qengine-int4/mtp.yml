@@ -3,14 +3,14 @@
 #   Model:     Qwen3.8-Flash-Next — bpx03's QEngine layout of Intel's W4A16 AutoRound (routed
 #              experts INT4 bit-exact; shared expert and DeltaNet INT4 RTN; attention and lm_head
 #              INT8 at load), the INT8 n-gram table, its INT4 MTP head (128 GB)
-#   Engine:    QEngine 1.3.1 (bpx03): its second engine, libqflash.so, in the author's own image
-#              ghcr.io/bpx03/qengine (source 016c9249, text only)
+#   Engine:    QEngine 1.3.2 (bpx03): its second engine, libqflash.so, in the author's own image
+#              ghcr.io/bpx03/qengine (source fb1da72d, text only)
 #   Topology:  Dual 3090 PCIe (experts split evenly over the two cards; GPU-to-GPU P2P when the
 #              driver grants it)
 #   Drafter:   MTP, up to 3 drafts a step (adaptive; SPEC_N sets the most, 0 turns MTP off) + lookup
 #              drafts from the conversation history
 #   KV:        fp8_e4m3 (QEngine's attention KV, split by position over the cards)
-#   Vision:    no (the Flash-Next engine has no image input)
+#   Vision:    no (the text-only image; QEngine's :vision image adds image input, from 1.3.1)
 #   Max ctx:   262144
 #   Genesis:   none
 #   Status:    🐣 Incubating
@@ -34,7 +34,10 @@
 #              (a GPU under 8 lanes), and a CUDA-graph out-of-memory now drops the cached graphs and
 #              retries instead of aborting. Upstream ran a 240K ladder, agent traffic and 8 concurrent
 #              agents at FLASH_COMM=ce FLASH_MAX_SEQS=4 and the default 256 MB margin without an abort.
-#              Not re-run on a rig that hit them.
+#              1.3.2 (pinned 2026-10-31) fixes that out-of-memory's root cause (the sampling kernel of
+#              batched requests needed more GPU stack than a CUDA context reserves). With FLASH_COMM=ce
+#              it turns a prefill pipeline back on that 1.3.1 kept off, fixed: one of its buffers had
+#              reached into memory lent to the expert cache. Not re-run on a rig that hit them.
 #              Measured 2026-10-28 on two 3090s at 230 W (bench.sh on its own boot): 164.0 / 170.6
 #              decode, 1,921 prefill @10K (CV 15%), 2,373 @90K, MTP acceptance length 2.8, 24.1 GB
 #              a card. First start 113 s with the weights already in the page cache (a cold start
@@ -48,7 +51,9 @@
 #   ⤷ MEASURED 2026-10-28 on two 3090s: MemAvailable fell 88 GB at ready (the 51.8 GB INT8 n-gram
 #     table and ~30 GB of expert groups, pinned; upstream says ~85 GB with the archive off). The
 #     archive (48 GB by default) then grows to ~114 GB in all, but it's elastic: it stops at
-#     MemAvailable minus a margin and gives memory back, so it isn't part of the need.
+#     MemAvailable minus a margin and gives memory back, so it isn't part of the need. From 1.3.2,
+#     pinned system prompts add up to 8 GB as agent kinds appear (FLASH_PREFIX_GB; ~0.4 GB for a 20K-token
+#     prompt, upstream), not at ready.
 # Requires-min-vram-gb: 24
 # Requires-min-gpu-count: 2
 # Tensor-parallel: 2
@@ -87,12 +92,21 @@
 #                        less on short agent requests
 #   FLASH_KV_RAM_TOKENS  with FLASH_KV=ram, the host-RAM pool of all conversations (1M; K / M / G):
 #                        13.5 GB per 1M tokens, pinned at start, on top of the header's 88 GB
-#   FLASH_PFB_BIG        rows of a large prefill batch (4096); 8192 on two cards cuts long prompts'
-#                        prefill time 21% at 10K and 7% at 90K for 0.8% decode (upstream)
+#   FLASH_PFB_BIG        rows of a large prefill batch (8192 on two cards from 1.3.2; 4096 on three or
+#                        with FLASH_KV=ram). Upstream on two 3090s against 4096: server prefill +5% at 10K
+#                        and +4% at 90K, decode and 8-agent throughput unchanged
+#   FLASH_PFB_ALIAS      1 (default): the rows past 4096 share the unused end of the KV arrays, used
+#                        while the KV in use stays under 75% of the pool; 0 gives them memory of their
+#                        own, about 880 expert groups a card
+#   FLASH_PREFIX_GB      pinned host RAM for each agent kind's system prompt, kept out of the archive's
+#                        eviction so a new agent of a known kind starts after it (8; 0 = off; needs
+#                        the archive)
+#   FLASH_YARN           YaRN RoPE factor by hand (0 = off); --max-ctx above 262144 sets it
 #   FLASH_EC_RECLAIM_S   a conversation idle this many seconds moves to the host-RAM archive (30;
 #                        0 keeps it in VRAM); its next turn is restored from there
 #   FLASH_MAX_PREFILLS   prompts prefilled at the same time, sharing batches (8)
 #   FLASH_GUARD_MAX      distinct non-finite faults within 5 minutes before the server stops (4)
+#   FLASH_LEND_CHECK     1: a debug check that no buffer overlaps memory lent to the expert cache
 #   QE_COMM_CHECK        rounds of the start-up P2P data check per pair and transport (4; 0 = off)
 #   QE_COMM_TAX_SEVERE, QE_COMM_TAX_1NODE  the P2P co-run tax at which FLASH_COMM=auto takes the
 #                        copy engine (3.0 on any layout; 1.90 on one NUMA node over a narrow link)
@@ -104,14 +118,18 @@
 #   QE_METRICS_PORT      its dashboard, /metrics and qetop's /api/stats, on 9393 in the container and
 #                        not published: <port> publishes them on 127.0.0.1:<port> only (switch.sh
 #                        adds the mapping); 0 turns the metrics server off
-#   QE_EXTRA_ARGS        more server/app.py flags (--max-ctx, --served-name, ...), after ours
+#   QE_EXTRA_ARGS        more server/app.py flags (--max-ctx, --served-name, ...), after ours.
+#                        --max-ctx 1M with FLASH_KV=ram serves conversations up to 1,048,576 tokens
+#                        with YaRN (1.3.2 on), on every request of that server; on two cards it costs
+#                        5.6 GB of expert cache a card (~2% slower short decode), and the host-RAM pool
+#                        is at least the context, ~14.2 GB for 1M (upstream)
 # `switch.sh --set` saves only our three knobs for this slug; it refuses QEngine's own names, because
 # they aren't catalogued launch settings. Set those for one launch, or for every QEngine slug:
 #   FLASH_KV_ARCHIVE_GB=0 READY_TIMEOUT=3600 bash scripts/switch.sh --force qengine/qwen38-flash-next-dual
 #   bash scripts/settings.sh set FLASH_MAX_SEQS=8
 services:
   qengine-qwen38-flash-next-dual:
-    image: ${QENGINE_IMAGE:-ghcr.io/bpx03/qengine@sha256:849b059d4c5658393a83c3ec8dbfdfd6036d2590278f10c8e7faa7981653d719}
+    image: ${QENGINE_IMAGE:-ghcr.io/bpx03/qengine@sha256:ff323aa49b26d333209171b30997f9f4be65184a825aa9e6ba39f297ea76be9d}
     # qengine- is the container prefix our tooling discovers the engine by
     container_name: "${ESTATE_CONTAINER:-qengine-qwen38-flash-next-dual}"
     user: "0:${DOCKER_GID:-1000}"
@@ -154,6 +172,10 @@ services:
       - FLASH_EC_RECLAIM_S
       - FLASH_MAX_PREFILLS
       - FLASH_GUARD_MAX
+      - FLASH_PFB_ALIAS
+      - FLASH_PREFIX_GB
+      - FLASH_YARN
+      - FLASH_LEND_CHECK
       - QE_COMM_CHECK
       - QE_COMM_TAX_SEVERE
       - QE_COMM_TAX_1NODE
