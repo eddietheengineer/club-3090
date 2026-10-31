@@ -87,6 +87,11 @@ services:
       PRESENCE_PENALTY:
       REPEAT_PENALTY:
       SERVED_NAME:
+      # Strata's own engine switches, passed to the engine as they are when set; unset, Strata's own default
+      # (docs/engines/STRATA.md, "Engine switches"). 0.2.9 turned these on for Linux NVIDIA cards (the Gated
+      # DeltaNet prompt kernels on the tensor cores); 0 turns each off.
+      STRATA_GDN_TC:
+      STRATA_GDN_CONVL2:
     volumes:
       - "${MODEL_DIR:-../../../../../../models-cache}/qwen3.8-flash-next-gsq-rco-gguf/IQ3_S:/gguf:ro"
       # Strata 0.2's layout (0.1.x's strata-data is not read by it), under ~/.local/share/club-3090 from
