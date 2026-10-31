@@ -2,6 +2,19 @@
 
 Dated history for Qwen3.8-27B configs in this repo. Append-only — add a new entry, don't rewrite past ones.
 
+## 2026-10-31 — HyperQwen moves to commit f382342d
+
+`vllm-hyperqwen/qwen38-27b-single-ultrafast` now runs syv-ai's `:sha-f382342` (commit
+`f382342d`; was `6cd7265d`), still vLLM 0.32.0. The nine commits add an opt-in prefill path for
+long `CTX=long` prompts on the pth-flash-attn INT8 cache (bounded FA2 slabs, syv-ai/HyperQwen#386,
+with a fix for vLLM 0.32's warm-up stream), off unless `PTH_FA2_SLAB_PREFILL=1` and only with
+`MAX_SEQS=1`, plus documentation. Neither reaches this slug's default (`CTX=fast`, bf16 KV), and
+the compose forwards neither setting.
+The default setup is unchanged: on the reference rig it boots in 299 s (a cold first start on
+the new image) on the same backend (FLASH_ATTN, bf16 KV, 64K, prefix caching on), with
+`reasoning_effort` low, and passes verify-full with a DFlash2 acceptance length of 3.90.
+Boot test only: no new throughput numbers.
+
 ## 2026-10-30 — HyperQwen moves to commit 6cd7265d, on vLLM 0.32.0
 
 `vllm-hyperqwen/qwen38-27b-single-ultrafast` now runs syv-ai's `:sha-6cd7265` (commit
