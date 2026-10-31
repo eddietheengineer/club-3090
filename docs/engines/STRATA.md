@@ -68,6 +68,14 @@ Measurements, with dates and settings, are in each compose's header and in [BENC
   | `CONTEXT`, `KV` | setup's `--max-context` and `--kv` | a context ≥ 4096; `fp16`, `int8`, `q4_0`, `k8v4` | 131072 / setup's choice (int8 here) |
 
   `CONTEXT` and `KV` size the KV cache and the expert cache, so setup owns them: a value that differs from what setup was given runs setup again at the next boot (it says why). A request's own fields always win over these defaults, and so do the Chat settings saved from Strata's web page: they fill effort and sampling before the config does. `MAX_TOKENS` doesn't apply: Strata takes a default output cap only from those saved Chat settings (`max_tokens` in its run config is the vision encoder's), so a request with no `max_tokens` runs to the end of the context. Until 2026-10-17 the launcher wrote it anyway, to no effect.
+- **Engine switches, passed through as they are.** Strata's engine reads hundreds of `STRATA_*` variables, most of them research switches; the composes forward only the ones a release names as the way to turn off a new default that reaches our slugs. Each is passed to the engine as you set it, and when it's unset Strata applies its own default. Strata fills its defaults only into names left unset, so a value you set wins. A value in the run config's `"env"` would win over yours, but Strata writes neither of these there with our CUDA image. Set them as a shell prefix for one launch, or with `bash scripts/settings.sh set STRATA_GDN_TC=0` for every Strata slug; `switch.sh --set` refuses them, since they aren't catalogued launch settings.
+
+  | Variable | Strata's default | What it turns off (0) |
+  |---|---|---|
+  | `STRATA_GDN_TC` | `1` on Linux with NVIDIA cards, from 0.2.9 | the Gated DeltaNet recurrence scan on the tensor cores (the prompt path); the engine also falls back on its own where the card doesn't qualify |
+  | `STRATA_GDN_CONVL2` | `2` on Linux with NVIDIA cards, from 0.2.9 | the fused convolution, SiLU and q/k norm pass of the same prompt path |
+
+  Upstream measured these two together at 2–6% faster prompts with decode unchanged (RTX PRO 5000, RTX A4000), and lists cards with fewer than 96 SMs other than the A4000 as untested; a 3090 has 82.
 - **The club conventions:** the `CLUB3090_RESTART` knob, `BIND_HOST` / `ESTATE_PORT` / `ESTATE_CONTAINER` / `ESTATE_GPUS`, and the host GID plus `umask 0002` on the data volume.
 
 ## Known gaps
