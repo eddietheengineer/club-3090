@@ -9,9 +9,9 @@ stability: stable
 lineage:
   relation: "stock"
   base: "sglang"
-  base_version: "0.5.21"
+  base_version: "0.5.22"
   source: "https://github.com/sgl-project/sglang"
-  source_ref: "e00930c5489053f26d86b179cee0d087f846acbb"
+  source_ref: "baa9befa381511cd4d56f83980951e5a45fffc6d"
   chain: []
   delta: null
 # ⚠️ IMAGE PINNING: `install.spec` below IS the effective image as of #1365.
